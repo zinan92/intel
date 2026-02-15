@@ -132,7 +132,12 @@ class XueqiuCollector(BaseCollector):
     def _fetch_kol_timelines_playwright(
         self, kols: list[dict[str, str]], count: int = 10
     ) -> list[dict[str, Any]]:
-        """Fetch multiple KOL timelines using Playwright stealth to bypass WAF."""
+        """Fetch multiple KOL timelines using Playwright stealth to bypass Alibaba Cloud WAF.
+
+        Strategy: load user page in browser context first (solves WAF JS challenge),
+        then use page.evaluate(fetch(...)) to call the API from within the browser
+        context where cookies/WAF tokens are already set.
+        """
         try:
             from playwright.sync_api import sync_playwright
             from playwright_stealth import Stealth
@@ -157,26 +162,48 @@ class XueqiuCollector(BaseCollector):
                 page = ctx.new_page()
                 stealth.apply_stealth_sync(page)
 
-                # Load homepage first to pass WAF challenge
+                # Load homepage first to pass WAF JS challenge
                 logger.info("Loading Xueqiu homepage for WAF init...")
-                page.goto(f"{_BASE_URL}/", timeout=15000, wait_until="domcontentloaded")
+                page.goto(f"{_BASE_URL}/", timeout=30000, wait_until="domcontentloaded")
                 page.wait_for_timeout(5000)
 
                 for kol in kols:
                     kol_id, kol_name, kol_tag = kol["id"], kol["name"], kol["tag"]
-                    logger.info("Fetching Xueqiu KOL %s (%s) via Playwright", kol_name, kol_id)
+                    logger.info("Fetching Xueqiu KOL %s (%s) via Playwright in-page fetch", kol_name, kol_id)
 
-                    url = (
+                    api_url = (
                         f"{_BASE_URL}/v4/statuses/user_timeline.json"
                         f"?user_id={kol_id}&page=1&count={count}"
                     )
                     try:
-                        page.goto(url, timeout=15000, wait_until="domcontentloaded")
-                        page.wait_for_timeout(2000)
-                        text = page.inner_text("body")
-                        data = json.loads(text)
+                        # Use in-page fetch to call API with WAF cookies already present
+                        data = page.evaluate(
+                            """async (url) => {
+                                const resp = await fetch(url);
+                                if (!resp.ok) return {error: resp.status};
+                                return await resp.json();
+                            }""",
+                            api_url,
+                        )
+                        if not data or "error" in data:
+                            # Fallback: navigate to user page first, then fetch
+                            logger.info("In-page fetch failed, trying user page load for %s", kol_name)
+                            page.goto(f"{_BASE_URL}/u/{kol_id}", timeout=20000, wait_until="domcontentloaded")
+                            page.wait_for_timeout(3000)
+                            data = page.evaluate(
+                                """async (url) => {
+                                    const resp = await fetch(url);
+                                    if (!resp.ok) return {error: resp.status};
+                                    return await resp.json();
+                                }""",
+                                api_url,
+                            )
                     except Exception as e:
                         logger.error("Playwright fetch failed for KOL %s: %s", kol_name, e)
+                        continue
+
+                    if not data or "error" in data:
+                        logger.error("No data for KOL %s, got: %s", kol_name, data)
                         continue
 
                     statuses = data.get("statuses", data.get("list", []))

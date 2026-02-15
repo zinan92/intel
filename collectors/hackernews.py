@@ -1,6 +1,7 @@
 """Hacker News collector using Algolia API."""
 
 import logging
+import time
 from datetime import datetime
 from typing import Any
 
@@ -18,15 +19,17 @@ class HackerNewsCollector(BaseCollector):
     source = "hackernews"
 
     def _fetch_stories(self, query: str | None = None) -> list[dict[str, Any]]:
-        """Fetch stories from HN Algolia API."""
+        """Fetch stories from HN Algolia API, limited to last 48 hours."""
+        cutoff = int(time.time()) - 48 * 3600  # last 48 hours
         params: dict[str, Any] = {
             "tags": "story",
             "hitsPerPage": HN_HITS_PER_PAGE,
+            "numericFilters": f"created_at_i>{cutoff}",
         }
         if query:
             params["query"] = query
 
-        url = f"{HN_API_BASE}/search"
+        url = f"{HN_API_BASE}/search_by_date" if not query else f"{HN_API_BASE}/search"
         try:
             resp = requests.get(url, params=params, timeout=15)
             resp.raise_for_status()
