@@ -5,6 +5,7 @@ from collections import Counter
 from datetime import datetime, timedelta
 from typing import Any
 
+import config
 from fastapi import APIRouter, Query
 from sqlalchemy import func
 
@@ -29,9 +30,74 @@ def _parse_tags(raw: str | None) -> list[str]:
 
 
 @router.get("/health")
-def health() -> dict[str, str]:
-    """Healthcheck endpoint."""
-    return {"status": "ok", "service": "park-intel"}
+def health() -> dict[str, Any]:
+    """Healthcheck endpoint for active sources only (driven by config.ACTIVE_SOURCES)."""
+    from scheduler import get_last_results
+
+    session = get_session()
+    try:
+        now = datetime.utcnow()
+        last_results = get_last_results()
+
+        active_names = [e["source"] for e in config.ACTIVE_SOURCES]
+
+        # Fetch DB freshness only for active sources
+        db_rows = (
+            session.query(
+                Article.source,
+                func.count(Article.id),
+                func.max(Article.collected_at),
+            )
+            .filter(Article.source.in_(active_names))
+            .group_by(Article.source)
+            .all()
+        )
+        db_map = {row[0]: (row[1], row[2]) for row in db_rows}
+
+        sources_info: dict[str, Any] = {}
+        for entry in config.ACTIVE_SOURCES:
+            src = entry["source"]
+            count, last_collected = db_map.get(src, (0, None))
+            age_hours = (
+                round((now - last_collected).total_seconds() / 3600, 1)
+                if last_collected
+                else None
+            )
+
+            if last_collected is None:
+                status = "no_data"
+            elif age_hours is not None and age_hours < 24:
+                status = "ok"
+            else:
+                status = "stale"
+
+            sources_info[src] = {
+                "status": status,
+                "count": count,
+                "last_collected": last_collected.isoformat() if last_collected else None,
+                "age_hours": age_hours,
+            }
+
+            result = last_results.get(src)
+            if result:
+                sources_info[src]["last_run"] = result.timestamp
+                sources_info[src]["last_run_error"] = result.error
+                if result.error:
+                    sources_info[src]["status"] = "degraded"
+
+        any_stale = any(s.get("status") == "stale" for s in sources_info.values())
+        any_error = any(s.get("last_run_error") for s in sources_info.values())
+        overall = "degraded" if (any_stale or any_error) else "ok"
+
+        return {
+            "status": overall,
+            "service": "park-intel",
+            "scheduler": "running",
+            "sources": sources_info,
+            "timestamp": now.isoformat(),
+        }
+    finally:
+        session.close()
 
 
 @router.get("/articles/latest")

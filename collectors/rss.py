@@ -1,178 +1,137 @@
-"""RSS collector for financial and AI feeds."""
+"""RSS collector — config-driven, reads feed list from config.RSS_FEEDS."""
 
+import hashlib
 import logging
+import re
 from datetime import datetime
 from typing import Any
-from urllib.parse import urljoin, urlparse
 
 import feedparser
 
+import config
 from collectors.base import BaseCollector
 
 logger = logging.getLogger(__name__)
 
 
 class RSSCollector(BaseCollector):
-    """Collect articles from RSS feeds."""
+    """Collect articles from RSS feeds defined in config.RSS_FEEDS."""
 
     source = "rss"
 
-    # RSS feeds to monitor (tested and verified as working)
-    FEEDS = [
-        {
-            "name": "Bloomberg Markets",
-            "url": "https://feeds.bloomberg.com/markets/news.rss",
-            "tags": ["finance", "markets", "bloomberg"],
-        },
-        {
-            "name": "Zero Hedge",
-            "url": "https://feeds.feedburner.com/zerohedge/feed",
-            "tags": ["finance", "markets", "economics"],
-        },
-        {
-            "name": "OpenAI News",
-            "url": "https://openai.com/news/rss.xml",
-            "tags": ["ai", "openai", "research"],
-        },
-        {
-            "name": "Google AI Blog",
-            "url": "https://research.google/blog/rss/",
-            "tags": ["ai", "google", "research"],
-        },
-    ]
+    def _fetch_feed(self, feed_cfg: dict[str, Any]) -> list[dict[str, Any]]:
+        """Fetch articles from a single RSS feed. Returns [] on any failure."""
+        name = feed_cfg["name"]
+        url = feed_cfg["url"]
+        category = feed_cfg.get("category", "")
 
-    def _fetch_feed(self, feed_config: dict[str, Any]) -> list[dict[str, Any]]:
-        """Fetch articles from a single RSS feed."""
-        name = feed_config["name"]
-        url = feed_config["url"]
-        base_tags = feed_config.get("tags", [])
-        
         logger.info("Fetching RSS feed: %s", name)
-        
         try:
-            # Parse RSS feed with timeout
             feed = feedparser.parse(url)
-            
+
             if feed.bozo and feed.bozo_exception:
                 logger.warning("Feed %s has parsing issues: %s", name, feed.bozo_exception)
-            
-            if not hasattr(feed, 'entries') or not feed.entries:
+
+            if not getattr(feed, "entries", None):
                 logger.warning("No entries found in feed: %s", name)
                 return []
-                
+
             articles = []
             for entry in feed.entries:
-                # Extract basic info
-                title = entry.get('title', '').strip()
+                title_raw = getattr(entry, "title", "") or ""
+                title = title_raw.strip() if isinstance(title_raw, str) else ""
                 if not title:
                     continue
-                    
-                # Get content from various possible fields
+
+                # Prefer content > summary > description
                 content = ""
-                if hasattr(entry, 'content') and entry.content:
-                    content = entry.content[0].value if isinstance(entry.content, list) else entry.content.value
-                elif hasattr(entry, 'summary') and entry.summary:
-                    content = entry.summary
-                elif hasattr(entry, 'description') and entry.description:
-                    content = entry.description
-                    
-                # Clean up content (remove HTML tags if needed)
-                content = self._clean_content(content)
-                
-                # Get URL
-                article_url = entry.get('link', '')
-                if not article_url:
+                content_raw = getattr(entry, "content", None)
+                if isinstance(content_raw, list) and content_raw:
+                    raw = getattr(content_raw[0], "value", "")
+                    content = _clean_html(raw) if isinstance(raw, str) else ""
+                if not content:
+                    summary = getattr(entry, "summary", None)
+                    if isinstance(summary, str) and summary:
+                        content = _clean_html(summary)
+                if not content:
+                    desc = getattr(entry, "description", None)
+                    if isinstance(desc, str) and desc:
+                        content = _clean_html(desc)
+
+                article_url = getattr(entry, "link", "") or ""
+                if not isinstance(article_url, str) or not article_url:
                     continue
-                    
-                # Get publication date
-                published_at = None
-                for date_field in ['published_parsed', 'updated_parsed']:
-                    if hasattr(entry, date_field):
-                        date_tuple = getattr(entry, date_field)
-                        if date_tuple:
-                            try:
-                                published_at = datetime(*date_tuple[:6])
-                                break
-                            except (ValueError, TypeError):
-                                continue
-                
-                # Create unique source_id based on URL and feed
-                source_id = f"rss_{hash(article_url + name)}_{abs(hash(title))}"
-                
-                # Get author
-                author = entry.get('author', '')
-                if not author and hasattr(entry, 'authors') and entry.authors:
-                    author = entry.authors[0] if isinstance(entry.authors, list) else str(entry.authors)
-                
-                # Combine base tags with any category tags from the feed
-                tags = list(base_tags)  # Copy base tags
-                if hasattr(entry, 'tags') and entry.tags:
-                    for tag in entry.tags:
-                        tag_name = tag.term if hasattr(tag, 'term') else str(tag)
-                        if tag_name and tag_name.lower() not in [t.lower() for t in tags]:
-                            tags.append(tag_name.lower())
-                
+
+                published_at: datetime | None = None
+                for date_field in ("published_parsed", "updated_parsed"):
+                    date_tuple = getattr(entry, date_field, None)
+                    if date_tuple:
+                        try:
+                            published_at = datetime(*date_tuple[:6])
+                            break
+                        except (ValueError, TypeError):
+                            continue
+
+                # Deterministic source_id: hash of URL (stable across runs)
+                url_hash = hashlib.sha256(article_url.encode()).hexdigest()[:16]
+                source_id = f"rss_{url_hash}"
+
+                author_raw = getattr(entry, "author", "")
+                author = author_raw if isinstance(author_raw, str) else ""
+                if not author:
+                    raw_authors = getattr(entry, "authors", None)
+                    if isinstance(raw_authors, list) and raw_authors:
+                        author = raw_authors[0] if isinstance(raw_authors[0], str) else str(raw_authors[0])
+
+                # category from config becomes the primary tag; merge with entry tags
+                tags: list[str] = [category] if category else []
+                for tag in getattr(entry, "tags", []) or []:
+                    tag_name = tag.term if hasattr(tag, "term") else str(tag)
+                    if tag_name and tag_name.lower() not in [t.lower() for t in tags]:
+                        tags.append(tag_name.lower())
+
                 articles.append({
                     "source": self.source,
                     "source_id": source_id,
                     "author": author,
                     "title": title,
-                    "content": content,
+                    "content": content[:2000],
                     "url": article_url,
                     "tags": tags,
-                    "score": 0,  # RSS doesn't have scoring
+                    "score": 0,
                     "published_at": published_at,
                 })
-                
+
             logger.info("Fetched %d articles from %s", len(articles), name)
             return articles
-            
+
         except Exception as e:
-            logger.error("Failed to fetch feed %s: %s", name, e)
+            logger.warning("Failed to fetch feed %s: %s", name, e)
             return []
-    
-    @staticmethod
-    def _clean_content(content: str) -> str:
-        """Basic HTML cleanup for content."""
-        if not content:
-            return ""
-        
-        # Remove common HTML tags (basic cleanup)
-        import re
-        content = re.sub(r'<[^>]+>', '', content)
-        content = re.sub(r'\s+', ' ', content)  # Normalize whitespace
-        content = content.strip()
-        
-        # Limit content length
-        if len(content) > 2000:
-            content = content[:2000] + "..."
-            
-        return content
 
     def collect(self) -> list[dict[str, Any]]:
-        """Collect articles from all RSS feeds."""
-        all_articles = []
-        seen_urls = set()
-        
-        for feed_config in self.FEEDS:
+        """Collect articles from all feeds in config.RSS_FEEDS."""
+        all_articles: list[dict[str, Any]] = []
+        seen_urls: set[str] = set()
+
+        for feed_cfg in config.RSS_FEEDS:
             try:
-                articles = self._fetch_feed(feed_config)
-                
-                # Deduplicate by URL
-                new_articles = []
-                for article in articles:
-                    url = article.get('url', '')
+                for article in self._fetch_feed(feed_cfg):
+                    url = article.get("url", "")
                     if url and url not in seen_urls:
                         seen_urls.add(url)
-                        new_articles.append(article)
-                
-                all_articles.extend(new_articles)
-                logger.info("Added %d new articles from %s (total: %d)", 
-                          len(new_articles), feed_config["name"], len(all_articles))
-                          
+                        all_articles.append(article)
             except Exception as e:
-                logger.error("Error processing feed %s: %s", feed_config["name"], e)
-                continue
-        
+                logger.error("Error processing feed %s: %s", feed_cfg.get("name"), e)
+
         logger.info("Total RSS articles collected: %d", len(all_articles))
         return all_articles
+
+
+def _clean_html(text: str) -> str:
+    """Strip HTML tags and normalize whitespace."""
+    if not text:
+        return ""
+    text = re.sub(r"<[^>]+>", "", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text

@@ -1,6 +1,6 @@
 """Database connection and initialization."""
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -11,12 +11,24 @@ _engine: Engine | None = None
 _SessionFactory: sessionmaker[Session] | None = None
 
 
+def _set_sqlite_pragma(dbapi_connection, connection_record):
+    """Enable WAL journal mode for better concurrent write performance."""
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.close()
+
+
 def get_engine() -> Engine:
     """Get or create the SQLAlchemy engine."""
     global _engine
     if _engine is None:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
-        _engine = create_engine(f"sqlite:///{DB_PATH}", echo=False)
+        _engine = create_engine(
+            f"sqlite:///{DB_PATH}",
+            echo=False,
+            connect_args={"check_same_thread": False, "timeout": 30},
+        )
+        event.listen(_engine, "connect", _set_sqlite_pragma)
     return _engine
 
 
