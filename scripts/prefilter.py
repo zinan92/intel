@@ -40,7 +40,7 @@ MIN_CONTENT_LEN = 30
 GITHUB_KEYWORD_WHITELIST = [
     "trading", "quant", "agent", "claude", "openclaw",
 ]
-GITHUB_MIN_STARS = 50
+GITHUB_MIN_STARS = 100
 
 
 def ensure_prefilter_table(session):

@@ -43,10 +43,10 @@ def _extract_json_array(text: str) -> list[dict]:
 _SYSTEM_PROMPT = """You are a trading analyst assistant. For each article, you must:
 
 1. Rate its **relevance_score** (1-5) for an active multi-market trader:
-   - 5: Directly actionable — earnings surprise, policy change, major breakout
-   - 4: High relevance — sector trend, significant macro data, important KOL thesis
-   - 3: Moderate — general market commentary, industry news
-   - 2: Low — tangentially related to markets
+   - 5: ONLY for breaking/major events — surprise rate decision, major earnings miss/beat, geopolitical shock, market crash/surge. Must be immediately actionable. Daily market wraps and routine summaries are NEVER 5.
+   - 4: High relevance — sector trend, significant macro data, important KOL thesis with clear trading implication
+   - 3: Moderate — general market commentary, industry news. Default for routine "markets wrap" or "daily recap" articles.
+   - 2: Low — tangentially related to markets. GitHub repos with empty/minimal descriptions cap at 2.
    - 1: Noise — not useful for trading decisions
 
 2. Generate **narrative_tags** — short descriptive phrases (2-4 words each) capturing the article's trading-relevant narrative. Examples: "nvidia-earnings-beat", "fed-rate-pause", "btc-etf-inflows", "china-stimulus-hope".
@@ -105,7 +105,7 @@ class LLMTagger:
             # Clear CLAUDECODE env var to allow nested CLI calls
             env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
             result = subprocess.run(
-                ["claude", "-p", user_msg, "--output-format", "json", "--model", "sonnet"],
+                ["claude", "-p", user_msg, "--output-format", "json", "--model", "claude-sonnet-4-6"],
                 capture_output=True,
                 text=True,
                 timeout=120,

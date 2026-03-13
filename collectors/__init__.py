@@ -1,13 +1,15 @@
-from collectors.base import BaseCollector
-from collectors.hackernews import HackerNewsCollector
-from collectors.substack import SubstackCollector
-from collectors.twitter import TwitterCollector
-from collectors.xueqiu import XueqiuCollector
+"""Collector modules — lazy-imported by scheduler.py to avoid import lock deadlock."""
 
 __all__ = [
     "BaseCollector",
+    "ClawFeedCollector",
+    "GitHubReleaseCollector",
+    "GitHubTrendingCollector",
+    "GoogleNewsCollector",
     "HackerNewsCollector",
-    "SubstackCollector",
-    "TwitterCollector",
+    "RedditCollector",
+    "RSSCollector",
+    "WebpageMonitorCollector",
     "XueqiuCollector",
+    "YahooFinanceCollector",
 ]

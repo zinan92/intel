@@ -1,5 +1,7 @@
 """park-intel — FastAPI application."""
 
+import logging
+import logging.handlers
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -8,15 +10,44 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.routes import router
-from config import API_HOST, API_PORT
+from api.ui_routes import ui_router
+from config import API_HOST, API_PORT, BASE_DIR
 from db.database import init_db
+from scheduler import CollectorScheduler
+
+logger = logging.getLogger(__name__)
+
+
+def _configure_logging() -> None:
+    """Set up root logger with rotating file handler."""
+    log_dir = BASE_DIR / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    handler = logging.handlers.RotatingFileHandler(
+        log_dir / "park-intel.log",
+        maxBytes=10 * 1024 * 1024,
+        backupCount=5,
+        encoding="utf-8",
+    )
+    handler.setFormatter(
+        logging.Formatter("%(asctime)s %(levelname)s [%(name)s] %(message)s")
+    )
+
+    root = logging.getLogger()
+    root.addHandler(handler)
+    root.setLevel(logging.INFO)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Initialize DB on startup."""
+    """Initialize DB and start collector scheduler on startup."""
+    _configure_logging()
     init_db()
+    collector_scheduler = CollectorScheduler()
+    collector_scheduler.start()
+    logger.info("park-intel started with built-in collector scheduler")
     yield
+    collector_scheduler.shutdown()
 
 
 app = FastAPI(
@@ -35,6 +66,7 @@ app.add_middleware(
 )
 
 app.include_router(router)
+app.include_router(ui_router)
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host=API_HOST, port=API_PORT, reload=True)
