@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 def list_active_sources(session: Session) -> list[SourceRegistry]:
-    """Return all active (non-retired) source registry records."""
+    """Return all source registry records where is_active == 1."""
     return (
         session.query(SourceRegistry)
         .filter(SourceRegistry.is_active == 1)
