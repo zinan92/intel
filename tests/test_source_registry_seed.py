@@ -65,14 +65,17 @@ class TestSeedCreatesInstances:
         # config.WEBPAGE_MONITORS has 2 entries
         assert len(wm_sources) >= 2
 
-    def test_social_kol_instances_created(self, session: Session):
+    def test_social_kol_single_stream(self, session: Session):
+        """social_kol is one curated stream, not one row per handle."""
         seed_source_registry(session)
         kol_sources = [
             s for s in list_all_sources(session)
             if s.source_type == "social_kol"
         ]
-        # config.CLAWFEED_KOL_LIST has 22 entries
-        assert len(kol_sources) >= 20
+        assert len(kol_sources) == 1
+        cfg = json.loads(kol_sources[0].config_json)
+        assert "handles" in cfg
+        assert len(cfg["handles"]) >= 20  # all KOL handles in one config
 
     def test_single_instance_sources_created(self, session: Session):
         """hackernews, xueqiu, yahoo_finance, google_news, github_trending each get one."""
@@ -160,12 +163,13 @@ class TestSeedAttributes:
             cfg = json.loads(s.config_json)
             assert "subreddit" in cfg, f"Reddit source {s.source_key} missing subreddit"
 
-    def test_social_kol_config_has_handle(self, session: Session):
+    def test_social_kol_config_has_handles_list(self, session: Session):
         seed_source_registry(session)
         kol_sources = [s for s in list_all_sources(session) if s.source_type == "social_kol"]
-        for s in kol_sources:
-            cfg = json.loads(s.config_json)
-            assert "handle" in cfg, f"social_kol source {s.source_key} missing handle"
+        assert len(kol_sources) == 1
+        cfg = json.loads(kol_sources[0].config_json)
+        assert "handles" in cfg, "social_kol config should have handles list"
+        assert isinstance(cfg["handles"], list)
 
     def test_source_keys_are_unique(self, session: Session):
         seed_source_registry(session)
@@ -174,8 +178,8 @@ class TestSeedAttributes:
         assert len(keys) == len(set(keys)), f"Duplicate keys found: {[k for k in keys if keys.count(k) > 1]}"
 
 
-class TestSeedIdempotent:
-    """Running seed twice must not duplicate or corrupt records."""
+class TestSeedInsertOnly:
+    """Seed is insert-only — existing rows are never overwritten."""
 
     def test_double_seed_same_count(self, session: Session):
         seed_source_registry(session)
@@ -194,6 +198,36 @@ class TestSeedIdempotent:
         rss_after = get_source_by_key(session, "rss:simon-willison")
         assert rss_after is not None
         assert rss_after.config_json == config_before
+
+    def test_db_edits_survive_reseed(self, session: Session):
+        """DB-side edits to priority, schedule, etc. must not be reset by re-seed."""
+        from sources.registry import upsert_source
+
+        seed_source_registry(session)
+        rss = get_source_by_key(session, "rss:simon-willison")
+        assert rss is not None
+
+        # Simulate a DB-side edit: change priority and schedule
+        upsert_source(session, {
+            "source_key": "rss:simon-willison",
+            "priority": 42,
+            "schedule_hours": 2,
+        })
+
+        # Re-seed should NOT overwrite the DB-side edits
+        seed_source_registry(session)
+
+        rss_after = get_source_by_key(session, "rss:simon-willison")
+        assert rss_after is not None
+        assert rss_after.priority == 42, "priority should survive re-seed"
+        assert rss_after.schedule_hours == 2, "schedule_hours should survive re-seed"
+
+    def test_second_seed_returns_zero(self, session: Session):
+        """Second seed run should insert 0 new rows."""
+        first = seed_source_registry(session)
+        assert first > 0
+        second = seed_source_registry(session)
+        assert second == 0
 
 
 class TestSeedSourceKeyPattern:
@@ -214,5 +248,5 @@ class TestSeedSourceKeyPattern:
     def test_social_kol_key_pattern(self, session: Session):
         seed_source_registry(session)
         kol_sources = [s for s in list_all_sources(session) if s.source_type == "social_kol"]
-        for s in kol_sources:
-            assert s.source_key.startswith("social_kol:"), f"Bad key: {s.source_key}"
+        assert len(kol_sources) == 1
+        assert kol_sources[0].source_key == "social_kol:curated-stream"
