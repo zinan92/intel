@@ -122,6 +122,57 @@ class TestUpsertSource:
         parsed = json.loads(result.config_json)
         assert parsed == {"url": "http://example.com", "max_items": 10}
 
+    def test_partial_update_preserves_config(self, session: Session):
+        """Bug fix: partial update without config must not wipe stored config."""
+        original_config = {"url": "https://example.com/feed", "max_items": 50}
+        upsert_source(session, _make_source("rss:partial", config=original_config))
+
+        # Update only display_name, omit config entirely
+        upsert_source(session, {"source_key": "rss:partial", "display_name": "Renamed"})
+
+        result = get_source_by_key(session, "rss:partial")
+        assert result is not None
+        assert result.display_name == "Renamed"
+        assert json.loads(result.config_json) == original_config
+
+    def test_config_list_serialized_as_valid_json(self, session: Session):
+        """Bug fix: non-dict config (list, bool, etc.) must produce valid JSON."""
+        list_config = ["tag1", "tag2", "tag3"]
+        upsert_source(session, _make_source("rss:list-cfg", config=list_config))
+
+        result = get_source_by_key(session, "rss:list-cfg")
+        assert result is not None
+        parsed = json.loads(result.config_json)  # Must not raise
+        assert parsed == list_config
+
+    def test_config_string_serialized_as_valid_json(self, session: Session):
+        """Non-dict config: string value produces valid JSON string."""
+        upsert_source(session, _make_source("rss:str-cfg", config="simple-value"))
+
+        result = get_source_by_key(session, "rss:str-cfg")
+        assert result is not None
+        parsed = json.loads(result.config_json)
+        assert parsed == "simple-value"
+
+    def test_reactivate_clears_retired_at(self, session: Session):
+        """Bug fix: reactivating a retired source must clear retired_at."""
+        upsert_source(session, _make_source("rss:bounce", active=1))
+        retire_source(session, "rss:bounce")
+
+        # Verify it's retired
+        result = get_source_by_key(session, "rss:bounce")
+        assert result is not None
+        assert result.is_active == 0
+        assert result.retired_at is not None
+
+        # Reactivate
+        upsert_source(session, {"source_key": "rss:bounce", "is_active": 1})
+
+        result = get_source_by_key(session, "rss:bounce")
+        assert result is not None
+        assert result.is_active == 1
+        assert result.retired_at is None
+
 
 class TestRetireSource:
     def test_retire_marks_inactive(self, session: Session):
