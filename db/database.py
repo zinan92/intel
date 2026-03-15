@@ -41,9 +41,24 @@ def get_session() -> Session:
 
 
 def init_db() -> None:
-    """Create all tables if they don't exist, then run migrations."""
+    """Create all tables if they don't exist, then run migrations and seed."""
     from db.migrations import run_migrations
 
     engine = get_engine()
     Base.metadata.create_all(engine)
     run_migrations(engine)
+    _seed_registry_if_needed()
+
+
+def _seed_registry_if_needed() -> None:
+    """Seed the source registry from config on first run. Idempotent."""
+    from sources.seed import seed_source_registry
+
+    session = get_session()
+    try:
+        seed_source_registry(session)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Failed to seed source registry")
+    finally:
+        session.close()
