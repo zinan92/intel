@@ -1,9 +1,9 @@
-"""Tests for ClawFeedCollector — CLI-present and CLI-missing behavior."""
+"""Tests for SocialKolCollector — CLI-present and CLI-missing behavior."""
 import json
 from unittest.mock import MagicMock, patch
 
 import pytest
-from collectors.clawfeed import ClawFeedCollector
+from collectors.social_kol import SocialKolCollector
 
 
 SAMPLE_ITEMS = [
@@ -31,13 +31,13 @@ SAMPLE_ITEMS = [
 
 def _make_collector_with_cli():
     with patch("shutil.which", return_value="/usr/local/bin/clawfeed"):
-        c = ClawFeedCollector()
+        c = SocialKolCollector()
     return c
 
 
 def _make_collector_no_cli():
     with patch("shutil.which", return_value=None):
-        c = ClawFeedCollector()
+        c = SocialKolCollector()
     return c
 
 
@@ -50,9 +50,9 @@ def test_cli_missing_returns_empty():
 def test_cli_missing_logs_warning(caplog):
     import logging
     c = _make_collector_no_cli()
-    with caplog.at_level(logging.WARNING, logger="collectors.clawfeed"):
+    with caplog.at_level(logging.WARNING, logger="collectors.social_kol"):
         c.collect()
-    assert any("ClawFeed CLI not available" in r.message for r in caplog.records)
+    assert any("clawfeed CLI not available" in r.message for r in caplog.records)
 
 
 def test_cli_present_returns_list():
@@ -77,7 +77,7 @@ def test_source_id_uses_id_field():
     mock_result.stderr = b""
     with patch("subprocess.run", return_value=mock_result):
         result = c.collect()
-    assert result[0]["source_id"] == "clawfeed_abc123"
+    assert result[0]["source_id"] == "social_kol_abc123"
 
 
 def test_source_id_uses_url_hash_when_no_id():
@@ -95,7 +95,7 @@ def test_source_id_uses_url_hash_when_no_id():
         r2 = c.collect()
 
     assert r1[0]["source_id"] == r2[0]["source_id"]
-    assert r1[0]["source_id"].startswith("clawfeed_")
+    assert r1[0]["source_id"].startswith("social_kol_")
 
 
 def test_item_without_content_and_title_skipped():
@@ -121,7 +121,7 @@ def test_mapping_fields():
     with patch("subprocess.run", return_value=mock_result):
         result = c.collect()
     a = result[0]
-    assert a["source"] == "clawfeed"
+    assert a["source"] == "social_kol"
     assert a["title"] == "Sam Altman on AGI timelines"
     assert a["content"] == "In a recent post, Altman discusses..."
     assert a["author"] == "sama"

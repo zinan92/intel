@@ -77,25 +77,25 @@ GOOGLE_NEWS_QUERIES: list[dict[str, str]] = [
 # --- LLM Tagging ---
 ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
 
-# --- Source Seed Data (V2: bootstrap only) ---
+# --- Source Bootstrap Data (V2: seed only) ---
 # Used ONLY by sources/seed.py to populate the source_registry table on first run.
 # Runtime (scheduler, health, feed) reads from the DB registry, not this list.
 # To change source intervals or active state, edit the registry via the service layer.
-ACTIVE_SOURCES: list[dict] = [
-    {"source": "hackernews",      "interval_hours": 4,  "category": "frontier-tech"},
-    {"source": "xueqiu",          "interval_hours": 4,  "category": "cn-finance"},
-    {"source": "rss",             "interval_hours": 6,  "category": "mixed"},
-    {"source": "github",          "interval_hours": 12, "category": "frontier-tech"},
-    {"source": "yahoo_finance",   "interval_hours": 4,  "category": "macro"},
-    {"source": "google_news",     "interval_hours": 4,  "category": "macro"},
-    {"source": "clawfeed",        "interval_hours": 4,  "category": "mixed"},
-    {"source": "reddit",          "interval_hours": 6,  "category": "mixed"},
-    {"source": "github_release",  "interval_hours": 12, "category": "ai-agent"},
-    {"source": "webpage_monitor", "interval_hours": 6,  "category": "mixed"},
+SOURCE_BOOTSTRAP: list[dict] = [
+    {"source": "hackernews",       "interval_hours": 4,  "category": "frontier-tech"},
+    {"source": "xueqiu",           "interval_hours": 4,  "category": "cn-finance"},
+    {"source": "rss",              "interval_hours": 6,  "category": "mixed"},
+    {"source": "github_trending",  "interval_hours": 12, "category": "frontier-tech"},
+    {"source": "yahoo_finance",    "interval_hours": 4,  "category": "macro"},
+    {"source": "google_news",      "interval_hours": 4,  "category": "macro"},
+    {"source": "social_kol",       "interval_hours": 4,  "category": "mixed"},
+    {"source": "reddit",           "interval_hours": 6,  "category": "mixed"},
+    {"source": "github_release",   "interval_hours": 12, "category": "ai-agent"},
+    {"source": "website_monitor",  "interval_hours": 6,  "category": "mixed"},
 ]
 
-# --- Collector: ClawFeed ---
-CLAWFEED_KOL_LIST: list[dict] = [
+# --- Collector: Social KOL ---
+SOCIAL_KOL_HANDLES: list[dict] = [
     {"handle": "sama",            "category": "llm"},
     {"handle": "DarioAmodei",     "category": "llm"},
     {"handle": "GregBrockman",    "category": "llm"},

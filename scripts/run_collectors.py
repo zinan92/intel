@@ -9,7 +9,7 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from collectors.clawfeed import ClawFeedCollector
+from collectors.social_kol import SocialKolCollector
 from collectors.github_release import GitHubReleaseCollector
 from collectors.github_trending import GitHubTrendingCollector
 from collectors.google_news import GoogleNewsCollector
@@ -24,13 +24,13 @@ COLLECTORS: dict[str, type] = {
     "hackernews": HackerNewsCollector,
     "xueqiu": XueqiuCollector,
     "rss": RSSCollector,
-    "github": GitHubTrendingCollector,
+    "github_trending": GitHubTrendingCollector,
     "yahoo_finance": YahooFinanceCollector,
     "google_news": GoogleNewsCollector,
-    "clawfeed": ClawFeedCollector,
+    "social_kol": SocialKolCollector,
     "reddit": RedditCollector,
     "github_release": GitHubReleaseCollector,
-    "webpage_monitor": WebpageMonitorCollector,
+    "website_monitor": WebpageMonitorCollector,
 }
 
 

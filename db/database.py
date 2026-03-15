@@ -48,6 +48,23 @@ def init_db() -> None:
     Base.metadata.create_all(engine)
     run_migrations(engine)
     _seed_registry_if_needed()
+    _canonicalize_article_sources()
+
+
+def _canonicalize_article_sources() -> None:
+    """Rewrite any legacy Article.source values to canonical V2 names.
+
+    Fail-fast: runtime queries use canonical names only (no read-time shims),
+    so if this migration fails, historical data becomes invisible. Letting
+    the app start in that state would be silently broken.
+    """
+    from db.migrations import migrate_article_sources
+
+    session = get_session()
+    try:
+        migrate_article_sources(session)
+    finally:
+        session.close()
 
 
 def _seed_registry_if_needed() -> None:
