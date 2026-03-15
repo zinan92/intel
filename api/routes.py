@@ -29,35 +29,55 @@ def _parse_tags(raw: str | None) -> list[str]:
     return []
 
 
+# Mapping from v2 source_type to legacy article.source values in DB.
+# Needed because existing articles were stored with legacy names.
+_V2_TO_LEGACY_SOURCE: dict[str, str] = {
+    "social_kol": "clawfeed",
+    "github_trending": "github",
+    "website_monitor": "webpage_monitor",
+}
+
+
+def _legacy_source_name(source_type: str) -> str:
+    """Map a v2 source_type to the legacy article.source name used in DB."""
+    return _V2_TO_LEGACY_SOURCE.get(source_type, source_type)
+
+
 @router.get("/health")
 def health() -> dict[str, Any]:
-    """Healthcheck endpoint for active sources only (driven by config.ACTIVE_SOURCES)."""
+    """Healthcheck endpoint for active sources (driven by source registry)."""
     from scheduler import get_last_results
+    from sources.registry import list_active_sources
 
     session = get_session()
     try:
         now = datetime.utcnow()
         last_results = get_last_results()
 
-        active_names = [e["source"] for e in config.ACTIVE_SOURCES]
+        active = list_active_sources(session)
+        # Group by source_type for health reporting
+        active_types = sorted({s.source_type for s in active})
 
-        # Fetch DB freshness only for active sources
+        # Map v2 types to legacy DB names for article queries
+        legacy_names = [_legacy_source_name(t) for t in active_types]
+
+        # Fetch DB freshness for active source types
         db_rows = (
             session.query(
                 Article.source,
                 func.count(Article.id),
                 func.max(Article.collected_at),
             )
-            .filter(Article.source.in_(active_names))
+            .filter(Article.source.in_(legacy_names))
             .group_by(Article.source)
             .all()
         )
         db_map = {row[0]: (row[1], row[2]) for row in db_rows}
 
         sources_info: dict[str, Any] = {}
-        for entry in config.ACTIVE_SOURCES:
-            src = entry["source"]
-            count, last_collected = db_map.get(src, (0, None))
+        for source_type in active_types:
+            legacy_name = _legacy_source_name(source_type)
+            count, last_collected = db_map.get(legacy_name, (0, None))
             age_hours = (
                 round((now - last_collected).total_seconds() / 3600, 1)
                 if last_collected
@@ -71,19 +91,19 @@ def health() -> dict[str, Any]:
             else:
                 status = "stale"
 
-            sources_info[src] = {
+            sources_info[source_type] = {
                 "status": status,
                 "count": count,
                 "last_collected": last_collected.isoformat() if last_collected else None,
                 "age_hours": age_hours,
             }
 
-            result = last_results.get(src)
+            result = last_results.get(source_type)
             if result:
-                sources_info[src]["last_run"] = result.timestamp
-                sources_info[src]["last_run_error"] = result.error
+                sources_info[source_type]["last_run"] = result.timestamp
+                sources_info[source_type]["last_run_error"] = result.error
                 if result.error:
-                    sources_info[src]["status"] = "degraded"
+                    sources_info[source_type]["status"] = "degraded"
 
         any_stale = any(s.get("status") == "stale" for s in sources_info.values())
         any_error = any(s.get("last_run_error") for s in sources_info.values())

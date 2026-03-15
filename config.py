@@ -77,9 +77,10 @@ GOOGLE_NEWS_QUERIES: list[dict[str, str]] = [
 # --- LLM Tagging ---
 ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
 
-# --- Active Source Registry ---
-# Single source of truth for currently scheduled collectors.
-# /api/health iterates this list, not the DB.
+# --- Source Seed Data (V2: bootstrap only) ---
+# Used ONLY by sources/seed.py to populate the source_registry table on first run.
+# Runtime (scheduler, health, feed) reads from the DB registry, not this list.
+# To change source intervals or active state, edit the registry via the service layer.
 ACTIVE_SOURCES: list[dict] = [
     {"source": "hackernews",      "interval_hours": 4,  "category": "frontier-tech"},
     {"source": "xueqiu",          "interval_hours": 4,  "category": "cn-finance"},

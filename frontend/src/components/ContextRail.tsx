@@ -40,27 +40,32 @@ export function ContextRail({ context }: Props) {
           </div>
         )}
 
-        {health.length > 0 && (
-          <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Sources</p>
-            <ul className="space-y-1">
-              {health.slice(0, 8).map((h) => {
-                const dot =
-                  h.status === "ok" ? "bg-green-400"
-                  : h.status === "degraded" ? "bg-red-400"
-                  : h.status === "stale" ? "bg-amber-400"
-                  : "bg-gray-300"; // no_data
-                return (
-                  <li key={h.source} className="flex items-center gap-1.5 text-sm">
-                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot}`} />
-                    <span className="text-gray-700 truncate">{h.source}</span>
-                    <span className="ml-auto text-xs text-gray-400 shrink-0">{h.count || "—"}</span>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        )}
+        {health.length > 0 && (() => {
+          const okCount = health.filter((h) => h.status === "ok").length;
+          const degradedCount = health.filter((h) => h.status === "degraded").length;
+          const staleCount = health.filter((h) => h.status === "stale").length;
+          const total = health.length;
+          return (
+            <div>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Pipeline</p>
+              <div className="flex items-center gap-1 mb-1.5">
+                {health.map((h) => {
+                  const dot =
+                    h.status === "ok" ? "bg-green-400"
+                    : h.status === "degraded" ? "bg-red-400"
+                    : h.status === "stale" ? "bg-amber-400"
+                    : "bg-gray-300";
+                  return <span key={h.source} className={`w-2 h-2 rounded-full ${dot}`} title={h.status} />;
+                })}
+              </div>
+              <p className="text-xs text-gray-500">
+                {okCount}/{total} healthy
+                {degradedCount > 0 && <span className="text-red-500"> · {degradedCount} degraded</span>}
+                {staleCount > 0 && <span className="text-amber-500"> · {staleCount} stale</span>}
+              </p>
+            </div>
+          );
+        })()}
       </div>
     </aside>
   );
