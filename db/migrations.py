@@ -19,8 +19,19 @@ def _column_exists(engine: Engine, table: str, column: str) -> bool:
         return column in columns
 
 
+def _table_exists(engine: Engine, table: str) -> bool:
+    """Check if a table exists in the database."""
+    with engine.connect() as conn:
+        result = conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table' AND name=:name"),
+            {"name": table},
+        )
+        return result.fetchone() is not None
+
+
 def run_migrations(engine: Engine) -> None:
     """Run all pending migrations idempotently."""
+    # Column-add migrations for existing tables
     migrations = [
         ("articles", "relevance_score", "INTEGER"),
         ("articles", "narrative_tags", "TEXT"),
@@ -34,3 +45,10 @@ def run_migrations(engine: Engine) -> None:
                 conn.commit()
             else:
                 logger.debug("Column %s.%s already exists, skipping", table, column)
+
+    # Table-level migrations: create new tables if missing
+    if not _table_exists(engine, "source_registry"):
+        logger.info("Creating source_registry table via migration")
+        from db.models import SourceRegistry
+        SourceRegistry.__table__.create(engine)
+        logger.info("source_registry table created")
