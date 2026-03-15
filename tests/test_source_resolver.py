@@ -75,11 +75,11 @@ class TestResolveGitHubRelease:
         assert result["source_type"] == "github_release"
         assert result["config"]["repo"] == "openai/codex"
 
-    def test_github_repo_url(self):
+    def test_github_repo_url_is_not_release(self):
+        """Generic repo URLs should NOT be classified as github_release."""
         result = resolve_source("https://github.com/anthropics/claude-code")
-        assert result["source_type"] == "github_release"
-        assert result["config"]["repo"] == "anthropics/claude-code"
-        assert result["display_name"] == "anthropics/claude-code"
+        assert result["source_type"] == "website_monitor"
+        assert "github.com" in result["config"]["url"]
 
 
 class TestResolveWebsiteMonitor:

@@ -9,7 +9,8 @@ Normalization rules:
   - github     → github_trending
   - webpage_monitor → website_monitor
 
-Idempotent: uses upsert_source, safe to run multiple times.
+Insert-only: existing rows are never overwritten, so DB-side edits
+to priority, schedule, active state, or config survive restarts.
 """
 
 import logging
@@ -19,7 +20,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 import config as cfg
-from sources.registry import upsert_source
+from sources.registry import get_source_by_key, upsert_source
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,20 @@ def _interval_for_type(source_type: str) -> int | None:
     return None
 
 
+# --- Insert-only helper ---
+
+def _insert_if_missing(session: Session, payload: dict[str, Any]) -> bool:
+    """Insert a source record only if the key does not already exist.
+
+    Returns True if a new row was inserted, False if skipped.
+    This ensures DB-side edits survive app restarts.
+    """
+    if get_source_by_key(session, payload["source_key"]) is not None:
+        return False
+    upsert_source(session, payload)
+    return True
+
+
 # --- Per-type seed functions ---
 
 def _seed_rss(session: Session, schedule_hours: int | None) -> int:
@@ -70,15 +85,15 @@ def _seed_rss(session: Session, schedule_hours: int | None) -> int:
     for feed in cfg.RSS_FEEDS:
         name = feed["name"]
         key = f"rss:{_slugify(name)}"
-        upsert_source(session, {
+        if _insert_if_missing(session, {
             "source_key": key,
             "source_type": "rss",
             "display_name": name,
             "category": feed.get("category"),
             "config": {"url": feed["url"], "name": name},
             "schedule_hours": schedule_hours,
-        })
-        count += 1
+        }):
+            count += 1
     return count
 
 
@@ -88,15 +103,15 @@ def _seed_reddit(session: Session, schedule_hours: int | None) -> int:
     for sub in cfg.REDDIT_SUBREDDITS:
         subreddit = sub["subreddit"]
         key = f"reddit:{_slugify(subreddit)}"
-        upsert_source(session, {
+        if _insert_if_missing(session, {
             "source_key": key,
             "source_type": "reddit",
             "display_name": f"r/{subreddit}",
             "category": sub.get("category"),
             "config": {"subreddit": subreddit},
             "schedule_hours": schedule_hours,
-        })
-        count += 1
+        }):
+            count += 1
     return count
 
 
@@ -107,15 +122,15 @@ def _seed_github_release(session: Session, schedule_hours: int | None) -> int:
         repo = repo_cfg["repo"]
         repo_slug = _slugify(repo.replace("/", "-"))
         key = f"github_release:{repo_slug}"
-        upsert_source(session, {
+        if _insert_if_missing(session, {
             "source_key": key,
             "source_type": "github_release",
             "display_name": repo,
             "category": repo_cfg.get("category"),
             "config": {"repo": repo},
             "schedule_hours": schedule_hours,
-        })
-        count += 1
+        }):
+            count += 1
     return count
 
 
@@ -132,34 +147,36 @@ def _seed_website_monitor(session: Session, schedule_hours: int | None) -> int:
             config["repo"] = monitor["repo"]
         if "path" in monitor:
             config["path"] = monitor["path"]
-        upsert_source(session, {
+        if _insert_if_missing(session, {
             "source_key": key,
             "source_type": "website_monitor",
             "display_name": name,
             "category": monitor.get("category"),
             "config": config,
             "schedule_hours": schedule_hours,
-        })
-        count += 1
+        }):
+            count += 1
     return count
 
 
 def _seed_social_kol(session: Session, schedule_hours: int | None) -> int:
-    """Seed one registry record per KOL handle (replaces clawfeed)."""
-    count = 0
-    for kol in cfg.CLAWFEED_KOL_LIST:
-        handle = kol["handle"]
-        key = f"social_kol:{_slugify(handle)}"
-        upsert_source(session, {
-            "source_key": key,
-            "source_type": "social_kol",
-            "display_name": f"@{handle}",
-            "category": kol.get("category"),
-            "config": {"handle": handle},
-            "schedule_hours": schedule_hours,
-        })
-        count += 1
-    return count
+    """Seed one registry record for the curated social KOL stream (replaces clawfeed).
+
+    The KOL handle list is stored in config, not as individual source rows.
+    social_kol is a curated stream/channel — one source instance, not one per handle.
+    """
+    handles = [kol["handle"] for kol in cfg.CLAWFEED_KOL_LIST]
+    categories = list({kol.get("category", "") for kol in cfg.CLAWFEED_KOL_LIST} - {""})
+    if _insert_if_missing(session, {
+        "source_key": "social_kol:curated-stream",
+        "source_type": "social_kol",
+        "display_name": "Curated Social KOL Stream",
+        "category": "mixed" if len(categories) > 1 else (categories[0] if categories else None),
+        "config": {"handles": handles},
+        "schedule_hours": schedule_hours,
+    }):
+        return 1
+    return 0
 
 
 def _seed_single_instance(
@@ -169,10 +186,13 @@ def _seed_single_instance(
     category: str | None,
     schedule_hours: int | None,
     instance_config: dict[str, Any],
-) -> None:
-    """Seed a single-instance source (hackernews, xueqiu, etc.)."""
+) -> bool:
+    """Seed a single-instance source (hackernews, xueqiu, etc.).
+
+    Returns True if inserted, False if already existed.
+    """
     key = f"{source_type}:main"
-    upsert_source(session, {
+    return _insert_if_missing(session, {
         "source_key": key,
         "source_type": source_type,
         "display_name": display_name,
@@ -185,66 +205,51 @@ def _seed_single_instance(
 # --- Main entry point ---
 
 def seed_source_registry(session: Session) -> int:
-    """Populate the source registry from legacy config. Idempotent.
+    """Populate the source registry from legacy config. Insert-only.
 
-    Returns the total number of source instances seeded.
+    Existing rows are never overwritten — DB-side edits to priority,
+    schedule, active state, or config survive restarts.
+
+    Returns the number of NEW source instances inserted (0 on subsequent runs).
     """
-    total = 0
+    inserted = 0
 
     # Per-instance sources
-    total += _seed_rss(session, _interval_for_type("rss"))
-    total += _seed_reddit(session, _interval_for_type("reddit"))
-    total += _seed_github_release(session, _interval_for_type("github_release"))
-    total += _seed_website_monitor(session, _interval_for_type("website_monitor"))
-    total += _seed_social_kol(session, _interval_for_type("social_kol"))
+    inserted += _seed_rss(session, _interval_for_type("rss"))
+    inserted += _seed_reddit(session, _interval_for_type("reddit"))
+    inserted += _seed_github_release(session, _interval_for_type("github_release"))
+    inserted += _seed_website_monitor(session, _interval_for_type("website_monitor"))
+    inserted += _seed_social_kol(session, _interval_for_type("social_kol"))
 
     # Single-instance sources
-    _seed_single_instance(
-        session, "hackernews", "Hacker News",
-        category="frontier-tech",
-        schedule_hours=_interval_for_type("hackernews"),
-        instance_config={
+    for src_type, name, cat, cfg_data in [
+        ("hackernews", "Hacker News", "frontier-tech", {
             "min_score": cfg.HN_MIN_SCORE,
             "hits_per_page": cfg.HN_HITS_PER_PAGE,
             "search_keywords": cfg.HN_SEARCH_KEYWORDS,
-        },
-    )
-    total += 1
-
-    _seed_single_instance(
-        session, "xueqiu", "Xueqiu KOL Feed",
-        category="cn-finance",
-        schedule_hours=_interval_for_type("xueqiu"),
-        instance_config={"kol_ids": cfg.XUEQIU_KOL_IDS},
-    )
-    total += 1
-
-    _seed_single_instance(
-        session, "yahoo_finance", "Yahoo Finance",
-        category="macro",
-        schedule_hours=_interval_for_type("yahoo_finance"),
-        instance_config={
+        }),
+        ("xueqiu", "Xueqiu KOL Feed", "cn-finance", {
+            "kol_ids": cfg.XUEQIU_KOL_IDS,
+        }),
+        ("yahoo_finance", "Yahoo Finance", "macro", {
             "tickers": cfg.YAHOO_TICKERS,
             "search_keywords": cfg.YAHOO_SEARCH_KEYWORDS,
-        },
-    )
-    total += 1
+        }),
+        ("google_news", "Google News", "macro", {
+            "queries": cfg.GOOGLE_NEWS_QUERIES,
+        }),
+        ("github_trending", "GitHub Trending", "frontier-tech", {}),
+    ]:
+        if _seed_single_instance(
+            session, src_type, name,
+            category=cat,
+            schedule_hours=_interval_for_type(src_type),
+            instance_config=cfg_data,
+        ):
+            inserted += 1
 
-    _seed_single_instance(
-        session, "google_news", "Google News",
-        category="macro",
-        schedule_hours=_interval_for_type("google_news"),
-        instance_config={"queries": cfg.GOOGLE_NEWS_QUERIES},
-    )
-    total += 1
-
-    _seed_single_instance(
-        session, "github_trending", "GitHub Trending",
-        category="frontier-tech",
-        schedule_hours=_interval_for_type("github_trending"),
-        instance_config={},
-    )
-    total += 1
-
-    logger.info("Source registry seeded: %d instances", total)
-    return total
+    if inserted > 0:
+        logger.info("Source registry: inserted %d new instances", inserted)
+    else:
+        logger.debug("Source registry: no new instances to seed")
+    return inserted

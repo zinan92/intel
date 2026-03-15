@@ -73,7 +73,12 @@ def _resolve_reddit(path: str) -> dict[str, Any]:
 
 
 def _resolve_github(path: str) -> dict[str, Any]:
-    """Classify GitHub URLs: trending, repo releases, or generic repo."""
+    """Classify GitHub URLs: trending, repo releases, or website_monitor.
+
+    Only URLs with an explicit /releases path segment are classified as
+    github_release. Generic /owner/repo URLs fall through to website_monitor
+    to avoid creating false release monitors from ordinary repo links.
+    """
     # /trending or /trending/python
     if re.match(r"/trending(/|$)", path):
         return {
@@ -82,11 +87,11 @@ def _resolve_github(path: str) -> dict[str, Any]:
             "config": {},
         }
 
-    # /owner/repo or /owner/repo/releases
-    match = re.match(r"/([^/]+)/([^/]+)(/releases)?", path)
-    if match:
-        owner = match.group(1)
-        repo_name = match.group(2)
+    # /owner/repo/releases — explicit release endpoint only
+    release_match = re.match(r"/([^/]+)/([^/]+)/releases", path)
+    if release_match:
+        owner = release_match.group(1)
+        repo_name = release_match.group(2)
         repo = f"{owner}/{repo_name}"
         return {
             "source_type": "github_release",
@@ -94,6 +99,7 @@ def _resolve_github(path: str) -> dict[str, Any]:
             "config": {"repo": repo},
         }
 
+    # Generic /owner/repo — not enough signal to classify as release monitor
     return _website_monitor_result(f"https://github.com{path}")
 
 
