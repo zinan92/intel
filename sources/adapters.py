@@ -104,11 +104,37 @@ def _adapt_website_monitor(record: dict[str, Any]) -> list[dict[str, Any]]:
 # --- Single-instance adapters (delegate to full collect()) ---
 
 def _adapt_social_kol(record: dict[str, Any]) -> list[dict[str, Any]]:
-    """Collect curated KOL content via the ClawFeed adapter."""
+    """Collect curated KOL content via the ClawFeed CLI.
+
+    The registry record's config.handles contains the curated handle list.
+    The ClawFeed CLI currently exports its own internal list (not configurable
+    via arguments), so the registry handles serve as the declared intent.
+    When the CLI gains per-handle filtering, this adapter should pass
+    config.handles to it. For now, articles are filtered post-collection
+    to match only the registry-configured handles.
+    """
     from collectors.clawfeed import ClawFeedCollector
 
+    cfg = _parse_config(record)
+    configured_handles = set(cfg.get("handles", []))
+
     collector = ClawFeedCollector()
-    return collector.collect()
+    articles = collector.collect()
+
+    if not configured_handles:
+        return articles
+
+    # Filter to only articles from registry-configured handles
+    filtered = []
+    for article in articles:
+        author = (article.get("author") or "").lstrip("@")
+        if author in configured_handles or not author:
+            filtered.append(article)
+
+    if len(filtered) < len(articles):
+        logger.info("social_kol: filtered %d → %d articles (registry handles)",
+                     len(articles), len(filtered))
+    return filtered
 
 
 def _adapt_hackernews(record: dict[str, Any]) -> list[dict[str, Any]]:

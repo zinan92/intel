@@ -29,16 +29,21 @@ ui_router = APIRouter(prefix="/api/ui")
 # Source-kind mapping
 # ---------------------------------------------------------------------------
 _SOURCE_KIND: dict[str, str] = {
+    # V2 names (primary)
     "github_release": "release",
     "rss": "blog",
-    "webpage_monitor": "blog",
+    "website_monitor": "blog",
     "hackernews": "discussion",
     "reddit": "discussion",
-    "github": "trend",
-    "clawfeed": "post",
+    "github_trending": "trend",
+    "social_kol": "post",
     "xueqiu": "post",
     "yahoo_finance": "news",
     "google_news": "news",
+    # Legacy names (for articles still stored with old source values)
+    "webpage_monitor": "blog",
+    "github": "trend",
+    "clawfeed": "post",
 }
 
 
@@ -50,16 +55,21 @@ def _source_kind(source: str) -> str:
 # Priority score
 # ---------------------------------------------------------------------------
 _SOURCE_WEIGHT: dict[str, float] = {
+    # V2 names (primary)
     "github_release": 0.3,
     "hackernews": 0.5,
-    "clawfeed": 0.4,
+    "social_kol": 0.4,
     "rss": 0.2,
     "reddit": 0.2,
     "xueqiu": 0.3,
-    "github": 0.2,
-    "webpage_monitor": 0.1,
+    "github_trending": 0.2,
+    "website_monitor": 0.1,
     "yahoo_finance": 0.2,
     "google_news": 0.2,
+    # Legacy names (for articles still stored with old source values)
+    "clawfeed": 0.4,
+    "github": 0.2,
+    "webpage_monitor": 0.1,
 }
 
 _KIND_WEIGHT: dict[str, float] = {
@@ -289,7 +299,9 @@ def get_feed(
 
         q = session.query(Article).filter(Article.collected_at >= cutoff)
         if source:
-            q = q.filter(Article.source == source)
+            # Map V2 source type to legacy DB name for filtering
+            from api.routes import _legacy_source_name
+            q = q.filter(Article.source == _legacy_source_name(source))
         if min_relevance is not None:
             q = q.filter(Article.relevance_score >= min_relevance)
 
