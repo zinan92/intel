@@ -1,13 +1,8 @@
-"""Seed the source registry from legacy config arrays.
+"""Seed the source registry from bootstrap config.
 
-Reads config.ACTIVE_SOURCES and the type-specific config lists
+Reads config.SOURCE_BOOTSTRAP and the type-specific config lists
 (RSS_FEEDS, REDDIT_SUBREDDITS, etc.) and creates one SourceRegistry
 record per source instance.
-
-Normalization rules:
-  - clawfeed   → social_kol
-  - github     → github_trending
-  - webpage_monitor → website_monitor
 
 Insert-only: existing rows are never overwritten, so DB-side edits
 to priority, schedule, active state, or config survive restarts.
@@ -24,14 +19,6 @@ from sources.registry import get_source_by_key, upsert_source
 
 logger = logging.getLogger(__name__)
 
-# --- Name normalization ---
-
-_SOURCE_TYPE_MAP: dict[str, str] = {
-    "clawfeed": "social_kol",
-    "github": "github_trending",
-    "webpage_monitor": "website_monitor",
-}
-
 
 # --- Key generation ---
 
@@ -44,16 +31,9 @@ def _slugify(text: str) -> str:
 
 
 def _interval_for_type(source_type: str) -> int | None:
-    """Look up interval_hours from ACTIVE_SOURCES for a normalized source type.
-
-    Reverse-maps normalized types back to legacy names for the lookup,
-    since ACTIVE_SOURCES still uses legacy names.
-    """
-    reverse_map = {v: k for k, v in _SOURCE_TYPE_MAP.items()}
-    legacy_name = reverse_map.get(source_type, source_type)
-
-    for entry in cfg.ACTIVE_SOURCES:
-        if entry["source"] == legacy_name:
+    """Look up interval_hours from SOURCE_BOOTSTRAP for a source type."""
+    for entry in cfg.SOURCE_BOOTSTRAP:
+        if entry["source"] == source_type:
             return entry["interval_hours"]
     return None
 
@@ -155,13 +135,13 @@ def _seed_website_monitor(session: Session, schedule_hours: int | None) -> int:
 
 
 def _seed_social_kol(session: Session, schedule_hours: int | None) -> int:
-    """Seed one registry record for the curated social KOL stream (replaces clawfeed).
+    """Seed one registry record for the curated social KOL stream.
 
     The KOL handle list is stored in config, not as individual source rows.
     social_kol is a curated stream/channel — one source instance, not one per handle.
     """
-    handles = [kol["handle"] for kol in cfg.CLAWFEED_KOL_LIST]
-    categories = list({kol.get("category", "") for kol in cfg.CLAWFEED_KOL_LIST} - {""})
+    handles = [kol["handle"] for kol in cfg.SOCIAL_KOL_HANDLES]
+    categories = list({kol.get("category", "") for kol in cfg.SOCIAL_KOL_HANDLES} - {""})
     if _insert_if_missing(session, {
         "source_key": "social_kol:curated-stream",
         "source_type": "social_kol",
@@ -200,7 +180,7 @@ def _seed_single_instance(
 # --- Main entry point ---
 
 def seed_source_registry(session: Session) -> int:
-    """Populate the source registry from legacy config. Insert-only.
+    """Populate the source registry from bootstrap config. Insert-only.
 
     Existing rows are never overwritten — DB-side edits to priority,
     schedule, active state, or config survive restarts.

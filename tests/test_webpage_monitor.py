@@ -152,7 +152,7 @@ def test_commits_returns_new_entries(tmp_path):
         result = collector.collect()
 
     assert len(result) == 2
-    assert result[0]["source"] == "webpage_monitor"
+    assert result[0]["source"] == "website_monitor"
     assert result[0]["title"].startswith("OpenClaw Docs:")
 
 

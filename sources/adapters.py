@@ -113,12 +113,12 @@ def _adapt_social_kol(record: dict[str, Any]) -> list[dict[str, Any]]:
     config.handles to it. For now, articles are filtered post-collection
     to match only the registry-configured handles.
     """
-    from collectors.clawfeed import ClawFeedCollector
+    from collectors.social_kol import SocialKolCollector
 
     cfg = _parse_config(record)
     configured_handles = set(cfg.get("handles", []))
 
-    collector = ClawFeedCollector()
+    collector = SocialKolCollector()
     articles = collector.collect()
 
     if not configured_handles:

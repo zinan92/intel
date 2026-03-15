@@ -24,7 +24,7 @@ Source Registry (DB) → Adapters → Collectors (fetch) → BaseCollector.save 
 - **Seeding**: `sources/seed.py` populates registry from `config.py` on first run (insert-only)
 - **Resolver**: `sources/resolver.py` classifies URLs into source types (internal tool)
 - **Naming**: V2 uses domain-oriented names (`social_kol`, `github_trending`, `website_monitor`)
-- **Legacy compat**: `_V2_TO_LEGACY_SOURCE` in `api/routes.py` maps V2 types to legacy article.source values
+- **Naming is canonical**: `Article.source` stores V2 names directly; no legacy translation layer
 
 ### Source Types (10)
 `rss`, `reddit`, `hackernews`, `github_release`, `github_trending`, `website_monitor`, `social_kol`, `xueqiu`, `yahoo_finance`, `google_news`
@@ -37,13 +37,13 @@ Source Registry (DB) → Adapters → Collectors (fetch) → BaseCollector.save 
 - `db/database.py` — Engine, session, init_db (creates tables + seeds registry)
 - `sources/registry.py` — Source registry CRUD service
 - `sources/adapters.py` — Source-type adapter dispatch (registry record → collector)
-- `sources/seed.py` — Seed registry from legacy config (insert-only, runs at init)
+- `sources/seed.py` — Seed registry from bootstrap config (insert-only, runs at init)
 - `sources/resolver.py` — URL → source_type classifier (internal)
 - `api/routes.py` — core read APIs: health, latest, search, digest, signals, sources
 - `api/ui_routes.py` — frontend read-model APIs: feed, item detail, topics, sources, search
 - `scheduler.py` — Registry-driven APScheduler (one job per source_type)
 - `collectors/base.py` — BaseCollector abstract class (with auto keyword tagging)
-- `collectors/` — Per-type collectors (hackernews, rss, reddit, clawfeed, etc.)
+- `collectors/` — Per-type collectors (hackernews, rss, reddit, social_kol, etc.)
 - `tagging/keywords.py` — Regex-based keyword tagger (13 tag categories)
 - `tagging/llm.py` — Claude Sonnet LLM tagger for relevance + narratives
 - `scripts/run_collectors.py` — Run all collectors
@@ -101,17 +101,18 @@ pytest tests/
 - `/api/health` is driven by the source registry, not config lists
 - `/api/articles/sources` remains historical DB-driven
 - Frontend-facing read models live under `/api/ui/*`
-- `config.py` ACTIVE_SOURCES is seed-only bootstrap data, not runtime truth
+- `config.py` SOURCE_BOOTSTRAP is seed-only bootstrap data, not runtime truth
 - Source registry is insert-only at seed time; DB edits survive restarts
 
 ## Tag Categories (13)
 ai, crypto, macro, geopolitics, china-market, us-market, sector/tech, sector/finance, sector/energy, trading, regulation, earnings, commodities
 
 ## Current State
-- Source architecture V2 complete (registry-driven scheduler, health, adapters)
+- Source architecture V2.1 complete (canonical source names throughout)
+- Registry-driven scheduler, health, adapters — no legacy translation layer
+- `Article.source` stores canonical V2 names; migration rewrites legacy values at startup
 - Feed-first frontend v1 complete
 - Full suite passes in local verification
-- Legacy article.source values mapped via `_V2_TO_LEGACY_SOURCE` compatibility shim
 
 ## Related Project
 - **quant-data-pipeline** (ashare) runs on port 8000, provides quantitative data

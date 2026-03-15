@@ -29,6 +29,36 @@ def _table_exists(engine: Engine, table: str) -> bool:
         return result.fetchone() is not None
 
 
+_LEGACY_TO_CANONICAL: dict[str, str] = {
+    "clawfeed": "social_kol",
+    "github": "github_trending",
+    "webpage_monitor": "website_monitor",
+}
+
+
+def migrate_article_sources(session) -> dict[str, int]:
+    """Rewrite legacy Article.source values to canonical V2 names.
+
+    Idempotent: only updates rows that still have legacy names.
+    Returns a dict of {legacy_name: count_updated}.
+    """
+    from db.models import Article
+
+    counts: dict[str, int] = {}
+    for legacy, canonical in _LEGACY_TO_CANONICAL.items():
+        rows = session.query(Article).filter(Article.source == legacy).all()
+        count = 0
+        for article in rows:
+            article.source = canonical
+            count += 1
+        if count > 0:
+            session.commit()
+            logger.info("Migrated %d articles: %s → %s", count, legacy, canonical)
+        counts[legacy] = count
+
+    return counts
+
+
 def run_migrations(engine: Engine) -> None:
     """Run all pending migrations idempotently."""
     # Column-add migrations for existing tables

@@ -54,7 +54,7 @@ def setup_db(tmp_path, monkeypatch):
             published_at=now - timedelta(hours=3),
         ),
         Article(
-            source="clawfeed",
+            source="social_kol",
             source_id="cf_003",
             title="Sam Altman on AGI",
             content="Tweet about near-term AGI timeline expectations.",
