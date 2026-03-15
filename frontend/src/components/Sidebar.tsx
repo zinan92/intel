@@ -21,14 +21,7 @@ export function Sidebar() {
     staleTime: 60_000,
   });
 
-  const { data: sources } = useQuery({
-    queryKey: ["sources"],
-    queryFn: () => api.sources(),
-    staleTime: 60_000,
-  });
-
   const topTopics = topics?.slice(0, 10) ?? [];
-  const topSources = sources?.slice(0, 8) ?? [];
 
   function isActive(path: string) {
     return location.pathname === path;
@@ -66,29 +59,6 @@ export function Sidebar() {
                     <MomentumDot label={t.momentum_label} />
                     <span className="truncate">{t.label}</span>
                     <span className="ml-auto text-xs text-gray-400">{t.count}</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {topSources.length > 0 && (
-          <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Sources</p>
-            <ul className="space-y-0.5">
-              {topSources.map((s) => (
-                <li key={s.name}>
-                  <Link
-                    to={`/sources/${s.name}`}
-                    className={`flex items-center gap-2 px-2 py-1 rounded text-sm ${
-                      isActive(`/sources/${s.name}`)
-                        ? "bg-brand-50 text-brand-700 font-medium"
-                        : "text-gray-600 hover:text-gray-900"
-                    }`}
-                  >
-                    <span className="truncate">{s.name}</span>
-                    <span className="ml-auto text-xs text-gray-400">{s.count}</span>
                   </Link>
                 </li>
               ))}
