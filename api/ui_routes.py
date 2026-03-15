@@ -29,7 +29,6 @@ ui_router = APIRouter(prefix="/api/ui")
 # Source-kind mapping
 # ---------------------------------------------------------------------------
 _SOURCE_KIND: dict[str, str] = {
-    # V2 names (primary)
     "github_release": "release",
     "rss": "blog",
     "website_monitor": "blog",
@@ -40,10 +39,6 @@ _SOURCE_KIND: dict[str, str] = {
     "xueqiu": "post",
     "yahoo_finance": "news",
     "google_news": "news",
-    # Legacy names (for articles still stored with old source values)
-    "webpage_monitor": "blog",
-    "github": "trend",
-    "clawfeed": "post",
 }
 
 
@@ -55,7 +50,6 @@ def _source_kind(source: str) -> str:
 # Priority score
 # ---------------------------------------------------------------------------
 _SOURCE_WEIGHT: dict[str, float] = {
-    # V2 names (primary)
     "github_release": 0.3,
     "hackernews": 0.5,
     "social_kol": 0.4,
@@ -66,10 +60,6 @@ _SOURCE_WEIGHT: dict[str, float] = {
     "website_monitor": 0.1,
     "yahoo_finance": 0.2,
     "google_news": 0.2,
-    # Legacy names (for articles still stored with old source values)
-    "clawfeed": 0.4,
-    "github": 0.2,
-    "webpage_monitor": 0.1,
 }
 
 _KIND_WEIGHT: dict[str, float] = {
@@ -226,7 +216,6 @@ def _build_source_health(session: Any) -> list[dict[str, Any]]:
     Mirrors /api/health semantics: iterates active registry source types so
     retired sources never appear and stale/no_data sources are always shown.
     """
-    from api.routes import _legacy_source_name
     from scheduler import get_last_results
     from sources.registry import list_active_sources
 
@@ -235,7 +224,6 @@ def _build_source_health(session: Any) -> list[dict[str, Any]]:
 
     active = list_active_sources(session)
     active_types = sorted({s.source_type for s in active})
-    legacy_names = [_legacy_source_name(t) for t in active_types]
 
     db_rows = (
         session.query(
@@ -243,7 +231,7 @@ def _build_source_health(session: Any) -> list[dict[str, Any]]:
             func.count(Article.id),
             func.max(Article.collected_at),
         )
-        .filter(Article.source.in_(legacy_names))
+        .filter(Article.source.in_(active_types))
         .group_by(Article.source)
         .all()
     )
@@ -251,8 +239,7 @@ def _build_source_health(session: Any) -> list[dict[str, Any]]:
 
     result = []
     for source_type in active_types:
-        legacy_name = _legacy_source_name(source_type)
-        count, last_collected = db_map.get(legacy_name, (0, None))
+        count, last_collected = db_map.get(source_type, (0, None))
         age_hours = (
             (now - last_collected).total_seconds() / 3600
             if last_collected
@@ -299,9 +286,7 @@ def get_feed(
 
         q = session.query(Article).filter(Article.collected_at >= cutoff)
         if source:
-            # Map V2 source type to legacy DB name for filtering
-            from api.routes import _legacy_source_name
-            q = q.filter(Article.source == _legacy_source_name(source))
+            q = q.filter(Article.source == source)
         if min_relevance is not None:
             q = q.filter(Article.relevance_score >= min_relevance)
 
@@ -503,14 +488,12 @@ def get_sources() -> list[dict[str, Any]]:
     Retired sources are excluded, so the UI navigation never
     surfaces twitter/youtube/substack even if historical rows exist.
     """
-    from api.routes import _legacy_source_name
     from sources.registry import list_active_sources
 
     session = get_session()
     try:
         active = list_active_sources(session)
         active_types = sorted({s.source_type for s in active})
-        legacy_names = [_legacy_source_name(t) for t in active_types]
 
         rows = (
             session.query(
@@ -518,7 +501,7 @@ def get_sources() -> list[dict[str, Any]]:
                 func.count(Article.id),
                 func.max(Article.collected_at),
             )
-            .filter(Article.source.in_(legacy_names))
+            .filter(Article.source.in_(active_types))
             .group_by(Article.source)
             .all()
         )
@@ -526,8 +509,7 @@ def get_sources() -> list[dict[str, Any]]:
 
         result = []
         for source_type in active_types:
-            legacy_name = _legacy_source_name(source_type)
-            count, last_seen = db_map.get(legacy_name, (0, None))
+            count, last_seen = db_map.get(source_type, (0, None))
             result.append({
                 "name": source_type,
                 "kind": _source_kind(source_type),
@@ -545,7 +527,6 @@ def get_sources() -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 @ui_router.get("/sources/{source_name}")
 def get_source_detail(source_name: str) -> dict[str, Any]:
-    from api.routes import _legacy_source_name
     from sources.registry import list_active_sources
 
     session_check = get_session()
@@ -558,22 +539,19 @@ def get_source_detail(source_name: str) -> dict[str, Any]:
     if source_name not in active_types:
         raise HTTPException(status_code=404, detail="Source not found")
 
-    # Query articles using legacy DB name
-    legacy_name = _legacy_source_name(source_name)
-
     session = get_session()
     try:
         now = datetime.utcnow()
         cutoff = now - timedelta(hours=24)
         articles = (
             session.query(Article)
-            .filter(Article.source == legacy_name, Article.collected_at >= cutoff)
+            .filter(Article.source == source_name, Article.collected_at >= cutoff)
             .all()
         )
 
         last_seen_row = (
             session.query(func.max(Article.collected_at))
-            .filter(Article.source == legacy_name)
+            .filter(Article.source == source_name)
             .scalar()
         )
 
