@@ -9,31 +9,41 @@ Qualitative signal pipeline and feed-first workbench for collecting frontier-tec
 - **Frontend**: React 18, TypeScript, Vite, Tailwind, TanStack Query, React Router
 - **Dependencies**: feedparser, requests, apscheduler, anthropic, python-dotenv
 
-## Architecture
+## Architecture (V2)
 ```
-Collectors (fetch) → BaseCollector.save (dedup + keyword tagging) → SQLite
-                                                                      ↓
-LLM Tagger → relevance_score + narrative_tags → SQLite
-                                                                      ↓
-                         FastAPI APIs (/api/* + /api/ui/*) → React frontend
+Source Registry (DB) → Adapters → Collectors (fetch) → BaseCollector.save → SQLite
+                                                                              ↓
+                                  LLM Tagger → relevance_score + narrative_tags → SQLite
+                                                                              ↓
+                                           FastAPI APIs (/api/* + /api/ui/*) → React frontend
 ```
+
+### Source Architecture V2
+- **Source Registry**: `source_registry` table is the single source of truth for active sources
+- **Adapters**: `sources/adapters.py` bridges registry records to collectors
+- **Seeding**: `sources/seed.py` populates registry from `config.py` on first run (insert-only)
+- **Resolver**: `sources/resolver.py` classifies URLs into source types (internal tool)
+- **Naming**: V2 uses domain-oriented names (`social_kol`, `github_trending`, `website_monitor`)
+- **Legacy compat**: `_V2_TO_LEGACY_SOURCE` in `api/routes.py` maps V2 types to legacy article.source values
+
+### Source Types (10)
+`rss`, `reddit`, `hackernews`, `github_release`, `github_trending`, `website_monitor`, `social_kol`, `xueqiu`, `yahoo_finance`, `google_news`
 
 ## Key Files
 - `main.py` — FastAPI app entry (port 8001)
-- `config.py` — source registry, feed lists, collector config, env loading
-- `db/models.py` — Article model (source, title, content, url, tags, score, relevance_score, narrative_tags)
+- `config.py` — seed data for source registry, collector-specific config, env loading
+- `db/models.py` — Article + SourceRegistry models
 - `db/migrations.py` — Idempotent schema migrations
+- `db/database.py` — Engine, session, init_db (creates tables + seeds registry)
+- `sources/registry.py` — Source registry CRUD service
+- `sources/adapters.py` — Source-type adapter dispatch (registry record → collector)
+- `sources/seed.py` — Seed registry from legacy config (insert-only, runs at init)
+- `sources/resolver.py` — URL → source_type classifier (internal)
 - `api/routes.py` — core read APIs: health, latest, search, digest, signals, sources
 - `api/ui_routes.py` — frontend read-model APIs: feed, item detail, topics, sources, search
-- `scheduler.py` — APScheduler registration for active collectors + LLM tagger
+- `scheduler.py` — Registry-driven APScheduler (one job per source_type)
 - `collectors/base.py` — BaseCollector abstract class (with auto keyword tagging)
-- `collectors/hackernews.py` — HN Algolia API collector
-- `collectors/rss.py` — config-driven RSS collector
-- `collectors/xueqiu.py` — Xueqiu collector (Chinese source)
-- `collectors/clawfeed.py` — ClawFeed CLI collector
-- `collectors/reddit.py` — Reddit RSS collector
-- `collectors/github_release.py` — GitHub release monitor
-- `collectors/webpage_monitor.py` — scrape + docs commit monitor
+- `collectors/` — Per-type collectors (hackernews, rss, reddit, clawfeed, etc.)
 - `tagging/keywords.py` — Regex-based keyword tagger (13 tag categories)
 - `tagging/llm.py` — Claude Sonnet LLM tagger for relevance + narratives
 - `scripts/run_collectors.py` — Run all collectors
@@ -41,7 +51,7 @@ LLM Tagger → relevance_score + narrative_tags → SQLite
 - `frontend/` — feed-first React app
 
 ## API Endpoints
-- `GET /api/health` — active-source healthcheck
+- `GET /api/health` — registry-driven active-source healthcheck
 - `GET /api/articles/latest?limit=20&source=rss&min_relevance=4` — recent articles
 - `GET /api/articles/search?q=keyword` — keyword search
 - `GET /api/articles/digest` — grouped by source with top tags
@@ -50,7 +60,7 @@ LLM Tagger → relevance_score + narrative_tags → SQLite
 - `GET /api/ui/feed` — priority-scored feed with context rail data
 - `GET /api/ui/items/{id}` — item detail with related items
 - `GET /api/ui/topics` — topic list
-- `GET /api/ui/sources` — active source list
+- `GET /api/ui/sources` — active source list (registry-driven)
 - `GET /api/ui/search?q=...` — UI search
 
 ## Commands
@@ -88,18 +98,20 @@ pytest tests/
 - Dedup via unique `source_id` per source
 - Tags stored as JSON array in SQLite
 - Keyword tags auto-applied on ingest via `BaseCollector.save()`
-- `/api/health` is driven by `config.ACTIVE_SOURCES`, not by DB history
+- `/api/health` is driven by the source registry, not config lists
 - `/api/articles/sources` remains historical DB-driven
-- frontend-facing read models live under `/api/ui/*`
+- Frontend-facing read models live under `/api/ui/*`
+- `config.py` ACTIVE_SOURCES is seed-only bootstrap data, not runtime truth
+- Source registry is insert-only at seed time; DB edits survive restarts
 
 ## Tag Categories (13)
 ai, crypto, macro, geopolitics, china-market, us-market, sector/tech, sector/finance, sector/energy, trading, regulation, earnings, commodities
 
 ## Current State
-- source-layer redesign complete
-- feed-first frontend v1 complete
-- full suite currently passes in local verification
-- remaining cleanup is mostly documentation and warning reduction (`datetime.utcnow()` deprecations)
+- Source architecture V2 complete (registry-driven scheduler, health, adapters)
+- Feed-first frontend v1 complete
+- Full suite passes in local verification
+- Legacy article.source values mapped via `_V2_TO_LEGACY_SOURCE` compatibility shim
 
 ## Related Project
 - **quant-data-pipeline** (ashare) runs on port 8000, provides quantitative data
