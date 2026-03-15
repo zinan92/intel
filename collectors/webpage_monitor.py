@@ -45,7 +45,7 @@ def _slug_to_title(slug: str) -> str:
 class WebpageMonitorCollector(BaseCollector):
     """Monitor high-value pages without RSS feeds."""
 
-    source = "webpage_monitor"
+    source = "website_monitor"
 
     def __init__(self, state_path: Path | None = None) -> None:
         super().__init__()

@@ -2,7 +2,7 @@
 
 __all__ = [
     "BaseCollector",
-    "ClawFeedCollector",
+    "SocialKolCollector",
     "GitHubReleaseCollector",
     "GitHubTrendingCollector",
     "GoogleNewsCollector",

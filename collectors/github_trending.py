@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 class GitHubTrendingCollector(BaseCollector):
     """Collect trending repositories from GitHub focusing on AI/ML/trading."""
 
-    source = "github"
+    source = "github_trending"
 
     # Keywords to filter relevant repositories
     RELEVANT_KEYWORDS = [

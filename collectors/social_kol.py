@@ -1,4 +1,4 @@
-"""ClawFeed collector — replaces the legacy Twitter/bird collector."""
+"""Social KOL collector — curated social media content via the clawfeed CLI."""
 
 import hashlib
 import json
@@ -12,13 +12,11 @@ from collectors.base import BaseCollector
 
 logger = logging.getLogger(__name__)
 
-_CLAWFEED_CMD = ["clawfeed", "export", "--format", "json", "--limit", "20"]
 
-
-class ClawFeedCollector(BaseCollector):
+class SocialKolCollector(BaseCollector):
     """Collect curated KOL content via the clawfeed CLI."""
 
-    source = "clawfeed"
+    source = "social_kol"
 
     def __init__(self) -> None:
         super().__init__()
@@ -28,7 +26,7 @@ class ClawFeedCollector(BaseCollector):
 
     def collect(self) -> list[dict[str, Any]]:
         if not self._cli_path:
-            logger.warning("ClawFeed CLI not available - skipping")
+            logger.warning("clawfeed CLI not available — skipping social_kol collection")
             return []
         return self._fetch_via_cli()
 
@@ -59,7 +57,7 @@ class ClawFeedCollector(BaseCollector):
                 if article:
                     articles.append(article)
 
-            logger.info("ClawFeed: collected %d items", len(articles))
+            logger.info("social_kol: collected %d items", len(articles))
             return articles
 
         except subprocess.TimeoutExpired:
@@ -76,7 +74,7 @@ class ClawFeedCollector(BaseCollector):
         url = item.get("tweet_url") or item.get("url") or item.get("source_url") or ""
 
         if not content and not title:
-            logger.warning("ClawFeed item missing both content and title — skipping")
+            logger.warning("social_kol item missing both content and title — skipping")
             return None
 
         source_id = self._make_source_id(item, url, title, author)
@@ -97,7 +95,7 @@ class ClawFeedCollector(BaseCollector):
     def _make_source_id(item: dict[str, Any], url: str, title: str, author: str) -> str:
         item_id = item.get("id")
         if item_id:
-            return f"clawfeed_{item_id}"
+            return f"social_kol_{item_id}"
         if url:
-            return "clawfeed_" + hashlib.sha256(url.encode()).hexdigest()[:16]
-        return "clawfeed_" + hashlib.sha256((title + author).encode()).hexdigest()[:16]
+            return "social_kol_" + hashlib.sha256(url.encode()).hexdigest()[:16]
+        return "social_kol_" + hashlib.sha256((title + author).encode()).hexdigest()[:16]
