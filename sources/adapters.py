@@ -128,7 +128,7 @@ def _adapt_social_kol(record: dict[str, Any]) -> list[dict[str, Any]]:
     filtered = []
     for article in articles:
         author = (article.get("author") or "").lstrip("@")
-        if author in configured_handles or not author:
+        if author in configured_handles:
             filtered.append(article)
 
     if len(filtered) < len(articles):

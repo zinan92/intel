@@ -110,6 +110,26 @@ class TestSocialKOLAdapter:
                                        {"handles": ["sama", "karpathy"]}))
             mock_collect.assert_called_once()
 
+    def test_social_kol_filters_to_configured_handles(self):
+        """Only articles from registry-configured handles pass through."""
+        with patch("collectors.clawfeed.ClawFeedCollector.collect") as mock_collect:
+            mock_collect.return_value = [
+                {"author": "sama", "title": "Allowed", "source": "clawfeed", "source_id": "cf_1",
+                 "url": "http://x.com/1", "content": "", "tags": [], "score": 0, "published_at": None},
+                {"author": "elonmusk", "title": "Not configured", "source": "clawfeed", "source_id": "cf_2",
+                 "url": "http://x.com/2", "content": "", "tags": [], "score": 0, "published_at": None},
+                {"author": "", "title": "Blank author", "source": "clawfeed", "source_id": "cf_3",
+                 "url": "http://x.com/3", "content": "", "tags": [], "score": 0, "published_at": None},
+                {"author": None, "title": "None author", "source": "clawfeed", "source_id": "cf_4",
+                 "url": "http://x.com/4", "content": "", "tags": [], "score": 0, "published_at": None},
+            ]
+            from sources.adapters import _adapt_social_kol
+            articles = _adapt_social_kol(_record("social_kol:curated-stream", "social_kol",
+                                                  {"handles": ["sama", "karpathy"]}))
+            # Only "sama" should pass; elonmusk is not configured, blank/None authors are excluded
+            assert len(articles) == 1
+            assert articles[0]["author"] == "sama"
+
 
 class TestAdapterArticleShape:
     """All adapters return article dicts with required fields."""
