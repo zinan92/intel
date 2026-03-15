@@ -1,10 +1,12 @@
 """APScheduler-based collector scheduler for park-intel.
 
-Automatically runs all collectors on configurable intervals.
+Registry-driven: loads active source records from the source registry,
+groups by source_type, and dispatches through the adapter layer.
 Integrates with FastAPI lifespan for clean startup/shutdown.
 """
 from __future__ import annotations
 
+import json
 import logging
 import shutil
 import time
@@ -34,7 +36,7 @@ class CollectorResult:
 class SchedulerConfig:
     """Immutable scheduler configuration.
 
-    Per-source intervals are defined in config.ACTIVE_SOURCES (single source of truth).
+    Per-source intervals are defined in the source registry (single source of truth).
     Only non-source parameters live here.
     """
 
@@ -51,50 +53,98 @@ def get_last_results() -> dict[str, CollectorResult]:
     return dict(_last_results)
 
 
-def _run_collector_safe(collector_cls: type, source_name: str) -> CollectorResult:
-    """Run a single collector with full error capture. Never raises."""
-    start = time.time()
-    try:
-        collector = collector_cls()
-        articles = collector.collect()
-        fetched = len(articles) if articles else 0
-        saved = collector.save(articles) if articles else 0
-        result = CollectorResult(
-            source=source_name,
-            articles_fetched=fetched,
-            articles_saved=saved,
-            duration_seconds=round(time.time() - start, 1),
-            error=None,
-            timestamp=datetime.now(timezone.utc).isoformat(),
-        )
-    except Exception as e:
-        logger.exception("[%s] Collector failed", source_name)
-        result = CollectorResult(
-            source=source_name,
-            articles_fetched=0,
-            articles_saved=0,
-            duration_seconds=round(time.time() - start, 1),
-            error=str(e),
-            timestamp=datetime.now(timezone.utc).isoformat(),
-        )
+def _run_source_type(source_type: str) -> None:
+    """Run all active source instances of a given type through the adapter layer.
 
-    _last_results[source_name] = result
+    Groups per-instance sources (rss, reddit, etc.) into a single scheduler job.
+    Each instance is collected individually via the adapter, then articles are
+    saved via BaseCollector.save().
+    """
+    from collectors.base import BaseCollector
+    from db.database import get_session
+    from sources.adapters import collect_from_source
+    from sources.registry import list_active_sources
+
+    start = time.time()
+    session = get_session()
+    try:
+        active = list_active_sources(session)
+        instances = [s for s in active if s.source_type == source_type]
+    finally:
+        session.close()
+
+    if not instances:
+        logger.warning("[%s] No active instances in registry — skipping", source_type)
+        return
+
+    total_fetched = 0
+    total_saved = 0
+    errors: list[str] = []
+
+    for instance in instances:
+        record = {
+            "source_key": instance.source_key,
+            "source_type": instance.source_type,
+            "display_name": instance.display_name,
+            "category": instance.category,
+            "config_json": instance.config_json,
+        }
+        try:
+            articles = collect_from_source(record)
+            fetched = len(articles)
+            total_fetched += fetched
+            if articles:
+                # Use a minimal collector to save (reuses BaseCollector.save dedup)
+                saver = _ArticleSaver(source_type)
+                saved = saver.save(articles)
+                total_saved += saved
+        except Exception as e:
+            logger.exception("[%s] Instance %s failed", source_type, instance.source_key)
+            errors.append(f"{instance.source_key}: {e}")
+
+    duration = round(time.time() - start, 1)
+    error_msg = "; ".join(errors) if errors else None
+
+    result = CollectorResult(
+        source=source_type,
+        articles_fetched=total_fetched,
+        articles_saved=total_saved,
+        duration_seconds=duration,
+        error=error_msg,
+        timestamp=datetime.now(timezone.utc).isoformat(),
+    )
+    _last_results[source_type] = result
 
     if result.error:
-        logger.error(
-            "[%s] FAILED (%.1fs): %s",
-            source_name, result.duration_seconds, result.error[:200],
-        )
-    elif result.articles_fetched == 0:
-        logger.warning("[%s] No articles fetched (%.1fs)", source_name, result.duration_seconds)
+        logger.error("[%s] PARTIAL FAILURE (%.1fs): %s", source_type, duration, error_msg[:200])
+    elif total_fetched == 0:
+        logger.warning("[%s] No articles fetched (%.1fs)", source_type, duration)
     else:
         logger.info(
-            "[%s] OK — fetched=%d, saved=%d (%.1fs)",
-            source_name, result.articles_fetched, result.articles_saved,
-            result.duration_seconds,
+            "[%s] OK — fetched=%d, saved=%d, instances=%d (%.1fs)",
+            source_type, total_fetched, total_saved, len(instances), duration,
         )
 
-    return result
+
+class _ArticleSaver:
+    """Minimal wrapper to reuse BaseCollector.save() without needing a full collector."""
+
+    def __init__(self, source_type: str) -> None:
+        from db.database import init_db
+        init_db()
+        self._source_type = source_type
+
+    def save(self, articles: list[dict[str, Any]]) -> int:
+        from collectors.base import BaseCollector
+
+        class _Saver(BaseCollector):
+            source = self._source_type
+
+            def collect(self):
+                return []
+
+        saver = _Saver()
+        return saver.save(articles)
 
 
 def _run_llm_tagger() -> None:
@@ -109,7 +159,7 @@ def _run_llm_tagger() -> None:
 
 
 class CollectorScheduler:
-    """Manages scheduled collector runs."""
+    """Manages scheduled collector runs via registry-driven dispatch."""
 
     def __init__(self, config: SchedulerConfig | None = None) -> None:
         self._config = config or SchedulerConfig()
@@ -130,120 +180,70 @@ class CollectorScheduler:
 
     def _check_dependencies(self) -> None:
         """Log warnings for missing optional dependencies."""
-        # Playwright (for Xueqiu KOL feeds)
         try:
             import playwright  # noqa: F401
             logger.info("Playwright available — Xueqiu KOL feeds enabled")
         except ImportError:
             logger.warning("Playwright not installed — Xueqiu KOL feeds DISABLED")
 
-        # clawfeed CLI (for ClawFeed collector)
         clawfeed_path = shutil.which("clawfeed") or shutil.which(
             "clawfeed", path="/opt/homebrew/bin:/usr/local/bin"
         )
         if clawfeed_path:
-            logger.info("clawfeed CLI found at %s — ClawFeed collector enabled", clawfeed_path)
+            logger.info("clawfeed CLI found at %s — social_kol collector enabled", clawfeed_path)
         else:
-            logger.warning("clawfeed CLI not found — ClawFeed collector will return empty results")
-
-    # Map source names (as in config.ACTIVE_SOURCES) to their runner methods.
-    _SOURCE_RUNNERS: dict[str, Any] = {}  # populated after class definition
+            logger.warning("clawfeed CLI not found — social_kol collector will return empty results")
 
     def _register_jobs(self) -> None:
-        """Register collector jobs from config.ACTIVE_SOURCES + llm_tagger.
+        """Register collector jobs from the source registry + llm_tagger.
 
-        config.ACTIVE_SOURCES is the single source of truth for source names and intervals.
-        This method never hardcodes intervals — it reads them from config.
+        The source registry is the single source of truth for source types
+        and intervals. One job is created per source_type (not per instance).
         """
-        import config as cfg
+        from db.database import get_session
+        from sources.registry import list_active_sources
 
-        jobs: list[tuple[str, int, Any]] = []
-        for entry in cfg.ACTIVE_SOURCES:
-            src = entry["source"]
-            hours = entry["interval_hours"]
-            runner = self._SOURCE_RUNNERS.get(src)
-            if runner is None:
-                logger.warning("No runner registered for active source '%s' — skipping", src)
+        session = get_session()
+        try:
+            active = list_active_sources(session)
+        finally:
+            session.close()
+
+        # Group by source_type, take the minimum schedule_hours per type
+        type_intervals: dict[str, int] = {}
+        for src in active:
+            hours = src.schedule_hours
+            if hours is None:
                 continue
-            jobs.append((src, hours, runner))
+            if src.source_type not in type_intervals or hours < type_intervals[src.source_type]:
+                type_intervals[src.source_type] = hours
+
+        jobs: list[tuple[str, int]] = []
+        for source_type, hours in sorted(type_intervals.items()):
+            jobs.append((source_type, hours))
 
         # LLM tagger is not a data source; add it separately
-        jobs.append(("llm_tagger", self._config.llm_tagger_interval_hours, _run_llm_tagger))
-
         base_time = datetime.now(timezone.utc)
-        for idx, (name, hours, func) in enumerate(jobs):
+        for idx, (source_type, hours) in enumerate(jobs):
             staggered_start = base_time + timedelta(seconds=30 * idx)
             self._scheduler.add_job(
-                func,
+                _run_source_type,
+                args=[source_type],
                 trigger=IntervalTrigger(hours=hours),
-                id=f"collector-{name}",
+                id=f"collector-{source_type}",
                 replace_existing=True,
                 next_run_time=staggered_start,
             )
-            logger.info("Registered collector job: %s (every %dh, first run at +%ds)", name, hours, 30 * idx)
+            logger.info("Registered collector job: %s (every %dh, first run at +%ds)",
+                         source_type, hours, 30 * idx)
 
-    @staticmethod
-    def _run_hackernews() -> None:
-        from collectors.hackernews import HackerNewsCollector
-        _run_collector_safe(HackerNewsCollector, "hackernews")
-
-    @staticmethod
-    def _run_xueqiu() -> None:
-        from collectors.xueqiu import XueqiuCollector
-        _run_collector_safe(XueqiuCollector, "xueqiu")
-
-    @staticmethod
-    def _run_rss() -> None:
-        from collectors.rss import RSSCollector
-        _run_collector_safe(RSSCollector, "rss")
-
-    @staticmethod
-    def _run_github() -> None:
-        from collectors.github_trending import GitHubTrendingCollector
-        _run_collector_safe(GitHubTrendingCollector, "github")
-
-    @staticmethod
-    def _run_yahoo_finance() -> None:
-        from collectors.yahoo_finance import YahooFinanceCollector
-        _run_collector_safe(YahooFinanceCollector, "yahoo_finance")
-
-    @staticmethod
-    def _run_google_news() -> None:
-        from collectors.google_news import GoogleNewsCollector
-        _run_collector_safe(GoogleNewsCollector, "google_news")
-
-    @staticmethod
-    def _run_clawfeed() -> None:
-        from collectors.clawfeed import ClawFeedCollector
-        _run_collector_safe(ClawFeedCollector, "clawfeed")
-
-    @staticmethod
-    def _run_reddit() -> None:
-        from collectors.reddit import RedditCollector
-        _run_collector_safe(RedditCollector, "reddit")
-
-    @staticmethod
-    def _run_github_release() -> None:
-        from collectors.github_release import GitHubReleaseCollector
-        _run_collector_safe(GitHubReleaseCollector, "github_release")
-
-    @staticmethod
-    def _run_webpage_monitor() -> None:
-        from collectors.webpage_monitor import WebpageMonitorCollector
-        _run_collector_safe(WebpageMonitorCollector, "webpage_monitor")
-
-
-# Populate after class definition so static methods are resolved.
-# This dict maps source names from config.ACTIVE_SOURCES to their runner callables.
-CollectorScheduler._SOURCE_RUNNERS = {
-    "hackernews":     CollectorScheduler._run_hackernews,
-    "xueqiu":         CollectorScheduler._run_xueqiu,
-    "rss":            CollectorScheduler._run_rss,
-    "github":         CollectorScheduler._run_github,
-    "yahoo_finance":  CollectorScheduler._run_yahoo_finance,
-    "google_news":    CollectorScheduler._run_google_news,
-    "clawfeed":       CollectorScheduler._run_clawfeed,
-    "reddit":         CollectorScheduler._run_reddit,
-    "github_release": CollectorScheduler._run_github_release,
-    "webpage_monitor":CollectorScheduler._run_webpage_monitor,
-}
+        # LLM tagger
+        tagger_start = base_time + timedelta(seconds=30 * len(jobs))
+        self._scheduler.add_job(
+            _run_llm_tagger,
+            trigger=IntervalTrigger(hours=self._config.llm_tagger_interval_hours),
+            id="collector-llm_tagger",
+            replace_existing=True,
+            next_run_time=tagger_start,
+        )
+        logger.info("Registered LLM tagger job (every %dh)", self._config.llm_tagger_interval_hours)

@@ -105,33 +105,37 @@ def test_sources_excludes_retired_source(client):
     assert "substack" not in names
 
 
-def test_sources_contains_only_active_sources(client):
-    """Every source returned must be a member of config.ACTIVE_SOURCES."""
-    active = {e["source"] for e in config.ACTIVE_SOURCES}
+def test_sources_contains_only_active_registry_types(client):
+    """Every source returned must be an active source type in the registry."""
+    # V2 source types from the registry
+    expected_v2_types = {"rss", "reddit", "github_release", "website_monitor", "social_kol",
+                         "hackernews", "xueqiu", "yahoo_finance", "google_news", "github_trending"}
     resp = client.get("/api/ui/sources")
     names = {s["name"] for s in resp.json()}
-    assert names.issubset(active), f"Unexpected sources: {names - active}"
+    assert names.issubset(expected_v2_types), f"Unexpected sources: {names - expected_v2_types}"
 
 
-def test_sources_includes_all_active_sources(client):
-    """All ACTIVE_SOURCES are present in the response even with zero DB rows."""
-    active = {e["source"] for e in config.ACTIVE_SOURCES}
+def test_sources_includes_all_active_registry_types(client):
+    """All active registry source types are present even with zero DB rows."""
+    expected_v2_types = {"rss", "reddit", "github_release", "website_monitor", "social_kol",
+                         "hackernews", "xueqiu", "yahoo_finance", "google_news", "github_trending"}
     resp = client.get("/api/ui/sources")
     names = {s["name"] for s in resp.json()}
-    assert active == names
+    assert expected_v2_types == names
 
 
 # ---------------------------------------------------------------------------
-# Fix 2 — source_health in feed context covers all ACTIVE_SOURCES
+# Fix 2 — source_health in feed context covers all active registry types
 # ---------------------------------------------------------------------------
 
-def test_feed_context_source_health_covers_active_sources(client):
-    """source_health must list all ACTIVE_SOURCES, not just sources with recent articles."""
+def test_feed_context_source_health_covers_active_registry_types(client):
+    """source_health must list all active registry source types."""
+    expected_v2_types = {"rss", "reddit", "github_release", "website_monitor", "social_kol",
+                         "hackernews", "xueqiu", "yahoo_finance", "google_news", "github_trending"}
     resp = client.get("/api/ui/feed")
     health = resp.json()["context"]["source_health"]
     health_names = {h["source"] for h in health}
-    active = {e["source"] for e in config.ACTIVE_SOURCES}
-    assert active == health_names
+    assert expected_v2_types == health_names
 
 
 def test_feed_context_source_health_has_status_field(client):

@@ -211,17 +211,21 @@ def _build_rising_topics(articles: list[Article], now: datetime) -> list[dict[st
 
 
 def _build_source_health(session: Any) -> list[dict[str, Any]]:
-    """Build source health for ACTIVE_SOURCES using scheduler last-run data + DB freshness.
+    """Build source health from the source registry + scheduler last-run data + DB freshness.
 
-    Mirrors /api/health semantics: iterates config.ACTIVE_SOURCES as primary list so
+    Mirrors /api/health semantics: iterates active registry source types so
     retired sources never appear and stale/no_data sources are always shown.
     """
-    import config as cfg
+    from api.routes import _legacy_source_name
     from scheduler import get_last_results
+    from sources.registry import list_active_sources
 
     now = datetime.utcnow()
     last_results = get_last_results()
-    active_names = [e["source"] for e in cfg.ACTIVE_SOURCES]
+
+    active = list_active_sources(session)
+    active_types = sorted({s.source_type for s in active})
+    legacy_names = [_legacy_source_name(t) for t in active_types]
 
     db_rows = (
         session.query(
@@ -229,16 +233,16 @@ def _build_source_health(session: Any) -> list[dict[str, Any]]:
             func.count(Article.id),
             func.max(Article.collected_at),
         )
-        .filter(Article.source.in_(active_names))
+        .filter(Article.source.in_(legacy_names))
         .group_by(Article.source)
         .all()
     )
     db_map = {row[0]: (row[1], row[2]) for row in db_rows}
 
     result = []
-    for entry in cfg.ACTIVE_SOURCES:
-        src = entry["source"]
-        count, last_collected = db_map.get(src, (0, None))
+    for source_type in active_types:
+        legacy_name = _legacy_source_name(source_type)
+        count, last_collected = db_map.get(legacy_name, (0, None))
         age_hours = (
             (now - last_collected).total_seconds() / 3600
             if last_collected
@@ -252,12 +256,12 @@ def _build_source_health(session: Any) -> list[dict[str, Any]]:
         else:
             status = "stale"
 
-        run = last_results.get(src)
+        run = last_results.get(source_type)
         if run and run.error:
             status = "degraded"
 
         result.append({
-            "source": src,
+            "source": source_type,
             "count": count,
             "last_seen_at": last_collected.isoformat() if last_collected else None,
             "status": status,
@@ -482,39 +486,42 @@ def get_topic_detail(topic_slug: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 @ui_router.get("/sources")
 def get_sources() -> list[dict[str, Any]]:
-    """List active sources only (driven by config.ACTIVE_SOURCES).
+    """List active sources only (driven by source registry).
 
-    Retired sources present in the DB are excluded, so the UI navigation never
+    Retired sources are excluded, so the UI navigation never
     surfaces twitter/youtube/substack even if historical rows exist.
     """
-    import config as cfg
+    from api.routes import _legacy_source_name
+    from sources.registry import list_active_sources
 
     session = get_session()
     try:
-        active_names = [e["source"] for e in cfg.ACTIVE_SOURCES]
+        active = list_active_sources(session)
+        active_types = sorted({s.source_type for s in active})
+        legacy_names = [_legacy_source_name(t) for t in active_types]
+
         rows = (
             session.query(
                 Article.source,
                 func.count(Article.id),
                 func.max(Article.collected_at),
             )
-            .filter(Article.source.in_(active_names))
+            .filter(Article.source.in_(legacy_names))
             .group_by(Article.source)
             .all()
         )
         db_map = {row[0]: (row[1], row[2]) for row in rows}
 
         result = []
-        for entry in cfg.ACTIVE_SOURCES:
-            src = entry["source"]
-            count, last_seen = db_map.get(src, (0, None))
+        for source_type in active_types:
+            legacy_name = _legacy_source_name(source_type)
+            count, last_seen = db_map.get(legacy_name, (0, None))
             result.append({
-                "name": src,
-                "kind": _source_kind(src),
+                "name": source_type,
+                "kind": _source_kind(source_type),
                 "count": count,
                 "last_seen_at": last_seen.isoformat() if last_seen else None,
             })
-        # Sort by count desc; sources with no data sort to bottom
         result.sort(key=lambda x: -x["count"])
         return result
     finally:
@@ -526,11 +533,21 @@ def get_sources() -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 @ui_router.get("/sources/{source_name}")
 def get_source_detail(source_name: str) -> dict[str, Any]:
-    import config as cfg
+    from api.routes import _legacy_source_name
+    from sources.registry import list_active_sources
 
-    active_names = [e["source"] for e in cfg.ACTIVE_SOURCES]
-    if source_name not in active_names:
+    session_check = get_session()
+    try:
+        active = list_active_sources(session_check)
+        active_types = {s.source_type for s in active}
+    finally:
+        session_check.close()
+
+    if source_name not in active_types:
         raise HTTPException(status_code=404, detail="Source not found")
+
+    # Query articles using legacy DB name
+    legacy_name = _legacy_source_name(source_name)
 
     session = get_session()
     try:
@@ -538,13 +555,13 @@ def get_source_detail(source_name: str) -> dict[str, Any]:
         cutoff = now - timedelta(hours=24)
         articles = (
             session.query(Article)
-            .filter(Article.source == source_name, Article.collected_at >= cutoff)
+            .filter(Article.source == legacy_name, Article.collected_at >= cutoff)
             .all()
         )
 
         last_seen_row = (
             session.query(func.max(Article.collected_at))
-            .filter(Article.source == source_name)
+            .filter(Article.source == legacy_name)
             .scalar()
         )
 
