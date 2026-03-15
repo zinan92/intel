@@ -33,11 +33,6 @@ _SOURCE_TYPE_MAP: dict[str, str] = {
 }
 
 
-def _normalize_type(legacy_name: str) -> str:
-    """Map legacy source name to normalized source_type."""
-    return _SOURCE_TYPE_MAP.get(legacy_name, legacy_name)
-
-
 # --- Key generation ---
 
 def _slugify(text: str) -> str:

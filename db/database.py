@@ -51,7 +51,7 @@ def init_db() -> None:
 
 
 def _seed_registry_if_needed() -> None:
-    """Seed the source registry from config on first run. Idempotent."""
+    """Ensure default source registry rows exist. Insert-only; runs every init but is idempotent."""
     from sources.seed import seed_source_registry
 
     session = get_session()
