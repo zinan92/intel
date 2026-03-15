@@ -39,3 +39,6 @@ frontend/dist/
 # Env files
 .env
 .env.local
+
+# Worktrees
+.worktrees/
