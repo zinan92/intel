@@ -176,6 +176,142 @@ python scripts/run_llm_tagger.py --backfill     # 补评历史文章
 └── tests/                  # pytest 测试套件
 ```
 
+## For AI Agents
+
+本节面向需要将此项目作为工具或依赖集成的 AI Agent。
+
+### 结构化元数据
+
+```yaml
+name: qualitative-data-pipeline
+description: Qualitative signal workbench — collects, scores, and aggregates high-value market & tech content from 10+ sources into structured signal APIs
+version: 0.1.0
+api_base_url: http://localhost:8001
+endpoints:
+  - path: /api/articles/latest
+    method: GET
+    description: Recent articles sorted by time, filterable by source and relevance
+    params:
+      - name: limit
+        type: integer
+        required: false
+        description: Max results (default 20)
+      - name: source
+        type: string
+        required: false
+        description: Filter by source (rss, hackernews, reddit, xueqiu, etc.)
+      - name: min_relevance
+        type: integer
+        required: false
+        description: Minimum LLM relevance score (1-5)
+  - path: /api/articles/search
+    method: GET
+    description: Full-text keyword search across all articles
+    params:
+      - name: q
+        type: string
+        required: true
+        description: Search query
+      - name: days
+        type: integer
+        required: false
+        description: Limit to recent N days
+  - path: /api/articles/signals
+    method: GET
+    description: Topic heat, narrative momentum, relevance distribution
+    params:
+      - name: hours
+        type: integer
+        required: false
+        description: Time window (default 24)
+  - path: /api/articles/digest
+    method: GET
+    description: Articles grouped by source with top tags
+  - path: /api/ui/feed
+    method: GET
+    description: Priority-scored feed with context rail data
+  - path: /api/health
+    method: GET
+    description: Per-source health status (registry-driven)
+install_command: pip install -r requirements.txt
+start_command: python main.py
+health_check: GET /api/health
+dependencies:
+  - fastapi
+  - sqlalchemy
+  - feedparser
+  - requests
+  - yfinance
+  - anthropic
+  - apscheduler
+capabilities:
+  - collect articles from 10+ sources (HN, RSS, Xueqiu, Reddit, GitHub, Yahoo Finance, Google News, etc.)
+  - auto-tag articles with 13 keyword categories on ingest
+  - score article relevance (1-5) and extract narrative tags via Claude LLM
+  - track topic heat and narrative momentum over time
+  - serve priority-ranked signal feed for trading decisions
+input_format: No input required — collectors run on schedule via APScheduler
+output_format: JSON API responses
+```
+
+### Agent 调用示例
+
+```python
+import httpx
+
+async def get_trading_signals():
+    base = "http://localhost:8001"
+
+    # Step 1: 获取最近 24 小时的信号概览
+    signals = await httpx.AsyncClient().get(f"{base}/api/articles/signals?hours=24")
+    hot_topics = signals.json()
+
+    # Step 2: 搜索特定关键词的高质量文章
+    articles = await httpx.AsyncClient().get(
+        f"{base}/api/articles/search",
+        params={"q": "gold price", "days": 3}
+    )
+    results = articles.json()
+
+    # Step 3: 获取优先级排序的信号流
+    feed = await httpx.AsyncClient().get(f"{base}/api/ui/feed")
+    top_items = feed.json()
+
+    return {"signals": hot_topics, "search": results, "feed": top_items}
+```
+
+### MCP / Tool-Use 接口
+
+```json
+{
+  "tool_name": "qualitative-data-pipeline",
+  "description": "Query qualitative market signals from 10+ sources with relevance scoring",
+  "parameters": {
+    "action": {
+      "type": "string",
+      "enum": ["latest", "search", "signals", "digest", "feed"],
+      "description": "要执行的查询类型"
+    },
+    "query": {
+      "type": "string",
+      "description": "搜索关键词 (action=search 时必填)"
+    },
+    "source": {
+      "type": "string",
+      "description": "数据源过滤 (hackernews, rss, xueqiu, reddit, etc.)"
+    },
+    "hours": {
+      "type": "integer",
+      "description": "时间窗口，单位小时 (action=signals 时使用)"
+    },
+    "min_relevance": {
+      "type": "integer",
+      "description": "最低相关度分数 1-5 (action=latest 时使用)"
+    }
+  }
+}
+```
+
 ## 相关项目
 
 | 项目 | 说明 |
