@@ -82,3 +82,24 @@ def run_migrations(engine: Engine) -> None:
         from db.models import SourceRegistry
         SourceRegistry.__table__.create(engine)
         logger.info("source_registry table created")
+
+    # Event aggregation tables
+    if not _table_exists(engine, "events"):
+        logger.info("Creating events table via migration")
+        from events.models import Event
+        Event.__table__.create(engine)
+        logger.info("events table created")
+
+    if not _table_exists(engine, "event_articles"):
+        logger.info("Creating event_articles table via migration")
+        from events.models import EventArticle
+        EventArticle.__table__.create(engine)
+        logger.info("event_articles table created")
+
+    # Partial unique index: prevent duplicate active events for same tag
+    with engine.connect() as conn:
+        conn.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_events_tag_active "
+            "ON events (narrative_tag) WHERE status = 'active'"
+        ))
+        conn.commit()
