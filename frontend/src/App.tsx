@@ -5,6 +5,7 @@ import { FeedPage } from "./pages/FeedPage";
 import { TopicPage } from "./pages/TopicPage";
 import { SourcePage } from "./pages/SourcePage";
 import { SearchPage } from "./pages/SearchPage";
+import { SettingsPage } from "./pages/SettingsPage";
 
 export function App() {
   return (
@@ -18,6 +19,7 @@ export function App() {
             <Route path="/topics/:slug" element={<TopicPage />} />
             <Route path="/sources/:name" element={<SourcePage />} />
             <Route path="/search" element={<SearchPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
           </Routes>
         </main>
       </div>

@@ -101,3 +101,10 @@ export interface SourceDetail extends Source {
 export interface SearchResponse {
   items: FeedItem[];
 }
+
+export interface UserProfile {
+  username: string;
+  display_name: string;
+  topic_weights: Record<string, number>;
+  created_at: string | null;
+}
