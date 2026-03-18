@@ -227,3 +227,37 @@ RSS_FEEDS: list[dict] = [
     # === AI Platform Blogs ===
     {"name": "OpenAI Developers Blog","url": "https://developers.openai.com/rss.xml",             "category": "ai-agent"},
 ]
+
+# --- Ticker Extraction ---
+QUANT_API_BASE_URL = os.getenv("QUANT_API_BASE_URL", "http://localhost:8000")
+
+TICKER_ALIASES: dict[str, str] = {
+    "NVIDIA": "NVDA", "英伟达": "NVDA",
+    "APPLE": "AAPL", "苹果": "AAPL",
+    "MICROSOFT": "MSFT", "微软": "MSFT",
+    "GOOGLE": "GOOGL", "ALPHABET": "GOOGL", "谷歌": "GOOGL",
+    "AMAZON": "AMZN", "亚马逊": "AMZN",
+    "META": "META", "FACEBOOK": "META",
+    "TESLA": "TSLA", "特斯拉": "TSLA",
+    "NETFLIX": "NFLX",
+    "AMD": "AMD", "超威半导体": "AMD",
+    "INTEL": "INTC", "英特尔": "INTC",
+    "TSMC": "TSM", "台积电": "TSM",
+    "ASML": "ASML",
+    "BROADCOM": "AVGO", "博通": "AVGO",
+    "QUALCOMM": "QCOM", "高通": "QCOM",
+    "JPMORGAN": "JPM", "摩根大通": "JPM",
+    "GOLDMAN SACHS": "GS", "高盛": "GS",
+    "BERKSHIRE": "BRK.B", "伯克希尔": "BRK.B",
+    "NEWMONT": "NEM",
+    "BARRICK": "GOLD", "巴里克": "GOLD",
+    "COINBASE": "COIN",
+    "MICROSTRATEGY": "MSTR",
+    "ALIBABA": "BABA", "阿里巴巴": "BABA",
+    "TENCENT": "TCEHY", "腾讯": "TCEHY",
+    "BAIDU": "BIDU", "百度": "BIDU",
+    "JD.COM": "JD", "京东": "JD",
+    "PINDUODUO": "PDD", "拼多多": "PDD",
+    "NIO": "NIO", "蔚来": "NIO",
+    "BYDCOMPANY": "BYDDY", "比亚迪": "BYDDY",
+}
