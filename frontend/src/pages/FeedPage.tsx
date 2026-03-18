@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { FeedCard } from "../components/FeedCard";
 import { ContextRail } from "../components/ContextRail";
@@ -16,19 +17,22 @@ const RELEVANCE_OPTIONS = [
 const WINDOW_OPTIONS = ["6h", "12h", "24h", "48h", "7d"];
 
 export function FeedPage() {
+  const [searchParams] = useSearchParams();
+  const activeUser = searchParams.get("user") ?? "";
   const [minRelevance, setMinRelevance] = useState(2);
   const [window, setWindow] = useState("24h");
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading, isError } =
     useInfiniteQuery({
-      queryKey: ["feed", minRelevance, window],
+      queryKey: ["feed", minRelevance, window, activeUser],
       queryFn: ({ pageParam }) =>
         api.feed({
           min_relevance: minRelevance,
           window,
           limit: 20,
           cursor: pageParam as string | undefined,
+          user: activeUser || undefined,
         }),
       initialPageParam: undefined as string | undefined,
       getNextPageParam: (lastPage) => lastPage.page.next_cursor ?? undefined,

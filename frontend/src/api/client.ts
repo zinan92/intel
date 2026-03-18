@@ -6,6 +6,7 @@ import type {
   Source,
   SourceDetail,
   SearchResponse,
+  UserProfile,
 } from "../types/api";
 
 const BASE = import.meta.env.VITE_API_URL ?? "";
@@ -25,6 +26,7 @@ export interface FeedParams {
   window?: string;
   limit?: number;
   cursor?: string;
+  user?: string;
 }
 
 function buildQuery(params: Record<string, string | number | undefined>): string {
@@ -58,4 +60,20 @@ export const api = {
 
   search: (q: string, limit = 20): Promise<SearchResponse> =>
     get(`/api/ui/search${buildQuery({ q, limit })}`),
+
+  users: (): Promise<UserProfile[]> =>
+    get("/api/users"),
+
+  user: (username: string): Promise<UserProfile> =>
+    get(`/api/users/${encodeURIComponent(username)}`),
+
+  updateWeights: async (username: string, weights: Record<string, number>): Promise<UserProfile> => {
+    const res = await fetch(`${BASE}/api/users/${encodeURIComponent(username)}/weights`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ weights }),
+    });
+    if (!res.ok) throw new Error(`API error ${res.status}`);
+    return res.json();
+  },
 };
