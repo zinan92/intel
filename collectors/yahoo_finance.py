@@ -87,6 +87,7 @@ class YahooFinanceCollector(BaseCollector):
                 "content": content.get("summary", ""),
                 "url": link,
                 "tags": tags,
+                "tickers": [symbol],
                 "score": 0,
                 "published_at": published_at,
             })
@@ -178,6 +179,7 @@ class YahooFinanceCollector(BaseCollector):
                         "content": content.get("summary", ""),
                         "url": link,
                         "tags": ["gold", "finance", f"search:{keyword}"] + self._infer_tags(title),
+                        "tickers": [],
                         "score": 0,
                         "published_at": published_at,
                     })
