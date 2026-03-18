@@ -29,9 +29,18 @@ export interface SourceHealth {
   status: "ok" | "stale" | "no_data" | "degraded";
 }
 
+export interface TopEvent {
+  id: number;
+  narrative_tag: string;
+  signal_score: number;
+  source_count: number;
+  article_count: number;
+}
+
 export interface FeedContext {
   rising_topics: RisingTopic[];
   source_health: SourceHealth[];
+  top_events?: TopEvent[];
 }
 
 export interface FeedPage {
