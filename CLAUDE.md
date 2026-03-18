@@ -7,7 +7,7 @@ Qualitative signal pipeline and feed-first workbench for collecting frontier-tec
 - **Backend**: FastAPI, SQLAlchemy 2.0, Python 3.11+
 - **Database**: SQLite at `data/park_intel.db`
 - **Frontend**: React 18, TypeScript, Vite, Tailwind, TanStack Query, React Router
-- **Dependencies**: feedparser, requests, apscheduler, anthropic, python-dotenv
+- **Dependencies**: feedparser, requests, apscheduler, anthropic, python-dotenv, httpx
 
 ## Architecture (V2)
 ```
@@ -25,6 +25,23 @@ Source Registry (DB) → Adapters → Collectors (fetch) → BaseCollector.save 
 - **Resolver**: `sources/resolver.py` classifies URLs into source types (internal tool)
 - **Naming**: V2 uses domain-oriented names (`social_kol`, `github_trending`, `website_monitor`)
 - **Naming is canonical**: `Article.source` stores V2 names directly; no legacy translation layer
+
+### Event Aggregation
+- `events/models.py` — Event + EventArticle models
+- `events/aggregator.py` — Clusters articles by narrative_tag in 48h windows, runs hourly
+- `api/event_routes.py` — /api/events/active, /api/events/{id}
+- Signal score = source_count × avg_relevance
+
+### User Personalization
+- `users/models.py` — UserProfile with topic_weights (JSON)
+- `users/service.py` — CRUD + weight validation (0.0-3.0, 13 valid topics)
+- `api/user_routes.py` — /api/users CRUD
+- Feed personalization via ?user= param on /api/ui/feed
+
+### Quant Bridge
+- `tagging/tickers.py` — Ticker extraction (cashtag + alias + source)
+- `bridge/quant.py` — Async price snapshot from quant-data-pipeline (port 8000)
+- Event detail includes price_impacts when tickers available
 
 ### Source Types (10)
 `rss`, `reddit`, `hackernews`, `github_release`, `github_trending`, `website_monitor`, `social_kol`, `xueqiu`, `yahoo_finance`, `google_news`
@@ -46,8 +63,17 @@ Source Registry (DB) → Adapters → Collectors (fetch) → BaseCollector.save 
 - `collectors/` — Per-type collectors (hackernews, rss, reddit, social_kol, etc.)
 - `tagging/keywords.py` — Regex-based keyword tagger (13 tag categories)
 - `tagging/llm.py` — Claude Sonnet LLM tagger for relevance + narratives
+- `tagging/tickers.py` — Ticker extraction (cashtag, company alias, source-provided)
+- `events/aggregator.py` — Event aggregation (48h narrative_tag clustering)
+- `events/models.py` — Event + EventArticle models
+- `users/models.py` — UserProfile model
+- `users/service.py` — User CRUD + weight validation
+- `bridge/quant.py` — Async price snapshot from quant-data-pipeline
+- `api/event_routes.py` — Event API endpoints
+- `api/user_routes.py` — User API endpoints
 - `scripts/run_collectors.py` — Run all collectors
 - `scripts/run_llm_tagger.py` — Run LLM tagger on unscored articles
+- `scripts/backfill_tickers.py` — Backfill tickers for existing articles
 - `frontend/` — feed-first React app
 
 ## API Endpoints
@@ -62,6 +88,12 @@ Source Registry (DB) → Adapters → Collectors (fetch) → BaseCollector.save 
 - `GET /api/ui/topics` — topic list
 - `GET /api/ui/sources` — active source list (registry-driven)
 - `GET /api/ui/search?q=...` — UI search
+- `GET /api/events/active` — active events by signal score
+- `GET /api/events/{id}` — event detail with articles and price impacts
+- `POST /api/users` — create user profile
+- `GET /api/users` — list users
+- `GET /api/users/{username}` — get user profile
+- `PUT /api/users/{username}/weights` — update topic weights
 
 ## Commands
 ```bash
@@ -86,6 +118,9 @@ cd frontend && npm run build
 
 # Run tests
 pytest tests/
+
+# Backfill tickers for existing articles
+python scripts/backfill_tickers.py
 ```
 
 ## Environment Variables (.env)
@@ -97,7 +132,7 @@ pytest tests/
 - All collectors inherit from `BaseCollector`
 - Dedup via unique `source_id` per source
 - Tags stored as JSON array in SQLite
-- Keyword tags auto-applied on ingest via `BaseCollector.save()`
+- Keyword tags + tickers auto-extracted on ingest via `BaseCollector.save()`
 - `/api/health` is driven by the source registry, not config lists
 - `/api/articles/sources` remains historical DB-driven
 - Frontend-facing read models live under `/api/ui/*`
@@ -111,8 +146,11 @@ ai, crypto, macro, geopolitics, china-market, us-market, sector/tech, sector/fin
 - Source architecture V2.1 complete (canonical source names throughout)
 - Registry-driven scheduler, health, adapters — no legacy translation layer
 - `Article.source` stores canonical V2 names; migration rewrites legacy values at startup
-- Feed-first frontend v1 complete
-- Full suite passes in local verification
+- Feed-first frontend v1 complete with user personalization
+- Event aggregation: cross-source clustering by narrative_tag with signal scoring
+- User profiles: per-user topic weights (0.0-3.0) for personalized feed ranking
+- Quant bridge: ticker extraction + async price impact from quant-data-pipeline
+- Full suite passes in local verification (283 tests)
 
 ## Related Project
 - **quant-data-pipeline** (ashare) runs on port 8000, provides quantitative data
