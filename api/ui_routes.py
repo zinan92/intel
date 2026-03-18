@@ -297,6 +297,7 @@ def _build_top_events(session: Any) -> list[dict[str, Any]]:
 def get_feed(
     source: str | None = Query(default=None),
     topic: str | None = Query(default=None),
+    user: str | None = Query(default=None),
     min_relevance: int | None = Query(default=2, ge=1, le=5),
     window: str = Query(default="24h"),
     limit: int = Query(default=20, ge=1, le=100),
@@ -326,6 +327,27 @@ def get_feed(
 
         # Score and sort
         scored = [(a, _priority_score(a, now)) for a in articles]
+
+        # Personalize if user specified
+        if user:
+            from users.service import get_user as get_user_profile
+            import json as _json
+
+            profile = get_user_profile(session, user)
+            if profile:
+                user_weights = _json.loads(profile.topic_weights or "{}")
+                personalized = []
+                for article, base_score in scored:
+                    article_tags = _parse_tags(article.tags)
+                    matching_weights = [
+                        user_weights[t] for t in article_tags if t in user_weights
+                    ]
+                    weight = max(matching_weights) if matching_weights else 1.0
+                    new_score = base_score * weight
+                    if new_score > 0.0 or not matching_weights:
+                        personalized.append((article, round(new_score, 4)))
+                scored = personalized
+
         scored.sort(key=lambda x: (-x[1], -x[0].id))
 
         # Cursor pagination
