@@ -267,6 +267,29 @@ def _build_source_health(session: Any) -> list[dict[str, Any]]:
     return result
 
 
+def _build_top_events(session: Any) -> list[dict[str, Any]]:
+    """Fetch top active events by signal score."""
+    from events.models import Event
+
+    events = (
+        session.query(Event)
+        .filter(Event.status == "active")
+        .order_by(Event.signal_score.desc())
+        .limit(5)
+        .all()
+    )
+    return [
+        {
+            "id": e.id,
+            "narrative_tag": e.narrative_tag,
+            "signal_score": e.signal_score,
+            "source_count": e.source_count,
+            "article_count": e.article_count,
+        }
+        for e in events
+    ]
+
+
 # ---------------------------------------------------------------------------
 # /api/ui/feed
 # ---------------------------------------------------------------------------
@@ -333,6 +356,7 @@ def get_feed(
             "context": {
                 "rising_topics": _build_rising_topics(context_articles, now),
                 "source_health": _build_source_health(session),
+                "top_events": _build_top_events(session),
             },
             "page": {
                 "next_cursor": next_cursor,

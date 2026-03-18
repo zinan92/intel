@@ -158,6 +158,20 @@ def _run_llm_tagger() -> None:
         logger.exception("LLM tagger failed: %s", e)
 
 
+def _run_event_aggregation() -> None:
+    """Run event aggregation on recent articles."""
+    from db.database import get_session
+    from events.aggregator import run_aggregation
+
+    session = get_session()
+    try:
+        run_aggregation(session)
+    except Exception:
+        logger.exception("Event aggregation failed")
+    finally:
+        session.close()
+
+
 class CollectorScheduler:
     """Manages scheduled collector runs via registry-driven dispatch."""
 
@@ -247,3 +261,14 @@ class CollectorScheduler:
             next_run_time=tagger_start,
         )
         logger.info("Registered LLM tagger job (every %dh)", self._config.llm_tagger_interval_hours)
+
+        # Event aggregation (every 1 hour)
+        aggregation_start = base_time + timedelta(seconds=30 * (len(jobs) + 1))
+        self._scheduler.add_job(
+            _run_event_aggregation,
+            trigger=IntervalTrigger(hours=1),
+            id="event-aggregation",
+            replace_existing=True,
+            next_run_time=aggregation_start,
+        )
+        logger.info("Registered event aggregation job (every 1h)")

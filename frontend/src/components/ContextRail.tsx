@@ -40,6 +40,23 @@ export function ContextRail({ context }: Props) {
           </div>
         )}
 
+        {context?.top_events && context.top_events.length > 0 && (
+          <div>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Active Events</p>
+            <ul className="space-y-1.5">
+              {context.top_events.slice(0, 5).map((e) => (
+                <li key={e.id} className="text-sm">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-gray-700 truncate">{e.narrative_tag.replace(/-/g, " ")}</span>
+                    <span className="text-xs text-orange-500 font-medium shrink-0">{e.signal_score.toFixed(1)}</span>
+                  </div>
+                  <span className="text-xs text-gray-400">{e.source_count} sources · {e.article_count} articles</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {health.length > 0 && (() => {
           const okCount = health.filter((h) => h.status === "ok").length;
           const degradedCount = health.filter((h) => h.status === "degraded").length;
