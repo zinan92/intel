@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from config import DATA_DIR, DB_PATH
 from db.models import Base
 import events.models  # noqa: F401 — register Event/EventArticle with Base.metadata
+import users.models  # noqa: F401 — register UserProfile with Base.metadata
 
 _engine: Engine | None = None
 _SessionFactory: sessionmaker[Session] | None = None
