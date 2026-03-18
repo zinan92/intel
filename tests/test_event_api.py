@@ -82,6 +82,8 @@ def test_get_event_detail(client):
     data = resp.json()
     assert data["event"]["narrative_tag"] == "test-event"
     assert len(data["articles"]) >= 1
+    assert "price_impacts" in data
+    assert isinstance(data["price_impacts"], list)
 
 
 def test_get_event_not_found(client):
