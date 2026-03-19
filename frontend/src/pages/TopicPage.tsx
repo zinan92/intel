@@ -20,13 +20,13 @@ export function TopicPage() {
   return (
     <div className="max-w-2xl">
       <div className="mb-4">
-        <Link to="/" className="text-xs text-gray-400 hover:text-gray-600">
+        <Link to="/" className="text-xs text-slate-500 hover:text-slate-300">
           ← Back to feed
         </Link>
         {data && (
           <div className="mt-2">
-            <h1 className="text-xl font-semibold text-gray-900">{data.label}</h1>
-            <p className="text-sm text-gray-400 mt-0.5">{data.count} articles</p>
+            <h1 className="text-xl font-semibold text-white">{data.label}</h1>
+            <p className="text-sm text-slate-400 mt-0.5">{data.count} articles</p>
           </div>
         )}
       </div>
@@ -34,13 +34,13 @@ export function TopicPage() {
       {isLoading && (
         <div className="space-y-3">
           {[...Array(4)].map((_, i) => (
-            <div key={i} className="h-28 bg-gray-100 rounded-lg animate-pulse" />
+            <div key={i} className="h-28 bg-slate-800 rounded-lg animate-pulse" />
           ))}
         </div>
       )}
 
       {isError && (
-        <div className="text-sm text-red-500 bg-red-50 px-4 py-3 rounded-lg">
+        <div className="text-sm text-red-400 bg-red-500/10 px-4 py-3 rounded-lg">
           Topic not found or API unavailable.
         </div>
       )}

@@ -5,16 +5,25 @@ export default {
     extend: {
       colors: {
         brand: {
-          50: "#f0f4ff",
-          100: "#dce6ff",
-          500: "#3b5bdb",
-          600: "#2f4ac7",
-          700: "#1e3a9f",
+          50: "#fef3c7",
+          100: "#fde68a",
+          300: "#fcd34d",
+          400: "#fbbf24",
+          500: "#f59e0b",
+          600: "#d97706",
+          700: "#b45309",
+        },
+        surface: {
+          DEFAULT: "#0f172a",
+          card: "#1e293b",
+          hover: "#253348",
+          border: "#334155",
+          muted: "#475569",
         },
       },
       fontFamily: {
-        sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
-        mono: ["JetBrains Mono", "ui-monospace", "monospace"],
+        sans: ['"DM Sans"', 'system-ui', 'sans-serif'],
+        mono: ['"IBM Plex Mono"', 'monospace'],
       },
     },
   },

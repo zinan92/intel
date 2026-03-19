@@ -7,8 +7,8 @@ function MomentumDot({ label }: { label: string }) {
     label === "rising" || label === "trending"
       ? "bg-green-400"
       : label === "stable"
-      ? "bg-gray-300"
-      : "bg-red-300";
+      ? "bg-slate-500"
+      : "bg-red-400";
   return <span className={`inline-block w-1.5 h-1.5 rounded-full ${color} shrink-0`} />;
 }
 
@@ -50,11 +50,11 @@ export function Sidebar() {
       <nav className="sticky top-20 space-y-6 pr-2">
         {/* User selector */}
         <div>
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">User</p>
+          <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-2">User</p>
           <select
             value={activeUser}
             onChange={(e) => handleUserChange(e.target.value)}
-            className="w-full text-sm border border-gray-300 rounded px-2 py-1 text-gray-700 focus:outline-none focus:border-brand-500"
+            className="w-full text-sm bg-slate-800 border border-surface-border rounded px-2 py-1 text-slate-300 focus:outline-none focus:border-brand-500"
           >
             {USER_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
@@ -63,7 +63,7 @@ export function Sidebar() {
           {activeUser && (
             <Link
               to={`/settings?user=${encodeURIComponent(activeUser)}`}
-              className="block mt-1.5 text-xs text-brand-600 hover:text-brand-700"
+              className="block mt-1.5 text-xs text-slate-500 hover:text-brand-400"
             >
               Settings
             </Link>
@@ -71,11 +71,11 @@ export function Sidebar() {
         </div>
 
         <div>
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Feed</p>
+          <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-2">Feed</p>
           <Link
             to={`/${activeUser ? `?user=${encodeURIComponent(activeUser)}` : ""}`}
             className={`block px-2 py-1 rounded text-sm ${
-              isActive("/") ? "bg-brand-50 text-brand-700 font-medium" : "text-gray-600 hover:text-gray-900"
+              isActive("/") ? "bg-slate-800/60 text-brand-400 font-medium" : "text-slate-400 hover:text-slate-200"
             }`}
           >
             All
@@ -83,7 +83,7 @@ export function Sidebar() {
           <Link
             to="/events/history"
             className={`block px-2 py-1 rounded text-sm ${
-              isActive("/events/history") ? "bg-brand-50 text-brand-700 font-medium" : "text-gray-600 hover:text-gray-900"
+              isActive("/events/history") ? "bg-slate-800/60 text-brand-400 font-medium" : "text-slate-400 hover:text-slate-200"
             }`}
           >
             History
@@ -92,7 +92,7 @@ export function Sidebar() {
 
         {topTopics.length > 0 && (
           <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Topics</p>
+            <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-2">Topics</p>
             <ul className="space-y-0.5">
               {topTopics.map((t) => (
                 <li key={t.slug}>
@@ -100,13 +100,13 @@ export function Sidebar() {
                     to={`/topics/${t.slug}`}
                     className={`flex items-center gap-2 px-2 py-1 rounded text-sm ${
                       isActive(`/topics/${t.slug}`)
-                        ? "bg-brand-50 text-brand-700 font-medium"
-                        : "text-gray-600 hover:text-gray-900"
+                        ? "bg-slate-800/60 text-brand-400 font-medium"
+                        : "text-slate-400 hover:text-slate-200"
                     }`}
                   >
                     <MomentumDot label={t.momentum_label} />
                     <span className="truncate">{t.label}</span>
-                    <span className="ml-auto text-xs text-gray-400">{t.count}</span>
+                    <span className="ml-auto text-xs text-slate-500 font-mono">{t.count}</span>
                   </Link>
                 </li>
               ))}
