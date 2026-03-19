@@ -326,6 +326,8 @@ def _build_top_events(session: Any) -> list[dict[str, Any]]:
             "signal_score": round(_fresh_score(e), 1),
             "source_count": e.source_count,
             "article_count": e.article_count,
+            "narrative_summary": e.narrative_summary,
+            "prev_signal_score": e.prev_signal_score,
             "sources": sorted(event_sources.get(e.id, set())),
             "tickers": event_tickers.get(e.id, [])[:5],
         }
