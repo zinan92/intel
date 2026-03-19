@@ -133,6 +133,14 @@ def run_aggregation(session: Session) -> None:
         event.updated_at = now
 
     session.commit()
+
+    # Generate narratives for cross-source events
+    try:
+        from events.narrator import generate_narratives
+        generate_narratives(session)
+    except Exception:
+        logger.exception("Narrative generation failed (non-fatal)")
+
     logger.info(
         "Aggregation complete: %d tags processed, %d events closed",
         len(tag_articles),
