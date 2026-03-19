@@ -11,7 +11,7 @@ import { EventHistoryPage } from "./pages/EventHistoryPage";
 
 export function App() {
   return (
-    <div className="min-h-screen bg-gray-50 font-sans">
+    <div className="min-h-screen bg-surface text-slate-200 font-sans">
       <TopBar />
       <div className="max-w-screen-xl mx-auto px-4 py-5 flex gap-6">
         <Sidebar />

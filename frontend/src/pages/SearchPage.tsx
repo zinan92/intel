@@ -48,11 +48,11 @@ export function SearchPage() {
             onChange={(e) => setInputValue(e.target.value)}
             placeholder="Search articles..."
             autoFocus
-            className="flex-1 h-10 px-3 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-500"
+            className="flex-1 h-10 px-3 text-sm bg-slate-800 border border-surface-border text-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-500/50 focus:border-brand-500/50"
           />
           <button
             type="submit"
-            className="px-4 h-10 text-sm bg-brand-600 text-white rounded-md hover:bg-brand-700 transition-colors"
+            className="px-4 h-10 text-sm bg-brand-500 text-slate-950 rounded-lg hover:bg-brand-400 transition-colors font-medium"
           >
             Search
           </button>
@@ -60,7 +60,7 @@ export function SearchPage() {
       </form>
 
       {query && (
-        <p className="text-xs text-gray-400 mb-3">
+        <p className="text-xs text-slate-500 mb-3">
           {isFetching ? "Searching..." : `${items.length} result${items.length !== 1 ? "s" : ""} for "${query}"`}
         </p>
       )}
@@ -68,13 +68,13 @@ export function SearchPage() {
       {isLoading && (
         <div className="space-y-3">
           {[...Array(3)].map((_, i) => (
-            <div key={i} className="h-28 bg-gray-100 rounded-lg animate-pulse" />
+            <div key={i} className="h-28 bg-slate-800 rounded-lg animate-pulse" />
           ))}
         </div>
       )}
 
       {!isLoading && query && items.length === 0 && (
-        <div className="text-sm text-gray-400 text-center py-12">
+        <div className="text-sm text-slate-500 text-center py-12">
           No results found.
         </div>
       )}
