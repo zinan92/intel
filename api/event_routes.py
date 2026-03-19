@@ -1,9 +1,10 @@
 """API routes for event aggregation."""
 
 import json
+from datetime import datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import distinct
 
 from db.database import get_session
@@ -55,6 +56,64 @@ def get_active_events() -> dict[str, Any]:
             })
 
         return {"events": result}
+    finally:
+        session.close()
+
+
+@event_router.get("/events/history")
+def get_event_history(
+    days: int = Query(default=30, ge=1, le=365),
+    tag: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+) -> dict[str, Any]:
+    """List closed events within a time window, optionally filtered by narrative tag."""
+    session = get_session()
+    try:
+        cutoff = datetime.utcnow() - timedelta(days=days)
+        q = session.query(Event).filter(Event.status == "closed", Event.window_start >= cutoff)
+        if tag:
+            q = q.filter(Event.narrative_tag.ilike(f"%{tag}%"))
+        events = q.order_by(Event.window_start.desc()).limit(limit).all()
+
+        # Batch fetch tickers
+        event_ids = [e.id for e in events]
+        tickers_map: dict[int, list[str]] = {}
+        if event_ids:
+            rows = (
+                session.query(EventArticle.event_id, Article.tickers)
+                .join(Article, EventArticle.article_id == Article.id)
+                .filter(EventArticle.event_id.in_(event_ids))
+                .all()
+            )
+            from collections import defaultdict
+            tickers_map = defaultdict(list)
+            for eid, tickers_json in rows:
+                if tickers_json:
+                    try:
+                        import json as _json
+                        for t in _json.loads(tickers_json):
+                            if t and t not in tickers_map[eid]:
+                                tickers_map[eid].append(t)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+
+        return {
+            "events": [
+                {
+                    "id": e.id,
+                    "narrative_tag": e.narrative_tag,
+                    "signal_score": e.signal_score,
+                    "source_count": e.source_count,
+                    "article_count": e.article_count,
+                    "narrative_summary": e.narrative_summary,
+                    "window_start": e.window_start.isoformat() if e.window_start else None,
+                    "window_end": e.window_end.isoformat() if e.window_end else None,
+                    "status": e.status,
+                    "tickers": tickers_map.get(e.id, [])[:5],
+                }
+                for e in events
+            ]
+        }
     finally:
         session.close()
 
@@ -122,6 +181,8 @@ async def get_event_detail(event_id: int) -> dict[str, Any]:
                 "article_count": evt.article_count,
                 "signal_score": evt.signal_score,
                 "avg_relevance": evt.avg_relevance,
+                "narrative_summary": evt.narrative_summary,
+                "prev_signal_score": evt.prev_signal_score,
                 "status": evt.status,
                 "created_at": evt.created_at.isoformat(),
                 "updated_at": evt.updated_at.isoformat(),
