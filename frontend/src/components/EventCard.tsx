@@ -1,6 +1,13 @@
 import { Link } from "react-router-dom";
 import type { TopEvent } from "../types/api";
 
+export function VelocityArrow({ current, prev }: { current: number; prev: number | null }) {
+  if (prev === null) return <span className="text-blue-500 text-[10px] font-semibold ml-1">NEW</span>;
+  if (current > prev) return <span className="text-green-500 ml-1">↑</span>;
+  if (current < prev) return <span className="text-red-500 ml-1">↓</span>;
+  return <span className="text-gray-400 ml-1">→</span>;
+}
+
 interface Props {
   event: TopEvent;
 }
@@ -15,6 +22,7 @@ export function EventCard({ event }: Props) {
     >
       <div className={`text-[10px] font-semibold uppercase ${scoreColor}`}>
         Signal {event.signal_score.toFixed(1)}
+        <VelocityArrow current={event.signal_score} prev={event.prev_signal_score} />
       </div>
       <div className="text-sm font-semibold text-gray-800 mt-0.5 line-clamp-1">
         {event.narrative_tag.replace(/-/g, " ")}
