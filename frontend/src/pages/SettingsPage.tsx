@@ -43,36 +43,36 @@ export function SettingsPage() {
   }, [user, localWeights, mutation]);
 
   if (!username) {
-    return <div className="text-sm text-gray-500 py-8">Select a user from the sidebar to configure weights.</div>;
+    return <div className="text-sm text-slate-500 py-8">Select a user from the sidebar to configure weights.</div>;
   }
 
   if (isLoading) {
-    return <div className="animate-pulse space-y-3">{[...Array(5)].map((_, i) => <div key={i} className="h-8 bg-gray-100 rounded" />)}</div>;
+    return <div className="animate-pulse space-y-3">{[...Array(5)].map((_, i) => <div key={i} className="h-8 bg-slate-800 rounded" />)}</div>;
   }
 
   return (
     <div className="max-w-lg">
-      <h2 className="text-lg font-semibold text-gray-800 mb-1">Topic Weights</h2>
-      <p className="text-sm text-gray-500 mb-4">{user?.display_name} — adjust topic importance (0 = hide, 3 = max boost)</p>
+      <h2 className="text-lg font-semibold text-white mb-1">Topic Weights</h2>
+      <p className="text-sm text-slate-400 mb-4">{user?.display_name} — adjust topic importance (0 = hide, 3 = max boost)</p>
       <div className="space-y-3">
         {TOPICS.map((topic) => {
           const val = weights[topic] ?? 1.0;
           return (
             <div key={topic} className="flex items-center gap-3">
-              <span className="text-sm text-gray-700 w-32 truncate">{topic}</span>
+              <span className="text-sm text-slate-300 w-32 truncate">{topic}</span>
               <input
                 type="range"
                 min={0} max={3} step={0.5}
                 value={val}
                 onChange={(e) => handleChange(topic, parseFloat(e.target.value))}
-                className="flex-1 accent-brand-600"
+                className="flex-1 accent-brand-500"
               />
-              <span className="text-xs text-gray-500 w-8 text-right">{val.toFixed(1)}</span>
+              <span className="text-xs text-slate-500 font-mono w-8 text-right">{val.toFixed(1)}</span>
             </div>
           );
         })}
       </div>
-      {mutation.isError && <p className="text-sm text-red-500 mt-2">Failed to save.</p>}
+      {mutation.isError && <p className="text-sm text-red-400 mt-2">Failed to save.</p>}
     </div>
   );
 }
