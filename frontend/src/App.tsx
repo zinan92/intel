@@ -7,6 +7,7 @@ import { SourcePage } from "./pages/SourcePage";
 import { SearchPage } from "./pages/SearchPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { EventPage } from "./pages/EventPage";
+import { EventHistoryPage } from "./pages/EventHistoryPage";
 
 export function App() {
   return (
@@ -17,6 +18,7 @@ export function App() {
         <main className="flex-1 min-w-0">
           <Routes>
             <Route path="/" element={<FeedPage />} />
+            <Route path="/events/history" element={<EventHistoryPage />} />
             <Route path="/events/:id" element={<EventPage />} />
             <Route path="/topics/:slug" element={<TopicPage />} />
             <Route path="/sources/:name" element={<SourcePage />} />
