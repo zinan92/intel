@@ -268,19 +268,33 @@ def _build_source_health(session: Any) -> list[dict[str, Any]]:
 
 
 def _build_top_events(session: Any) -> list[dict[str, Any]]:
-    """Fetch top active events with sources and tickers (batched query)."""
+    """Fetch top active events with sources and tickers, ranked by freshness-weighted score.
+
+    Uses a 24-hour half-life decay so recent events surface above stale high-score ones.
+    Fetches a wider candidate pool (top 20 by raw score) then re-ranks with decay.
+    """
     from events.models import Event, EventArticle
 
-    events = (
+    now = datetime.utcnow()
+
+    # Fetch wider pool, re-rank with freshness
+    candidates = (
         session.query(Event)
         .filter(Event.status == "active")
         .order_by(Event.signal_score.desc())
-        .limit(5)
+        .limit(20)
         .all()
     )
-    if not events:
+    if not candidates:
         return []
 
+    def _fresh_score(e: Any) -> float:
+        age_h = (now - e.window_start).total_seconds() / 3600
+        decay = 0.5 ** (age_h / 24)  # half-life: 24 hours
+        return e.signal_score * decay
+
+    # Re-rank by freshness-weighted score, take top 5
+    events = sorted(candidates, key=_fresh_score, reverse=True)[:5]
     event_ids = [e.id for e in events]
 
     # Single batched query for all event articles
@@ -306,7 +320,7 @@ def _build_top_events(session: Any) -> list[dict[str, Any]]:
         {
             "id": e.id,
             "narrative_tag": e.narrative_tag,
-            "signal_score": e.signal_score,
+            "signal_score": round(_fresh_score(e), 1),
             "source_count": e.source_count,
             "article_count": e.article_count,
             "sources": sorted(event_sources.get(e.id, set())),
