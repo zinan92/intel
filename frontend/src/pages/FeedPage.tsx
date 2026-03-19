@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { FeedCard } from "../components/FeedCard";
 import { ContextRail } from "../components/ContextRail";
+import { MorningBrief } from "../components/MorningBrief";
 import { ItemDrawer } from "../components/ItemDrawer";
 import type { FeedItem } from "../types/api";
 
@@ -41,10 +42,13 @@ export function FeedPage() {
 
   const allItems = data?.pages.flatMap((p) => p.items) ?? [];
   const context = data?.pages[0]?.context;
+  const topEvents = context?.top_events ?? [];
 
   return (
     <div className="flex gap-6 min-h-0">
       <div className="flex-1 min-w-0">
+        <MorningBrief events={topEvents} />
+
         {/* Filter bar */}
         <div className="flex flex-wrap items-center gap-3 mb-4">
           <div className="flex items-center gap-1">
