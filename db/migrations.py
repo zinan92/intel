@@ -66,6 +66,8 @@ def run_migrations(engine: Engine) -> None:
         ("articles", "relevance_score", "INTEGER"),
         ("articles", "narrative_tags", "TEXT"),
         ("articles", "tickers", "TEXT"),
+        ("events", "narrative_summary", "TEXT"),
+        ("events", "prev_signal_score", "REAL"),
     ]
 
     with engine.connect() as conn:
