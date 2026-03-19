@@ -37,6 +37,8 @@ export interface TopEvent {
   article_count: number;
   sources: string[];
   tickers: string[];
+  narrative_summary: string | null;
+  prev_signal_score: number | null;
 }
 
 export interface EventArticle {
@@ -68,6 +70,8 @@ export interface EventInfo {
   window_start: string | null;
   window_end: string | null;
   status: string;
+  narrative_summary: string | null;
+  prev_signal_score: number | null;
 }
 
 export interface EventDetail {
@@ -139,6 +143,23 @@ export interface SourceDetail extends Source {
 
 export interface SearchResponse {
   items: FeedItem[];
+}
+
+export interface EventHistoryItem {
+  id: number;
+  narrative_tag: string;
+  signal_score: number;
+  source_count: number;
+  article_count: number;
+  narrative_summary: string | null;
+  window_start: string | null;
+  window_end: string | null;
+  status: string;
+  tickers: string[];
+}
+
+export interface EventHistoryResponse {
+  events: EventHistoryItem[];
 }
 
 export interface UserProfile {
