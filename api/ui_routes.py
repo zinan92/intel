@@ -268,8 +268,8 @@ def _build_source_health(session: Any) -> list[dict[str, Any]]:
 
 
 def _build_top_events(session: Any) -> list[dict[str, Any]]:
-    """Fetch top active events by signal score."""
-    from events.models import Event
+    """Fetch top active events with sources and tickers (batched query)."""
+    from events.models import Event, EventArticle
 
     events = (
         session.query(Event)
@@ -278,6 +278,30 @@ def _build_top_events(session: Any) -> list[dict[str, Any]]:
         .limit(5)
         .all()
     )
+    if not events:
+        return []
+
+    event_ids = [e.id for e in events]
+
+    # Single batched query for all event articles
+    rows = (
+        session.query(EventArticle.event_id, Article.source, Article.tickers)
+        .join(Article, EventArticle.article_id == Article.id)
+        .filter(EventArticle.event_id.in_(event_ids))
+        .all()
+    )
+
+    # Group by event_id
+    from collections import defaultdict
+    event_sources: dict[int, set[str]] = defaultdict(set)
+    event_tickers: dict[int, list[str]] = defaultdict(list)
+    for event_id, source, tickers_json in rows:
+        event_sources[event_id].add(source)
+        if tickers_json:
+            for t in _parse_tags(tickers_json):
+                if t and t not in event_tickers[event_id]:
+                    event_tickers[event_id].append(t)
+
     return [
         {
             "id": e.id,
@@ -285,6 +309,8 @@ def _build_top_events(session: Any) -> list[dict[str, Any]]:
             "signal_score": e.signal_score,
             "source_count": e.source_count,
             "article_count": e.article_count,
+            "sources": sorted(event_sources.get(e.id, set())),
+            "tickers": event_tickers.get(e.id, [])[:5],
         }
         for e in events
     ]
