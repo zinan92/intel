@@ -35,6 +35,45 @@ export interface TopEvent {
   signal_score: number;
   source_count: number;
   article_count: number;
+  sources: string[];
+  tickers: string[];
+}
+
+export interface EventArticle {
+  id: number;
+  title: string | null;
+  source: string;
+  url: string | null;
+  relevance_score: number | null;
+  summary: string;
+  published_at: string | null;
+  collected_at: string | null;
+}
+
+export interface PriceImpact {
+  ticker: string;
+  price_at_event: number;
+  change_1d: number;
+  change_3d: number;
+  change_5d: number;
+}
+
+export interface EventInfo {
+  id: number;
+  narrative_tag: string;
+  source_count: number;
+  article_count: number;
+  signal_score: number;
+  avg_relevance: number;
+  window_start: string | null;
+  window_end: string | null;
+  status: string;
+}
+
+export interface EventDetail {
+  event: EventInfo;
+  articles: EventArticle[];
+  price_impacts: PriceImpact[];
 }
 
 export interface FeedContext {

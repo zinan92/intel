@@ -1,6 +1,7 @@
 import type {
   FeedResponse,
   ItemDetail,
+  EventDetail,
   Topic,
   TopicDetail,
   Source,
@@ -66,6 +67,9 @@ export const api = {
 
   user: (username: string): Promise<UserProfile> =>
     get(`/api/users/${encodeURIComponent(username)}`),
+
+  eventDetail: (id: number): Promise<EventDetail> =>
+    get(`/api/events/${id}`),
 
   updateWeights: async (username: string, weights: Record<string, number>): Promise<UserProfile> => {
     const res = await fetch(`${BASE}/api/users/${encodeURIComponent(username)}/weights`, {
