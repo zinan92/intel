@@ -2,6 +2,7 @@ import type {
   FeedResponse,
   ItemDetail,
   EventDetail,
+  EventHistoryResponse,
   Topic,
   TopicDetail,
   Source,
@@ -70,6 +71,9 @@ export const api = {
 
   eventDetail: (id: number): Promise<EventDetail> =>
     get(`/api/events/${id}`),
+
+  eventHistory: (params: { days?: number; tag?: string; limit?: number } = {}): Promise<EventHistoryResponse> =>
+    get(`/api/events/history${buildQuery(params as Record<string, string | number | undefined>)}`),
 
   updateWeights: async (username: string, weights: Record<string, number>): Promise<UserProfile> => {
     const res = await fetch(`${BASE}/api/users/${encodeURIComponent(username)}/weights`, {
