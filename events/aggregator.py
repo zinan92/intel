@@ -113,6 +113,9 @@ def run_aggregation(session: Session) -> None:
         ]
         avg_rel = sum(relevances) / len(relevances) if relevances else 0.0
 
+        # Save current score for velocity tracking
+        active_event.prev_signal_score = active_event.signal_score
+
         active_event.source_count = len(sources)
         active_event.article_count = len(linked_articles)
         active_event.avg_relevance = round(avg_rel, 2)
