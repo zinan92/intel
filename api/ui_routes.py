@@ -276,13 +276,16 @@ def _build_top_events(session: Any) -> list[dict[str, Any]]:
     from events.models import Event, EventArticle
 
     now = datetime.utcnow()
+    cutoff = now - timedelta(hours=48)
 
-    # Fetch wider pool, re-rank with freshness
+    # Only cross-source events (source_count >= 2) from last 48h
     candidates = (
         session.query(Event)
-        .filter(Event.status == "active")
-        .order_by(Event.signal_score.desc())
-        .limit(20)
+        .filter(
+            Event.status == "active",
+            Event.source_count >= 2,
+            Event.window_start >= cutoff,
+        )
         .all()
     )
     if not candidates:
