@@ -2,52 +2,81 @@
 
 # qualitative-data-pipeline
 
-**定性信号工作台 — 从噪音中提取市场叙事**
+**交易信号情报站 — 从 10+ 数据源自动发现跨源验证的市场信号**
 
-从 10+ 数据源采集、评分、聚合高价值内容，输出结构化信号 API
+采集 → 评分 → 聚合 → 可视化，把信息噪音变成可操作的交易 insight
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white)](#)
 [![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white)](#)
-[![SQLite](https://img.shields.io/badge/SQLite-003B57?style=flat-square&logo=sqlite&logoColor=white)](#)
-[![React](https://img.shields.io/badge/React_18-61DAFB?style=flat-square&logo=react&logoColor=black)](#)
-[![Claude](https://img.shields.io/badge/Claude_AI-000?style=flat-square&logo=anthropic&logoColor=white)](#)
+[![React 18](https://img.shields.io/badge/React_18-61DAFB?style=flat-square&logo=react&logoColor=black)](#)
+[![Claude AI](https://img.shields.io/badge/Claude_AI-000?style=flat-square&logo=anthropic&logoColor=white)](#)
+[![D3.js](https://img.shields.io/badge/D3.js-F9A03C?style=flat-square&logo=d3.js&logoColor=white)](#)
+[![Tests](https://img.shields.io/badge/tests-290%2B_passing-brightgreen?style=flat-square)](#)
 
 </div>
 
 ---
 
-## 它解决什么问题
+## 痛点
 
-交易员每天面对海量信息：推特、雪球、HN、新闻、GitHub——分散在十几个平台，无法高效过滤。
+交易员每天面对海量信息：推特、雪球、HN、新闻、GitHub——分散在十几个平台。真正重要的信号被淹没在噪音里，等你看到时已经过时了。
 
-这个系统把采集、去噪、评分、归类全部自动化，最终输出：
-- **Feed API** — 按优先级排序的结构化信号流
-- **Signals API** — 实时追踪话题热度和叙事动量
-- **阅读工作台** — 在一个界面里消化所有源
+## 解决方案
+
+自动从 10+ 源采集内容，LLM 评分筛选，**跨源聚合成事件**（同一件事在 HN、Reddit、Google News 同时出现 = 信号可信度高），生成 AI 摘要，关联 ticker 价格影响。打开即看到今天最重要的 5 件事。
+
+## 核心能力
+
+| 能力 | 说明 | 状态 |
+|------|------|------|
+| 10 源自动采集 | HN · RSS · 雪球 · Reddit · Yahoo Finance · Google News 等 | ✅ |
+| 13 类关键词标签 | 入库即标注：ai, crypto, macro, trading, earnings... | ✅ |
+| LLM 相关度评分 | Claude 打分 1-5 + 生成叙事标签 | ✅ |
+| **跨源事件聚合** | 同 narrative_tag 48h 内多源命中 → 事件，信号分 = 源数 × 平均相关度 | ✅ |
+| **AI 事件摘要** | Claude CLI 为每个跨源事件生成 2-3 句交易员视角摘要 | ✅ |
+| **Signal Velocity** | 事件信号趋势箭头（↑变强 / ↓变弱 / NEW 新出现） | ✅ |
+| **Ticker 提取** | $NVDA cashtag + 中英文公司名映射（36+ 公司），自动关联股票 | ✅ |
+| **Quant Bridge** | 异步拉取 quant-data-pipeline 价格数据，展示事件后 1/3/5 日涨跌幅 | ✅ |
+| **用户个性化** | 每人 13 个 topic 权重（0=隐藏, 3=最大提权），个性化 Feed 排序 | ✅ |
+| **Morning Brief** | 首页 hero 事件 + 2×2 网格，打开即知道今天最重要的事 | ✅ |
+| **Event Constellation** | D3.js 力导向图，事件按 Crypto/AI/Macro 聚类，ticker 连线可视化 | 🔬 原型 |
+| 事件历史存档 | 30 天关闭事件可搜索回顾 | ✅ |
 
 ## 架构
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                      数据源 (10+ Collectors)                 │
-│                                                              │
-│  HN · RSS · 雪球 · GitHub Trending · Yahoo Finance           │
-│  Google News · Reddit · GitHub Releases · 网页监控 · ClawFeed │
-└──────────────────────┬───────────────────────────────────────┘
-                       │ 采集 + 去重 + 关键词标签 (13类)
+│                    数据源 (10 Collectors)                     │
+│  HN · RSS · 雪球 · GitHub · Yahoo · Google · Reddit · KOL   │
+└────────────────────────┬────────────────────────────────────┘
+                         │ 采集 + 去重
+                         ▼
+              ┌──────────────────┐
+              │   关键词标签 (13类)  │ ← 零延迟，入库即标注
+              │   Ticker 提取      │ ← $NVDA + 公司名映射
+              └────────┬─────────┘
+                       │
+          ┌────────────┼────────────┐
+          ▼            ▼            ▼
+   LLM 评分器     事件聚合器      调度器
+   (Claude)     (48h 窗口)    (APScheduler)
+   相关度 1-5    跨源聚类          │
+   叙事标签     信号分计算         │
+   事件摘要     Velocity          │
+          └────────────┼────────────┘
                        ▼
-             ┌─────────────────┐
-             │  Source Registry │ ← 单一数据源真相
-             │     SQLite      │
-             └────────┬────────┘
-                      │
-          ┌───────────┼───────────┐
-          ▼           ▼           ▼
-    LLM 评分器   FastAPI APIs    调度器
-    (Claude)    /api/* + /ui/*  (APScheduler)
-    相关度+叙事        │
-                      ▼
-             React 阅读工作台
+              ┌──────────────────┐
+              │   FastAPI APIs    │
+              │  /api/* + /ui/*   │
+              └────────┬─────────┘
+                       │
+          ┌────────────┼────────────┐
+          ▼            ▼            ▼
+    React 前端    Quant Bridge   用户系统
+   Morning Brief  价格影响数据   个性化权重
+   Event Detail   1D/3D/5D      Topic 过滤
+   Constellation  涨跌幅
+   Event History
 ```
 
 ## 数据源
@@ -55,15 +84,15 @@
 | 源 | 说明 | 采集方式 |
 |---|---|---|
 | **Hacker News** | 科技前沿，score ≥ 20 | Algolia API |
-| **RSS** | 配置驱动的订阅源列表 | feedparser |
+| **RSS** | 50+ 订阅源（博客、newsletter） | feedparser |
 | **雪球** | 中国市场 KOL 观点 (20+ 大V) | Cookie 认证 |
 | **GitHub Trending** | 关键词过滤的热门项目 | 页面解析 |
 | **Yahoo Finance** | 黄金、商品、ticker 新闻 | yfinance |
 | **Google News** | 查询驱动的新闻聚合 | RSS |
-| **Reddit** | 每日热帖 (多个 subreddit) | RSS |
+| **Reddit** | 13 个 subreddit 热帖 | RSS |
 | **GitHub Releases** | 关注的 repo 发版监控 | GitHub API |
 | **网页监控** | 博客 + 文档 commit 监控 | scrape + API |
-| **ClawFeed** | KOL 内容导出 | CLI 集成 |
+| **ClawFeed** | 22 个 KOL 内容导出 | CLI 集成 |
 
 ## 快速开始
 
@@ -71,33 +100,34 @@
 # 1. 安装依赖
 pip install -r requirements.txt
 
-# 2. 配置环境变量 (可选)
+# 2. 配置环境变量 (全部可选)
 cp .env.example .env
-# ANTHROPIC_API_KEY — LLM 评分
+# ANTHROPIC_API_KEY — LLM 评分 + 事件摘要
 # XUEQIU_COOKIE    — 雪球采集
 # GITHUB_TOKEN     — GitHub API 限流
 
 # 3. 启动 API（内置调度器自动采集）
 python main.py
-# → http://127.0.0.1:8001/docs
+# → http://127.0.0.1:8001
 
 # 4. 启动前端
 cd frontend && npm install && npm run dev
-# → http://localhost:5173
+# → http://localhost:5174
 ```
 
-### 手动采集
+### 手动操作
 
 ```bash
-python scripts/run_collectors.py                # 全部采集器
-python scripts/run_collectors.py --source reddit # 指定数据源
+python scripts/run_collectors.py                # 全部采集
+python scripts/run_collectors.py --source reddit # 指定源
 python scripts/run_llm_tagger.py --limit 10     # LLM 评分
-python scripts/run_llm_tagger.py --backfill     # 补评历史文章
+python scripts/run_llm_tagger.py --backfill     # 补评历史
+python scripts/backfill_tickers.py              # 补充 Ticker 提取
 ```
 
 ## API
 
-### 核心数据接口
+### 核心数据
 
 | 端点 | 用途 |
 |---|---|
@@ -112,69 +142,114 @@ python scripts/run_llm_tagger.py --backfill     # 补评历史文章
 
 | 端点 | 用途 |
 |---|---|
-| `GET /api/ui/feed` | 优先级排序的信号流 |
+| `GET /api/ui/feed` | 优先级排序的信号流 `?user=wendy&window=24h` |
 | `GET /api/ui/items/{id}` | 文章详情 + 相关推荐 |
 | `GET /api/ui/topics` | 话题列表 |
 | `GET /api/ui/sources` | 活跃源列表 (registry 驱动) |
 | `GET /api/ui/search` | 前端搜索 `?q=openai` |
 
-## 标签体系
+### 事件系统
 
-系统自动为每篇文章打上 **13 类标签**：
+| 端点 | 用途 |
+|---|---|
+| `GET /api/events/active` | 活跃事件列表（按信号分排序） |
+| `GET /api/events/{id}` | 事件详情 + 文章时间线 + 价格影响 |
+| `GET /api/events/history` | 30 天关闭事件存档 `?tag=btc&days=30` |
 
-`ai` · `crypto` · `macro` · `geopolitics` · `china-market` · `us-market` · `trading` · `regulation` · `earnings` · `commodities` · `sector/tech` · `sector/finance` · `sector/energy`
+### 用户系统
 
-**两层标签机制：**
-1. **关键词标签** — 入库时基于正则自动匹配，零延迟
-2. **LLM 标签** — Claude 评分相关度 (1-5) + 生成叙事标签，深度理解
+| 端点 | 用途 |
+|---|---|
+| `POST /api/users` | 创建用户 |
+| `GET /api/users/{username}` | 获取用户 + topic 权重 |
+| `PUT /api/users/{username}/weights` | 更新 topic 权重 (0.0-3.0) |
+
+## 信号系统
+
+### 三层标签
+
+1. **关键词标签** (13 类) — 入库即匹配，零延迟
+   `ai` · `crypto` · `macro` · `geopolitics` · `china-market` · `us-market` · `trading` · `regulation` · `earnings` · `commodities` · `sector/tech` · `sector/finance` · `sector/energy`
+
+2. **LLM 叙事标签** — Claude 深度理解，生成事件描述符如 `nvidia-earnings-beat`、`fed-rate-pause`
+
+3. **Ticker 提取** — `$NVDA` cashtag + 中英文公司名（NVIDIA/英伟达 → NVDA），36+ 映射
+
+### 事件聚合
+
+同一个叙事标签在 48h 内被 2+ 个不同数据源报道 → 自动聚合为 **事件**
+
+- **信号分** = 命中源数量 × 平均相关度
+- **时效衰减** = 24h 半衰期，新事件自动优先
+- **AI 摘要** = Claude 为每个跨源事件生成 2-3 句交易员视角摘要
+- **Signal Velocity** = 对比上次聚合的信号分，显示 ↑/↓/→/NEW
 
 ## 技术栈
 
 | 层 | 技术 |
 |---|---|
 | API | FastAPI · Uvicorn · Pydantic |
-| 数据库 | SQLAlchemy 2.0 · SQLite |
-| 采集 | feedparser · requests · yfinance |
+| 数据库 | SQLAlchemy 2.0 · SQLite (WAL mode) |
+| 采集 | feedparser · requests · yfinance · httpx |
 | 调度 | APScheduler (后台自动运行) |
-| AI | Anthropic Claude (相关度评分 + 叙事提取) |
+| AI | Anthropic Claude (评分 + 叙事 + 事件摘要) |
 | 前端 | React 18 · TypeScript · Vite · Tailwind · TanStack Query |
+| 可视化 | D3.js (Event Constellation 力导向图) |
+| 测试 | pytest (290+ tests) |
 
 ## 项目结构
 
 ```
 ├── main.py                 # FastAPI 入口 (port 8001)
-├── config.py               # 源 seed 数据、采集配置
-├── scheduler.py            # Registry 驱动的 APScheduler 调度器
-├── sources/
+├── config.py               # 源 seed 数据、采集配置、Ticker 映射
+├── scheduler.py            # Registry 驱动的 APScheduler + 事件聚合
+├── sources/                # 数据源管理
 │   ├── registry.py         # Source Registry CRUD
 │   ├── adapters.py         # 源类型 → 采集器适配
-│   ├── seed.py             # 从 config 播种 (insert-only)
-│   └── resolver.py         # URL → source_type 分类器
+│   └── seed.py             # 从 config 播种 (insert-only)
 ├── api/
 │   ├── routes.py           # 核心数据 API
-│   └── ui_routes.py        # 前端 Read Model API
-├── collectors/
-│   ├── base.py             # BaseCollector 抽象类
-│   ├── hackernews.py
-│   ├── rss.py
-│   ├── xueqiu.py
-│   ├── yahoo_finance.py
-│   ├── google_news.py
-│   ├── reddit.py
-│   ├── github_trending.py
-│   ├── github_release.py
-│   ├── webpage_monitor.py
-│   └── clawfeed.py
-├── db/
-│   ├── models.py           # Article + SourceRegistry 模型
-│   └── migrations.py       # 幂等 Schema 迁移
+│   ├── ui_routes.py        # 前端 Read Model + Morning Brief
+│   ├── event_routes.py     # 事件 API (active, detail, history)
+│   └── user_routes.py      # 用户 API (CRUD, weights)
+├── collectors/             # 10 个数据源采集器
+│   ├── base.py             # BaseCollector (去重 + 标签 + Ticker)
+│   ├── hackernews.py · rss.py · xueqiu.py · reddit.py
+│   ├── yahoo_finance.py · google_news.py · github_trending.py
+│   ├── github_release.py · webpage_monitor.py · social_kol.py
+├── events/                 # 事件聚合系统
+│   ├── models.py           # Event + EventArticle 模型
+│   ├── aggregator.py       # 48h 窗口聚类 + velocity
+│   └── narrator.py         # Claude CLI 事件摘要生成
+├── users/                  # 用户个性化
+│   ├── models.py           # UserProfile (topic_weights)
+│   └── service.py          # CRUD + 权重验证
+├── bridge/
+│   └── quant.py            # Async 价格数据 (httpx → quant-data-pipeline)
 ├── tagging/
 │   ├── keywords.py         # 正则关键词标签 (13类)
+│   ├── tickers.py          # Ticker 提取 (cashtag + 别名)
 │   └── llm.py              # Claude LLM 评分器
-├── frontend/               # React 阅读工作台
+├── db/
+│   ├── models.py           # Article + SourceRegistry + Event + UserProfile
+│   ├── database.py         # Engine, Session, init_db
+│   └── migrations.py       # 幂等 Schema 迁移
+├── frontend/               # React 暗色终端风格 UI
+│   ├── src/components/     # MorningBrief, EventCard, FeedCard, ContextRail
+│   └── src/pages/          # Feed, Event, EventHistory, Settings, Search
 ├── scripts/                # 手动运行脚本
-└── tests/                  # pytest 测试套件
+├── tests/                  # 290+ pytest 测试
+└── plans/                  # 设计文档 + 实施计划
 ```
+
+## 配置
+
+| 变量 | 说明 | 必填 | 默认值 |
+|------|------|------|--------|
+| `ANTHROPIC_API_KEY` | Claude API (LLM 评分) | 否 | CLI fallback |
+| `XUEQIU_COOKIE` | 雪球登录 cookie | 否 | 跳过雪球采集 |
+| `GITHUB_TOKEN` | GitHub API token | 否 | 受限速率 |
+| `QUANT_API_BASE_URL` | quant-data-pipeline 地址 | 否 | `http://localhost:8000` |
 
 ## For AI Agents
 
@@ -184,38 +259,23 @@ python scripts/run_llm_tagger.py --backfill     # 补评历史文章
 
 ```yaml
 name: qualitative-data-pipeline
-description: Qualitative signal workbench — collects, scores, and aggregates high-value market & tech content from 10+ sources into structured signal APIs
-version: 0.1.0
+description: Trading signal intelligence — collects from 10+ sources, LLM-scores relevance, clusters cross-source events with AI narratives, extracts tickers, and bridges to quantitative price data
+version: 2.0.0
 api_base_url: http://localhost:8001
 endpoints:
   - path: /api/articles/latest
     method: GET
-    description: Recent articles sorted by time, filterable by source and relevance
+    description: Recent articles filterable by source and relevance
     params:
       - name: limit
         type: integer
         required: false
-        description: Max results (default 20)
       - name: source
         type: string
         required: false
-        description: Filter by source (rss, hackernews, reddit, xueqiu, etc.)
       - name: min_relevance
         type: integer
         required: false
-        description: Minimum LLM relevance score (1-5)
-  - path: /api/articles/search
-    method: GET
-    description: Full-text keyword search across all articles
-    params:
-      - name: q
-        type: string
-        required: true
-        description: Search query
-      - name: days
-        type: integer
-        required: false
-        description: Limit to recent N days
   - path: /api/articles/signals
     method: GET
     description: Topic heat, narrative momentum, relevance distribution
@@ -223,16 +283,35 @@ endpoints:
       - name: hours
         type: integer
         required: false
-        description: Time window (default 24)
-  - path: /api/articles/digest
+  - path: /api/events/active
     method: GET
-    description: Articles grouped by source with top tags
+    description: Active cross-source events ranked by freshness-weighted signal score
+  - path: /api/events/{id}
+    method: GET
+    description: Event detail with article timeline, AI narrative, and price impacts
   - path: /api/ui/feed
     method: GET
-    description: Priority-scored feed with context rail data
-  - path: /api/health
+    description: Priority-scored feed with Morning Brief and personalization
+    params:
+      - name: user
+        type: string
+        required: false
+      - name: min_relevance
+        type: integer
+        required: false
+      - name: window
+        type: string
+        required: false
+  - path: /api/events/history
     method: GET
-    description: Per-source health status (registry-driven)
+    description: Closed events from last N days with tag filtering
+    params:
+      - name: days
+        type: integer
+        required: false
+      - name: tag
+        type: string
+        required: false
 install_command: pip install -r requirements.txt
 start_command: python main.py
 health_check: GET /api/health
@@ -244,13 +323,16 @@ dependencies:
   - yfinance
   - anthropic
   - apscheduler
+  - httpx
 capabilities:
-  - collect articles from 10+ sources (HN, RSS, Xueqiu, Reddit, GitHub, Yahoo Finance, Google News, etc.)
-  - auto-tag articles with 13 keyword categories on ingest
-  - score article relevance (1-5) and extract narrative tags via Claude LLM
-  - track topic heat and narrative momentum over time
-  - serve priority-ranked signal feed for trading decisions
-input_format: No input required — collectors run on schedule via APScheduler
+  - collect articles from 10+ sources on schedule
+  - auto-tag with 13 keyword categories and extract stock tickers
+  - score relevance (1-5) and generate narrative tags via Claude
+  - cluster cross-source events with signal scoring and AI summaries
+  - track signal velocity (strengthening/weakening trends)
+  - bridge to quantitative data for price impact analysis
+  - personalize feed ranking per user with topic weights
+input_format: No input required — collectors run on schedule
 output_format: JSON API responses
 ```
 
@@ -259,25 +341,25 @@ output_format: JSON API responses
 ```python
 import httpx
 
-async def get_trading_signals():
+async def get_trading_intelligence():
     base = "http://localhost:8001"
+    async with httpx.AsyncClient() as client:
+        # 获取当前最重要的跨源事件
+        events = await client.get(f"{base}/api/events/active")
+        top_events = events.json()["events"]
 
-    # Step 1: 获取最近 24 小时的信号概览
-    signals = await httpx.AsyncClient().get(f"{base}/api/articles/signals?hours=24")
-    hot_topics = signals.json()
+        # 查看最高信号分事件的详情（含 AI 摘要 + 价格影响）
+        if top_events:
+            detail = await client.get(f"{base}/api/events/{top_events[0]['id']}")
+            event = detail.json()
+            # event["event"]["narrative_summary"] → AI 生成的交易员摘要
+            # event["price_impacts"] → [{ticker, price_at_event, change_1d, ...}]
 
-    # Step 2: 搜索特定关键词的高质量文章
-    articles = await httpx.AsyncClient().get(
-        f"{base}/api/articles/search",
-        params={"q": "gold price", "days": 3}
-    )
-    results = articles.json()
+        # 获取个性化信号流
+        feed = await client.get(f"{base}/api/ui/feed", params={"user": "wendy"})
+        # feed["context"]["top_events"] → Morning Brief 数据
 
-    # Step 3: 获取优先级排序的信号流
-    feed = await httpx.AsyncClient().get(f"{base}/api/ui/feed")
-    top_items = feed.json()
-
-    return {"signals": hot_topics, "search": results, "feed": top_items}
+        return {"events": top_events, "detail": event, "feed": feed.json()}
 ```
 
 ### MCP / Tool-Use 接口
@@ -285,28 +367,28 @@ async def get_trading_signals():
 ```json
 {
   "tool_name": "qualitative-data-pipeline",
-  "description": "Query qualitative market signals from 10+ sources with relevance scoring",
+  "description": "Query cross-source trading signals with AI narratives and price impacts",
   "parameters": {
     "action": {
       "type": "string",
-      "enum": ["latest", "search", "signals", "digest", "feed"],
-      "description": "要执行的查询类型"
+      "enum": ["events", "event_detail", "feed", "search", "signals", "history"],
+      "description": "查询类型"
+    },
+    "event_id": {
+      "type": "integer",
+      "description": "事件 ID (action=event_detail 时必填)"
     },
     "query": {
       "type": "string",
       "description": "搜索关键词 (action=search 时必填)"
     },
-    "source": {
+    "user": {
       "type": "string",
-      "description": "数据源过滤 (hackernews, rss, xueqiu, reddit, etc.)"
+      "description": "用户名，启用个性化排序 (action=feed 时可选)"
     },
     "hours": {
       "type": "integer",
-      "description": "时间窗口，单位小时 (action=signals 时使用)"
-    },
-    "min_relevance": {
-      "type": "integer",
-      "description": "最低相关度分数 1-5 (action=latest 时使用)"
+      "description": "时间窗口 (action=signals 时使用)"
     }
   }
 }
@@ -318,7 +400,7 @@ async def get_trading_signals():
 |---|---|
 | [quant-data-pipeline](https://github.com/zinan92/quant-data-pipeline) | 定量数据管道 — A股、美股、加密、商品、债券、外汇 (port 8000) |
 
-两个管道最终会汇入统一的交易决策系统：**定量提供数据，定性提供叙事**。
+两个管道构成完整的交易决策系统：**定量提供价格数据，定性提供叙事信号**。Quant Bridge 已打通两端。
 
 ## License
 
