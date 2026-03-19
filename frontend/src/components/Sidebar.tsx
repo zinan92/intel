@@ -80,6 +80,14 @@ export function Sidebar() {
           >
             All
           </Link>
+          <Link
+            to="/events/history"
+            className={`block px-2 py-1 rounded text-sm ${
+              isActive("/events/history") ? "bg-brand-50 text-brand-700 font-medium" : "text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            History
+          </Link>
         </div>
 
         {topTopics.length > 0 && (
