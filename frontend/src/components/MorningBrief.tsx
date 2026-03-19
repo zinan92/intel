@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { EventCard } from "./EventCard";
+import { EventCard, VelocityArrow } from "./EventCard";
 import type { TopEvent } from "../types/api";
 
 interface Props {
@@ -31,7 +31,9 @@ export function MorningBrief({ events }: Props) {
         <div className="flex justify-between items-start">
           <div>
             <div className="text-[10px] font-semibold text-orange-400 uppercase tracking-wide">
-              Signal {hero.signal_score.toFixed(1)} · {hero.source_count} sources
+              Signal {hero.signal_score.toFixed(1)}
+              <VelocityArrow current={hero.signal_score} prev={hero.prev_signal_score} />
+              {" "}· {hero.source_count} sources
             </div>
             <div className="text-base font-semibold text-white mt-1">
               {hero.narrative_tag.replace(/-/g, " ")}
@@ -39,6 +41,11 @@ export function MorningBrief({ events }: Props) {
             <div className="text-xs text-slate-400 mt-1">
               {hero.sources.join(" · ")}
             </div>
+            {hero.narrative_summary && (
+              <p className="text-xs text-slate-300 mt-2 line-clamp-2">
+                {hero.narrative_summary}
+              </p>
+            )}
           </div>
           {hero.tickers.length > 0 && (
             <div className="text-right shrink-0 ml-4">

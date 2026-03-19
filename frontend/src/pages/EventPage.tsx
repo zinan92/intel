@@ -71,8 +71,16 @@ export function EventPage() {
             {event.source_count} sources &middot; {event.article_count} articles &middot; {formatTimeAgo(event.window_start)}
           </p>
         </div>
-        <div className="bg-orange-500 text-white text-lg font-bold px-3.5 py-1.5 rounded-lg shrink-0 ml-4">
-          {event.signal_score.toFixed(1)}
+        <div className="shrink-0 ml-4">
+          <div className="bg-orange-500 text-white text-lg font-bold px-3.5 py-1.5 rounded-lg">
+            {event.signal_score.toFixed(1)}
+          </div>
+          {data.event.prev_signal_score !== null && (
+            <p className="text-xs text-gray-500 mt-1">
+              {data.event.signal_score > data.event.prev_signal_score ? "↑" : data.event.signal_score < data.event.prev_signal_score ? "↓" : "→"}
+              {" "}from {data.event.prev_signal_score.toFixed(1)}
+            </p>
+          )}
         </div>
       </div>
 
@@ -83,6 +91,10 @@ export function EventPage() {
           </span>
         ))}
       </div>
+
+      {data.event.narrative_summary && (
+        <p className="text-sm text-gray-600 mb-4">{data.event.narrative_summary}</p>
+      )}
 
       {price_impacts.length > 0 && (
         <div className="bg-slate-800 rounded-lg p-4 mb-5">
