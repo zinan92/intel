@@ -84,6 +84,7 @@ async def get_event_detail(event_id: int) -> dict[str, Any]:
                 "title": a.title,
                 "url": a.url,
                 "author": a.author,
+                "summary": (a.content or "")[:150],
                 "relevance_score": a.relevance_score,
                 "published_at": a.published_at.isoformat() if a.published_at else None,
                 "collected_at": a.collected_at.isoformat() if a.collected_at else None,
