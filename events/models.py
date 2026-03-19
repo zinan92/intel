@@ -24,6 +24,8 @@ class Event(Base):
     signal_score: Mapped[float] = mapped_column(Float, default=0.0)
     avg_relevance: Mapped[float] = mapped_column(Float, default=0.0)
     status: Mapped[str] = mapped_column(String, default="active")
+    narrative_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    prev_signal_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow,
