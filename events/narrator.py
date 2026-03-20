@@ -37,15 +37,38 @@ def _call_claude(prompt: str) -> str | None:
 
 
 def _parse_narrator_response(response: str) -> tuple[str, str | None]:
-    marker = "SCENARIO A:"
-    idx = response.find(marker)
-    if idx == -1:
-        return response.strip(), None
-    summary_part = response[:idx].strip()
-    play_part = response[idx:].strip()
-    if summary_part.upper().startswith("SUMMARY:"):
-        summary_part = summary_part[8:].strip()
-    return summary_part, play_part
+    """Parse narrator response into (summary, trading_play).
+
+    trading_play format stored:
+    BULL_PCT:65
+    BULL: If condition, then outcome. Consider action.
+    BEAR_PCT:35
+    BEAR: If condition, then outcome. Consider action.
+    """
+    summary = response.strip()
+    play = None
+
+    # Try to find BULL_PCT marker (structured format)
+    bull_idx = response.find("BULL_PCT:")
+    if bull_idx == -1:
+        # Fallback: try old SCENARIO A format
+        marker = "SCENARIO A:"
+        idx = response.find(marker)
+        if idx == -1:
+            return response.strip(), None
+        summary = response[:idx].strip()
+        play = response[idx:].strip()
+        if summary.upper().startswith("SUMMARY:"):
+            summary = summary[8:].strip()
+        return summary, play
+
+    # New structured format
+    summary = response[:bull_idx].strip()
+    if summary.upper().startswith("SUMMARY:"):
+        summary = summary[8:].strip()
+
+    play = response[bull_idx:].strip()
+    return summary, play
 
 
 def _build_prompt(event: Event, articles: list[Article]) -> str:
@@ -60,12 +83,12 @@ def _build_prompt(event: Event, articles: list[Article]) -> str:
         f"Event: {tag_display}\n"
         f"Sources: {event.source_count} sources, {event.article_count} articles\n"
         f"{articles_text}\n"
-        f"Respond in this exact format:\n\n"
+        f"Respond in this EXACT format (keep the labels exactly as shown):\n\n"
         f"SUMMARY: [2-3 sentence summary of what happened and why it matters]\n\n"
-        f"SCENARIO A: If [specific bull condition], then [expected outcome]. "
-        f"Consider [specific action with ticker and timeframe].\n\n"
-        f"SCENARIO B: If [specific bear condition], then [expected outcome]. "
-        f"Consider [specific action with ticker and timeframe]."
+        f"BULL_PCT: [integer 0-100, probability of bull case]\n"
+        f"BULL: If [specific condition], then [expected outcome]. Consider [action with ticker and timeframe].\n\n"
+        f"BEAR_PCT: [integer 0-100, probability of bear case, must equal 100 minus BULL_PCT]\n"
+        f"BEAR: If [specific condition], then [expected outcome]. Consider [action with ticker and timeframe]."
     )
 
 
