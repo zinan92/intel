@@ -402,16 +402,59 @@ export function ConstellationPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-[70vh]">
-        <p className="text-slate-500 text-sm">Loading constellation...</p>
+      <div className="flex flex-col items-center justify-center h-[70vh] gap-3">
+        <div className="relative w-12 h-12">
+          <div className="absolute inset-0 rounded-full border-2 border-brand-500/20 animate-ping" />
+          <div className="absolute inset-2 rounded-full border border-brand-500/40 animate-pulse" />
+        </div>
+        <p className="text-xs text-slate-500 font-mono">Loading signals...</p>
+      </div>
+    );
+  }
+
+  if (!data || data.filter((e) => e.source_count >= 2).length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[70vh] gap-4">
+        <div className="w-16 h-16 rounded-full bg-slate-800/50 flex items-center justify-center">
+          <span className="text-2xl">🔭</span>
+        </div>
+        <h2 className="text-lg font-semibold text-slate-300">No cross-source signals yet</h2>
+        <p className="text-sm text-slate-500 text-center max-w-md">
+          Signals appear when the same event is reported by 2+ independent sources.
+          Check back in a few hours as collectors gather more data.
+        </p>
+        <Link to="/browse" className="text-sm text-brand-400 hover:text-brand-300 mt-2">
+          Browse all articles →
+        </Link>
       </div>
     );
   }
 
   return (
     <div className="relative" style={{ height: "calc(100vh - 80px)" }}>
+      {/* Headline — #1 signal */}
+      {data && data.filter((e) => e.source_count >= 2).length > 0 && (() => {
+        const top = data.filter((e) => e.source_count >= 2).sort((a, b) => b.signal_score - a.signal_score)[0];
+        const cat = categorize(top.narrative_tag);
+        return (
+          <div className="absolute top-0 left-0 right-0 z-10 bg-slate-950/60 backdrop-blur-sm border-b border-surface-border px-6 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: CAT_CONFIG[cat].color }} />
+              <span className="text-sm text-slate-300">
+                <span className="font-semibold text-slate-100 capitalize">{top.narrative_tag.replace(/-/g, " ")}</span>
+                <span className="text-slate-500 mx-2">&middot;</span>
+                <span className="font-mono text-xs" style={{ color: CAT_CONFIG[cat].color }}>Signal {top.signal_score.toFixed(1)}</span>
+                <span className="text-slate-500 mx-2">&middot;</span>
+                <span className="text-slate-500 text-xs">{top.source_count} sources</span>
+              </span>
+            </div>
+            <span className="text-[10px] text-slate-600 font-mono">{new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+          </div>
+        );
+      })()}
+
       {/* HUD */}
-      <div className="absolute left-4 top-2 z-10">
+      <div className="absolute left-4 top-14 z-10">
         <h1 className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest">
           Signal Constellation
         </h1>
@@ -437,113 +480,117 @@ export function ConstellationPage() {
       {/* SVG */}
       <svg ref={svgRef} className="w-full h-full" />
 
-      {/* Detail panel */}
-      {selectedEvent && (
-        <div className="absolute right-0 top-0 w-[360px] h-full bg-slate-900/95 backdrop-blur-xl border-l border-surface-border p-6 z-20 overflow-y-auto">
-          <button
-            onClick={() => setSelectedEvent(null)}
-            className="absolute top-4 right-4 w-8 h-8 bg-slate-800/50 border border-surface-border rounded-lg text-slate-500 hover:text-slate-200 flex items-center justify-center"
-          >
-            &times;
-          </button>
-          <h2 className="text-lg font-semibold text-slate-100 capitalize pr-10">
-            {selectedEvent.id.replace(/-/g, " ")}
-          </h2>
-          <div
-            className="mt-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg"
-            style={{
-              background: `${CAT_CONFIG[selectedEvent.cat].color}10`,
-              border: `1px solid ${CAT_CONFIG[selectedEvent.cat].color}22`,
-            }}
-          >
-            <span
-              className="w-2 h-2 rounded-full"
-              style={{ background: CAT_CONFIG[selectedEvent.cat].color }}
-            />
-            <span
-              className="font-mono text-xs"
-              style={{ color: CAT_CONFIG[selectedEvent.cat].color }}
-            >
-              Signal {selectedEvent.score.toFixed(1)} · {selectedEvent.sourceCount} sources
-            </span>
-          </div>
-          <div className="mt-4 flex flex-wrap gap-1.5">
-            {selectedEvent.sources.map((s) => (
-              <span
-                key={s}
-                className="bg-blue-500/10 text-blue-400 border border-blue-500/15 text-[10px] px-2 py-0.5 rounded"
+      {/* Detail panel — slide-in transition */}
+      <div className={`absolute right-0 top-0 w-[380px] h-full bg-slate-900/95 backdrop-blur-xl border-l border-surface-border z-20 overflow-y-auto transition-transform duration-300 ease-out ${selectedEvent ? "translate-x-0" : "translate-x-full"}`}>
+        <div className="p-6">
+          {selectedEvent && (
+            <>
+              <button
+                onClick={() => setSelectedEvent(null)}
+                className="absolute top-4 right-4 w-8 h-8 bg-slate-800/50 border border-surface-border rounded-lg text-slate-500 hover:text-slate-200 flex items-center justify-center"
               >
-                {s}
-              </span>
-            ))}
-          </div>
-
-          {/* Narrative summary */}
-          {eventDetail?.event.narrative_summary && (
-            <p className="mt-4 text-sm text-slate-300 leading-relaxed">
-              {eventDetail.event.narrative_summary}
-            </p>
-          )}
-
-          {/* Trading play — bull/bear probability */}
-          {tradingPlay && (
-            <div className="mt-4">
-              <p className="text-[9px] text-slate-500 uppercase tracking-wider mb-2">Scenario Analysis</p>
-
-              {/* Probability bar */}
-              <div className="flex h-2 rounded-full overflow-hidden mb-3">
-                <div className="bg-green-500/60" style={{ width: `${tradingPlay.bullPct}%` }} />
-                <div className="bg-red-500/60" style={{ width: `${tradingPlay.bearPct}%` }} />
+                &times;
+              </button>
+              <h2 className="text-lg font-semibold text-slate-100 capitalize pr-10">
+                {selectedEvent.id.replace(/-/g, " ")}
+              </h2>
+              <div
+                className="mt-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg"
+                style={{
+                  background: `${CAT_CONFIG[selectedEvent.cat].color}10`,
+                  border: `1px solid ${CAT_CONFIG[selectedEvent.cat].color}22`,
+                }}
+              >
+                <span
+                  className="w-2 h-2 rounded-full"
+                  style={{ background: CAT_CONFIG[selectedEvent.cat].color }}
+                />
+                <span
+                  className="font-mono text-xs"
+                  style={{ color: CAT_CONFIG[selectedEvent.cat].color }}
+                >
+                  Signal {selectedEvent.score.toFixed(1)} · {selectedEvent.sourceCount} sources
+                </span>
               </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                {/* Bull */}
-                <div className="bg-green-500/5 border border-green-500/10 rounded-lg p-3">
-                  <div className="flex items-center gap-1.5 mb-1.5">
-                    <span className="text-green-400 text-xs font-semibold">BULL</span>
-                    <span className="text-green-400/70 text-xs font-mono">{tradingPlay.bullPct}%</span>
-                  </div>
-                  <p className="text-[11px] text-slate-400 leading-relaxed">{tradingPlay.bullText}</p>
-                </div>
-                {/* Bear */}
-                <div className="bg-red-500/5 border border-red-500/10 rounded-lg p-3">
-                  <div className="flex items-center gap-1.5 mb-1.5">
-                    <span className="text-red-400 text-xs font-semibold">BEAR</span>
-                    <span className="text-red-400/70 text-xs font-mono">{tradingPlay.bearPct}%</span>
-                  </div>
-                  <p className="text-[11px] text-slate-400 leading-relaxed">{tradingPlay.bearText}</p>
-                </div>
-              </div>
-
-              <p className="text-[9px] text-slate-600 mt-2">AI-generated analysis. Not financial advice.</p>
-            </div>
-          )}
-
-          {/* Price impacts */}
-          {eventDetail?.price_impacts && eventDetail.price_impacts.length > 0 && (
-            <div className="mt-4">
-              <p className="text-[9px] text-slate-500 uppercase tracking-wider mb-2">Price Impact</p>
-              <div className="flex gap-4">
-                {eventDetail.price_impacts.map((pi) => (
-                  <div key={pi.ticker} className="font-mono text-xs">
-                    <span className="text-slate-500">${pi.ticker} </span>
-                    <span className={pi.change_1d >= 0 ? "text-green-400" : "text-red-400"}>
-                      {pi.change_1d >= 0 ? "+" : ""}{pi.change_1d.toFixed(1)}%
-                    </span>
-                  </div>
+              <div className="mt-4 flex flex-wrap gap-1.5">
+                {selectedEvent.sources.map((s) => (
+                  <span
+                    key={s}
+                    className="bg-blue-500/10 text-blue-400 border border-blue-500/15 text-[10px] px-2 py-0.5 rounded"
+                  >
+                    {s}
+                  </span>
                 ))}
               </div>
-            </div>
-          )}
 
-          <Link
-            to={`/events/${selectedEvent.eventId}`}
-            className="mt-6 block text-center text-sm bg-brand-500/10 text-brand-400 border border-brand-500/20 rounded-lg py-2 hover:bg-brand-500/20 transition-colors"
-          >
-            View Full Detail →
-          </Link>
+              {/* Narrative summary */}
+              {eventDetail?.event.narrative_summary && (
+                <p className="mt-4 text-sm text-slate-300 leading-relaxed">
+                  {eventDetail.event.narrative_summary}
+                </p>
+              )}
+
+              {/* Trading play — bull/bear probability */}
+              {tradingPlay && (
+                <div className="mt-4">
+                  <p className="text-[9px] text-slate-500 uppercase tracking-wider mb-2">Scenario Analysis</p>
+
+                  {/* Probability bar */}
+                  <div className="flex h-2 rounded-full overflow-hidden mb-3">
+                    <div className="bg-green-500/60" style={{ width: `${tradingPlay.bullPct}%` }} />
+                    <div className="bg-red-500/60" style={{ width: `${tradingPlay.bearPct}%` }} />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Bull */}
+                    <div className="bg-green-500/5 border border-green-500/10 rounded-lg p-3">
+                      <div className="flex items-center gap-1.5 mb-1.5">
+                        <span className="text-green-400 text-xs font-semibold">BULL</span>
+                        <span className="text-green-400/70 text-xs font-mono">{tradingPlay.bullPct}%</span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 leading-relaxed">{tradingPlay.bullText}</p>
+                    </div>
+                    {/* Bear */}
+                    <div className="bg-red-500/5 border border-red-500/10 rounded-lg p-3">
+                      <div className="flex items-center gap-1.5 mb-1.5">
+                        <span className="text-red-400 text-xs font-semibold">BEAR</span>
+                        <span className="text-red-400/70 text-xs font-mono">{tradingPlay.bearPct}%</span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 leading-relaxed">{tradingPlay.bearText}</p>
+                    </div>
+                  </div>
+
+                  <p className="text-[9px] text-slate-600 mt-2">AI-generated analysis. Not financial advice.</p>
+                </div>
+              )}
+
+              {/* Price impacts */}
+              {eventDetail?.price_impacts && eventDetail.price_impacts.length > 0 && (
+                <div className="mt-4">
+                  <p className="text-[9px] text-slate-500 uppercase tracking-wider mb-2">Price Impact</p>
+                  <div className="flex gap-4">
+                    {eventDetail.price_impacts.map((pi) => (
+                      <div key={pi.ticker} className="font-mono text-xs">
+                        <span className="text-slate-500">${pi.ticker} </span>
+                        <span className={pi.change_1d >= 0 ? "text-green-400" : "text-red-400"}>
+                          {pi.change_1d >= 0 ? "+" : ""}{pi.change_1d.toFixed(1)}%
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <Link
+                to={`/events/${selectedEvent.eventId}`}
+                className="mt-6 block text-center text-sm bg-brand-500/10 text-brand-400 border border-brand-500/20 rounded-lg py-2 hover:bg-brand-500/20 transition-colors"
+              >
+                View Full Detail →
+              </Link>
+            </>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

@@ -46,35 +46,39 @@ export function Sidebar() {
           <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-2">Nav</p>
           <Link
             to={`/${activeUser ? `?user=${encodeURIComponent(activeUser)}` : ""}`}
-            className={`block px-2 py-1 rounded text-sm ${
+            className={`flex items-center gap-2 px-2 py-1.5 rounded text-sm transition-colors ${
               isActive("/") ? "bg-slate-800/60 text-brand-400 font-medium" : "text-slate-400 hover:text-slate-200"
             }`}
           >
+            {isActive("/") && <span className="w-1 h-1 rounded-full bg-brand-400" />}
             Signals
           </Link>
           <Link
             to={`/browse${activeUser ? `?user=${encodeURIComponent(activeUser)}` : ""}`}
-            className={`block px-2 py-1 rounded text-sm ${
+            className={`flex items-center gap-2 px-2 py-1.5 rounded text-sm transition-colors ${
               isActive("/browse") ? "bg-slate-800/60 text-brand-400 font-medium" : "text-slate-400 hover:text-slate-200"
             }`}
           >
+            {isActive("/browse") && <span className="w-1 h-1 rounded-full bg-brand-400" />}
             Browse
           </Link>
           <Link
             to="/search"
-            className={`block px-2 py-1 rounded text-sm ${
+            className={`flex items-center gap-2 px-2 py-1.5 rounded text-sm transition-colors ${
               isActive("/search") ? "bg-slate-800/60 text-brand-400 font-medium" : "text-slate-400 hover:text-slate-200"
             }`}
           >
+            {isActive("/search") && <span className="w-1 h-1 rounded-full bg-brand-400" />}
             Search
           </Link>
           {activeUser && (
             <Link
               to={`/settings?user=${encodeURIComponent(activeUser)}`}
-              className={`block px-2 py-1 rounded text-sm ${
+              className={`flex items-center gap-2 px-2 py-1.5 rounded text-sm transition-colors ${
                 isActive("/settings") ? "bg-slate-800/60 text-brand-400 font-medium" : "text-slate-400 hover:text-slate-200"
               }`}
             >
+              {isActive("/settings") && <span className="w-1 h-1 rounded-full bg-brand-400" />}
               Settings
             </Link>
           )}
