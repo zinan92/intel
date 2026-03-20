@@ -118,6 +118,85 @@ def get_event_history(
         session.close()
 
 
+@event_router.get("/events/scorecard")
+def get_scorecard(
+    days: int = Query(default=30, ge=1, le=365),
+    min_events: int = Query(default=2, ge=1, le=50),
+) -> dict[str, Any]:
+    """Aggregate historical signal accuracy by score buckets."""
+    session = get_session()
+    try:
+        cutoff = datetime.utcnow() - timedelta(days=days)
+        events = (
+            session.query(Event)
+            .filter(
+                Event.status == "closed",
+                Event.outcome_data.isnot(None),
+                Event.window_start >= cutoff,
+            )
+            .all()
+        )
+
+        buckets_config = [
+            {"label": "Signal ≥ 8.0", "min": 8.0, "max": 999},
+            {"label": "Signal 6.0–7.9", "min": 6.0, "max": 8.0},
+            {"label": "Signal 4.0–5.9", "min": 4.0, "max": 6.0},
+            {"label": "Signal < 4.0", "min": 0, "max": 4.0},
+        ]
+
+        bucket_data: dict[str, list[dict]] = {b["label"]: [] for b in buckets_config}
+
+        for event in events:
+            try:
+                outcome = json.loads(event.outcome_data)
+                tickers = outcome.get("tickers", {})
+                if not tickers:
+                    continue
+                changes_1d = [v.get("change_1d", 0) for v in tickers.values() if v.get("change_1d") is not None]
+                changes_3d = [v.get("change_3d", 0) for v in tickers.values() if v.get("change_3d") is not None]
+                changes_5d = [v.get("change_5d", 0) for v in tickers.values() if v.get("change_5d") is not None]
+                if not changes_1d:
+                    continue
+                avg = {
+                    "change_1d": sum(changes_1d) / len(changes_1d),
+                    "change_3d": sum(changes_3d) / len(changes_3d) if changes_3d else None,
+                    "change_5d": sum(changes_5d) / len(changes_5d) if changes_5d else None,
+                }
+                for b in buckets_config:
+                    if b["min"] <= event.signal_score < b["max"]:
+                        bucket_data[b["label"]].append(avg)
+                        break
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+        result_buckets = []
+        total = 0
+        for b in buckets_config:
+            items = bucket_data[b["label"]]
+            if len(items) < min_events:
+                continue
+            total += len(items)
+            c1 = [i["change_1d"] for i in items]
+            c3 = [i["change_3d"] for i in items if i["change_3d"] is not None]
+            c5 = [i["change_5d"] for i in items if i["change_5d"] is not None]
+            result_buckets.append({
+                "label": b["label"],
+                "min_score": b["min"],
+                "event_count": len(items),
+                "avg_change_1d": round(sum(c1) / len(c1), 2),
+                "avg_change_3d": round(sum(c3) / len(c3), 2) if c3 else 0,
+                "avg_change_5d": round(sum(c5) / len(c5), 2) if c5 else 0,
+            })
+
+        return {
+            "buckets": result_buckets,
+            "total_events_with_data": total,
+            "period_days": days,
+        }
+    finally:
+        session.close()
+
+
 @event_router.get("/events/{event_id}")
 async def get_event_detail(event_id: int) -> dict[str, Any]:
     """Get event detail with linked articles and price impacts."""
@@ -183,6 +262,7 @@ async def get_event_detail(event_id: int) -> dict[str, Any]:
                 "avg_relevance": evt.avg_relevance,
                 "narrative_summary": evt.narrative_summary,
                 "prev_signal_score": evt.prev_signal_score,
+                "trading_play": evt.trading_play,
                 "status": evt.status,
                 "created_at": evt.created_at.isoformat(),
                 "updated_at": evt.updated_at.isoformat(),
