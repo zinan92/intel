@@ -23,7 +23,9 @@ const MOMENTUM_COLORS: Record<string, string> = {
 
 function formatAge(iso: string | null): string {
   if (!iso) return "";
-  const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+  // API returns UTC timestamps without Z suffix — append Z so JS parses as UTC
+  const utcIso = iso.endsWith("Z") ? iso : iso + "Z";
+  const diff = (Date.now() - new Date(utcIso).getTime()) / 1000;
   if (diff < 3600) return `${Math.round(diff / 60)}m`;
   if (diff < 86400) return `${Math.round(diff / 3600)}h`;
   return `${Math.round(diff / 86400)}d`;
