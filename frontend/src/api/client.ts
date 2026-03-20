@@ -3,6 +3,7 @@ import type {
   ItemDetail,
   EventDetail,
   EventHistoryResponse,
+  ScorecardResponse,
   Topic,
   TopicDetail,
   Source,
@@ -74,6 +75,9 @@ export const api = {
 
   eventHistory: (params: { days?: number; tag?: string; limit?: number } = {}): Promise<EventHistoryResponse> =>
     get(`/api/events/history${buildQuery(params as Record<string, string | number | undefined>)}`),
+
+  scorecard: (params: { days?: number; min_events?: number } = {}): Promise<ScorecardResponse> =>
+    get(`/api/events/scorecard${buildQuery(params as Record<string, string | number | undefined>)}`),
 
   updateWeights: async (username: string, weights: Record<string, number>): Promise<UserProfile> => {
     const res = await fetch(`${BASE}/api/users/${encodeURIComponent(username)}/weights`, {
