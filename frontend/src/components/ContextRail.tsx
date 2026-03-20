@@ -5,7 +5,6 @@ interface Props {
 }
 
 export function ContextRail({ context }: Props) {
-  const rising = context?.rising_topics ?? [];
   const health = context?.source_health ?? [];
 
   if (!context) {
@@ -26,20 +25,6 @@ export function ContextRail({ context }: Props) {
   return (
     <aside className="w-52 shrink-0 hidden xl:block">
       <div className="sticky top-20 space-y-6 pl-2">
-        {rising.length > 0 && (
-          <div>
-            <p className="text-[10px] text-slate-500 uppercase tracking-widest font-mono mb-2">Rising Topics</p>
-            <ul className="space-y-1">
-              {rising.slice(0, 8).map((t) => (
-                <li key={t.topic} className="flex items-center justify-between gap-2 text-sm">
-                  <span className="text-slate-300 truncate">{t.topic}</span>
-                  <span className="text-xs text-slate-500 font-mono shrink-0">{t.count}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
         {health.length > 0 && (() => {
           const okCount = health.filter((h) => h.status === "ok").length;
           const degradedCount = health.filter((h) => h.status === "degraded").length;

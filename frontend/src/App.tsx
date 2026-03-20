@@ -8,6 +8,7 @@ import { SearchPage } from "./pages/SearchPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { EventPage } from "./pages/EventPage";
 import { EventHistoryPage } from "./pages/EventHistoryPage";
+import { ConstellationPage } from "./pages/ConstellationPage";
 
 export function App() {
   return (
@@ -18,6 +19,7 @@ export function App() {
         <main className="flex-1 min-w-0">
           <Routes>
             <Route path="/" element={<FeedPage />} />
+            <Route path="/constellation" element={<ConstellationPage />} />
             <Route path="/events/history" element={<EventHistoryPage />} />
             <Route path="/events/:id" element={<EventPage />} />
             <Route path="/topics/:slug" element={<TopicPage />} />
