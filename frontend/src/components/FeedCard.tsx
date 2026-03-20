@@ -1,5 +1,10 @@
 import type { FeedItem } from "../types/api";
 
+/** Strip HTML tags from text content. */
+export function stripHtml(html: string): string {
+  return html.replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#\d+;/g, " ").trim();
+}
+
 const KIND_COLORS: Record<string, string> = {
   release: "bg-violet-500/10 text-violet-400",
   discussion: "bg-blue-500/10 text-blue-400",
@@ -60,7 +65,7 @@ export function FeedCard({ item, onClick }: Props) {
 
       {item.summary && (
         <p className="mt-1 text-xs text-slate-400 line-clamp-2 leading-relaxed">
-          {item.summary}
+          {stripHtml(item.summary)}
         </p>
       )}
 
