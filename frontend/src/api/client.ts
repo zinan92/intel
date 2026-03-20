@@ -25,7 +25,7 @@ async function get<T>(path: string): Promise<T> {
 export interface FeedParams {
   source?: string;
   topic?: string;
-  min_relevance?: number;
+  events_only?: boolean;
   window?: string;
   limit?: number;
   cursor?: string;

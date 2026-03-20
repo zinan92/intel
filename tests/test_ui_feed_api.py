@@ -144,7 +144,8 @@ def test_feed_item_required_fields(client):
     item = data["items"][0]
     for field in ("id", "title", "source", "source_kind", "url", "summary",
                   "relevance_score", "priority_score", "momentum_label",
-                  "tags", "narrative_tags", "published_at", "collected_at"):
+                  "tags", "narrative_tags", "published_at", "collected_at",
+                  "in_event"):
         assert field in item, f"Missing field: {field}"
 
 
@@ -190,11 +191,12 @@ def test_feed_empty_result_not_500(client):
     assert data["page"]["next_cursor"] is None
 
 
-def test_feed_min_relevance_filter(client):
-    resp = client.get("/api/ui/feed?min_relevance=5")
+def test_feed_events_only_filter(client):
+    """events_only=true returns empty when no events exist."""
+    resp = client.get("/api/ui/feed?events_only=true")
     items = resp.json()["items"]
-    assert all(i["relevance_score"] == 5 for i in items)
-    assert len(items) == 2  # rss_001 and gr_004
+    # No events seeded, so no articles should match
+    assert items == []
 
 
 def test_feed_source_kind_github_release(client):
