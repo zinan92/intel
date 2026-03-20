@@ -1,6 +1,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
+import { stripHtml } from "./FeedCard";
 
 interface Props {
   itemId: number | null;
@@ -99,7 +100,7 @@ export function ItemDrawer({ itemId, onClose }: Props) {
                 {/* Content */}
                 {data.content && (
                   <div className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap border-t border-surface-border pt-4">
-                    {data.content}
+                    {stripHtml(data.content)}
                   </div>
                 )}
 
