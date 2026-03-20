@@ -8,28 +8,21 @@ import { MorningBrief } from "../components/MorningBrief";
 import { ItemDrawer } from "../components/ItemDrawer";
 import type { FeedItem } from "../types/api";
 
-const RELEVANCE_OPTIONS = [
-  { value: 1, label: "All" },
-  { value: 3, label: "3+" },
-  { value: 4, label: "4+" },
-  { value: 5, label: "5 only" },
-];
-
 const WINDOW_OPTIONS = ["6h", "12h", "24h", "48h", "7d"];
 
 export function FeedPage() {
   const [searchParams] = useSearchParams();
   const activeUser = searchParams.get("user") ?? "";
-  const [minRelevance, setMinRelevance] = useState(1);
+  const [eventsOnly, setEventsOnly] = useState(false);
   const [window, setWindow] = useState("24h");
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading, isError } =
     useInfiniteQuery({
-      queryKey: ["feed", minRelevance, window, activeUser],
+      queryKey: ["feed", eventsOnly, window, activeUser],
       queryFn: ({ pageParam }) =>
         api.feed({
-          min_relevance: minRelevance,
+          events_only: eventsOnly || undefined,
           window,
           limit: 20,
           cursor: pageParam as string | undefined,
@@ -51,21 +44,16 @@ export function FeedPage() {
 
         {/* Filter bar */}
         <div className="flex flex-wrap items-center gap-3 mb-4">
-          <div className="flex items-center gap-1">
-            {RELEVANCE_OPTIONS.map((o) => (
-              <button
-                key={o.value}
-                onClick={() => setMinRelevance(o.value)}
-                className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
-                  minRelevance === o.value
-                    ? "bg-brand-500 text-slate-950 border-brand-500"
-                    : "border-surface-border text-slate-400 hover:border-slate-500"
-                }`}
-              >
-                {o.label}
-              </button>
-            ))}
-          </div>
+          <button
+            onClick={() => setEventsOnly(!eventsOnly)}
+            className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
+              eventsOnly
+                ? "bg-brand-500 text-slate-950 border-brand-500"
+                : "border-surface-border text-slate-400 hover:border-slate-500"
+            }`}
+          >
+            {eventsOnly ? "Event signals only" : "All articles"}
+          </button>
           <div className="flex items-center gap-1">
             {WINDOW_OPTIONS.map((w) => (
               <button
