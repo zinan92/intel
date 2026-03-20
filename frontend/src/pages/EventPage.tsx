@@ -14,6 +14,32 @@ function formatTimeAgo(iso: string | null): string {
   return `${days}d ago`;
 }
 
+function parseTradingPlay(play: string | null): { bullPct: number; bullText: string; bearPct: number; bearText: string } | null {
+  if (!play) return null;
+
+  const bullPctMatch = play.match(/BULL_PCT:\s*(\d+)/);
+  const bearPctMatch = play.match(/BEAR_PCT:\s*(\d+)/);
+  const bullTextMatch = play.match(/BULL:\s*(.+?)(?=\n\n|BEAR_PCT|$)/s);
+  const bearTextMatch = play.match(/BEAR:\s*(.+?)$/s);
+
+  // Fallback for old SCENARIO format
+  if (!bullPctMatch) {
+    const scenarioA = play.match(/SCENARIO A:\s*(.+?)(?=SCENARIO B|$)/s);
+    const scenarioB = play.match(/SCENARIO B:\s*(.+?)$/s);
+    if (scenarioA && scenarioB) {
+      return { bullPct: 50, bullText: scenarioA[1].trim(), bearPct: 50, bearText: scenarioB[1].trim() };
+    }
+    return null;
+  }
+
+  return {
+    bullPct: parseInt(bullPctMatch[1], 10),
+    bullText: bullTextMatch ? bullTextMatch[1].trim() : "",
+    bearPct: bearPctMatch ? parseInt(bearPctMatch[1], 10) : 100 - parseInt(bullPctMatch[1], 10),
+    bearText: bearTextMatch ? bearTextMatch[1].trim() : "",
+  };
+}
+
 function PriceChange({ value }: { value: number }) {
   const color = value >= 0 ? "text-green-400" : "text-red-400";
   const sign = value >= 0 ? "+" : "";
@@ -50,7 +76,7 @@ export function EventPage() {
   if (isError || !data) {
     return (
       <div className="text-sm text-red-400 bg-red-500/10 px-4 py-3 rounded-lg">
-        Failed to load event. <Link to="/" className="underline">Back to Brief</Link>
+        Failed to load event. <Link to="/" className="underline">Back to Signals</Link>
       </div>
     );
   }
@@ -74,7 +100,7 @@ export function EventPage() {
   return (
     <div className="max-w-2xl">
       <Link to="/" className="text-sm text-slate-500 hover:text-slate-300 mb-4 inline-block">
-        &larr; Back to Brief
+        &larr; Back to Signals
       </Link>
 
       <div className="flex justify-between items-start mb-3">
@@ -111,21 +137,54 @@ export function EventPage() {
         <p className="text-sm text-slate-300 mb-4">{data.event.narrative_summary}</p>
       )}
 
-      {data.event.trading_play && (
-        <div className="bg-slate-800/50 border border-surface-border rounded-lg p-4 mb-5">
-          <p className="text-[9px] text-slate-400 uppercase tracking-wider mb-3">Trading Consideration</p>
-          {data.event.trading_play.split(/SCENARIO [AB]:?\s*/i).filter(Boolean).map((scenario, idx) => (
-            <div key={idx} className="mb-3 last:mb-0">
-              {idx === 0 && <span className="text-xs font-semibold text-green-400 mr-1">BULL </span>}
-              {idx === 1 && <span className="text-xs font-semibold text-red-400 mr-1">BEAR </span>}
-              <span className="text-sm text-slate-300">{scenario.trim()}</span>
+      {data.event.trading_play && (() => {
+        const tp = parseTradingPlay(data.event.trading_play);
+        if (!tp) {
+          return (
+            <div className="bg-slate-800/50 border border-surface-border rounded-lg p-4 mb-5">
+              <p className="text-[9px] text-slate-400 uppercase tracking-wider mb-3">Trading Consideration</p>
+              <p className="text-sm text-slate-300">{data.event.trading_play}</p>
+              <p className="text-[10px] text-slate-500 mt-3 pt-2 border-t border-surface-border">
+                AI-generated analysis. Not financial advice.
+              </p>
             </div>
-          ))}
-          <p className="text-[10px] text-slate-500 mt-3 pt-2 border-t border-surface-border">
-            AI-generated analysis. Not financial advice.
-          </p>
-        </div>
-      )}
+          );
+        }
+        return (
+          <div className="bg-slate-800/50 border border-surface-border rounded-lg p-4 mb-5">
+            <p className="text-[9px] text-slate-400 uppercase tracking-wider mb-3">Scenario Analysis</p>
+
+            {/* Probability bar */}
+            <div className="flex h-2 rounded-full overflow-hidden mb-3">
+              <div className="bg-green-500/60" style={{ width: `${tp.bullPct}%` }} />
+              <div className="bg-red-500/60" style={{ width: `${tp.bearPct}%` }} />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              {/* Bull */}
+              <div className="bg-green-500/5 border border-green-500/10 rounded-lg p-3">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <span className="text-green-400 text-xs font-semibold">BULL</span>
+                  <span className="text-green-400/70 text-xs font-mono">{tp.bullPct}%</span>
+                </div>
+                <p className="text-[11px] text-slate-400 leading-relaxed">{tp.bullText}</p>
+              </div>
+              {/* Bear */}
+              <div className="bg-red-500/5 border border-red-500/10 rounded-lg p-3">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <span className="text-red-400 text-xs font-semibold">BEAR</span>
+                  <span className="text-red-400/70 text-xs font-mono">{tp.bearPct}%</span>
+                </div>
+                <p className="text-[11px] text-slate-400 leading-relaxed">{tp.bearText}</p>
+              </div>
+            </div>
+
+            <p className="text-[10px] text-slate-500 mt-3 pt-2 border-t border-surface-border">
+              AI-generated analysis. Not financial advice.
+            </p>
+          </div>
+        );
+      })()}
 
       {matchingBucket && (
         <div className="bg-slate-800/30 border border-surface-border rounded-lg p-4 mb-5">
