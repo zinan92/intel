@@ -88,6 +88,14 @@ export function Sidebar() {
           >
             History
           </Link>
+          <Link
+            to="/constellation"
+            className={`block px-2 py-1 rounded text-sm ${
+              isActive("/constellation") ? "bg-slate-800/60 text-brand-400 font-medium" : "text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            Constellation
+          </Link>
         </div>
 
         {topTopics.length > 0 && (
