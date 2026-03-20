@@ -31,6 +31,12 @@ export function EventPage() {
     enabled: eventId > 0,
   });
 
+  const { data: scorecard } = useQuery({
+    queryKey: ["scorecard"],
+    queryFn: () => api.scorecard({ days: 30, min_events: 2 }),
+    staleTime: 300_000,
+  });
+
   if (isLoading) {
     return (
       <div className="space-y-4 animate-pulse">
@@ -48,6 +54,15 @@ export function EventPage() {
       </div>
     );
   }
+
+  const matchingBucket = scorecard?.buckets.find(b => {
+    const score = data?.event.signal_score ?? 0;
+    if (b.label.includes("8") && score >= 8) return true;
+    if (b.label.includes("6") && score >= 6 && score < 8) return true;
+    if (b.label.includes("4") && score >= 4 && score < 6) return true;
+    if (b.min_score === 0 && score < 4) return true;
+    return false;
+  });
 
   const { event, articles, price_impacts } = data;
   const sortedArticles = [...articles].sort((a, b) => {
@@ -94,6 +109,51 @@ export function EventPage() {
 
       {data.event.narrative_summary && (
         <p className="text-sm text-slate-300 mb-4">{data.event.narrative_summary}</p>
+      )}
+
+      {data.event.trading_play && (
+        <div className="bg-slate-800/50 border border-surface-border rounded-lg p-4 mb-5">
+          <p className="text-[9px] text-slate-400 uppercase tracking-wider mb-3">Trading Consideration</p>
+          {data.event.trading_play.split(/SCENARIO [AB]:?\s*/i).filter(Boolean).map((scenario, idx) => (
+            <div key={idx} className="mb-3 last:mb-0">
+              {idx === 0 && <span className="text-xs font-semibold text-green-400 mr-1">BULL </span>}
+              {idx === 1 && <span className="text-xs font-semibold text-red-400 mr-1">BEAR </span>}
+              <span className="text-sm text-slate-300">{scenario.trim()}</span>
+            </div>
+          ))}
+          <p className="text-[10px] text-slate-500 mt-3 pt-2 border-t border-surface-border">
+            AI-generated analysis. Not financial advice.
+          </p>
+        </div>
+      )}
+
+      {matchingBucket && (
+        <div className="bg-slate-800/30 border border-surface-border rounded-lg p-4 mb-5">
+          <p className="text-[9px] text-slate-400 uppercase tracking-wider mb-2">Historical Context</p>
+          <p className="text-xs text-slate-400 mb-2">
+            {matchingBucket.label} ({matchingBucket.event_count} events, {scorecard?.period_days}d)
+          </p>
+          <div className="flex gap-6 font-mono text-sm">
+            <div>
+              <span className="text-[10px] text-slate-500">Avg 1D </span>
+              <span className={matchingBucket.avg_change_1d >= 0 ? "text-green-400" : "text-red-400"}>
+                {matchingBucket.avg_change_1d >= 0 ? "+" : ""}{matchingBucket.avg_change_1d.toFixed(1)}%
+              </span>
+            </div>
+            <div>
+              <span className="text-[10px] text-slate-500">Avg 3D </span>
+              <span className={matchingBucket.avg_change_3d >= 0 ? "text-green-400" : "text-red-400"}>
+                {matchingBucket.avg_change_3d >= 0 ? "+" : ""}{matchingBucket.avg_change_3d.toFixed(1)}%
+              </span>
+            </div>
+            <div>
+              <span className="text-[10px] text-slate-500">Avg 5D </span>
+              <span className={matchingBucket.avg_change_5d >= 0 ? "text-green-400" : "text-red-400"}>
+                {matchingBucket.avg_change_5d >= 0 ? "+" : ""}{matchingBucket.avg_change_5d.toFixed(1)}%
+              </span>
+            </div>
+          </div>
+        </div>
       )}
 
       {price_impacts.length > 0 && (
