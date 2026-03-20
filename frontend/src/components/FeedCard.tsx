@@ -51,6 +51,11 @@ export function FeedCard({ item, onClick }: Props) {
           <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${kindClass}`}>
             {item.source_kind}
           </span>
+          {item.in_event && (
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-brand-500/10 text-brand-400">
+              event
+            </span>
+          )}
           <span className="text-xs text-slate-500">{item.source}</span>
         </div>
         <div className="flex items-center gap-2 text-xs shrink-0">

@@ -72,11 +72,12 @@ _KIND_WEIGHT: dict[str, float] = {
 }
 
 
-def _priority_score(article: Article, now: datetime) -> float:
-    """Deterministic priority score combining relevance, freshness, momentum, and source weight."""
-    rel = article.relevance_score or 0
-    relevance_component = (rel / 5.0) * 5.0
+def _priority_score(article: Article, now: datetime, event_article_ids: set[int] = frozenset()) -> float:
+    """Priority score: event membership > freshness > source weight."""
+    # Event membership is the strongest signal
+    event_component = 4.0 if article.id in event_article_ids else 0.0
 
+    # Freshness
     age_hours = (
         (now - article.collected_at).total_seconds() / 3600
         if article.collected_at
@@ -91,14 +92,20 @@ def _priority_score(article: Article, now: datetime) -> float:
     else:
         freshness_component = 0.0
 
-    score = article.score or 0
-    momentum_component = min(score / 1000.0, 1.0)
-
-    kind = _source_kind(article.source)
+    # Source weight
     source_w = _SOURCE_WEIGHT.get(article.source, 0.1)
+    kind = _source_kind(article.source)
     kind_w = _KIND_WEIGHT.get(kind, 0.1)
 
-    return round(relevance_component + freshness_component + momentum_component + source_w + kind_w, 4)
+    # Relevance score still contributes if available, but not required
+    rel = article.relevance_score or 0
+    relevance_component = (rel / 5.0) * 1.0  # reduced weight (was *5.0)
+
+    # Momentum
+    score = article.score or 0
+    momentum_component = min(score / 1000.0, 0.5)
+
+    return round(event_component + freshness_component + relevance_component + momentum_component + source_w + kind_w, 4)
 
 
 def _momentum_label(article: Article, now: datetime) -> str:
@@ -172,7 +179,7 @@ def _window_cutoff(window: str, now: datetime) -> datetime:
 # ---------------------------------------------------------------------------
 # Feed item serializer
 # ---------------------------------------------------------------------------
-def _feed_item(article: Article, priority: float, now: datetime) -> dict[str, Any]:
+def _feed_item(article: Article, priority: float, now: datetime, event_article_ids: set[int] = frozenset()) -> dict[str, Any]:
     content = article.content or ""
     summary = content[:300] if len(content) > 300 else content
     return {
@@ -189,6 +196,7 @@ def _feed_item(article: Article, priority: float, now: datetime) -> dict[str, An
         "narrative_tags": _parse_tags(article.narrative_tags),
         "published_at": article.published_at.isoformat() if article.published_at else None,
         "collected_at": article.collected_at.isoformat() if article.collected_at else None,
+        "in_event": article.id in event_article_ids,
     }
 
 
@@ -343,7 +351,7 @@ def get_feed(
     source: str | None = Query(default=None),
     topic: str | None = Query(default=None),
     user: str | None = Query(default=None),
-    min_relevance: int | None = Query(default=2, ge=1, le=5),
+    events_only: bool = Query(default=False),
     window: str = Query(default="24h"),
     limit: int = Query(default=20, ge=1, le=100),
     cursor: str | None = Query(default=None),
@@ -356,10 +364,23 @@ def get_feed(
         q = session.query(Article).filter(Article.collected_at >= cutoff)
         if source:
             q = q.filter(Article.source == source)
-        if min_relevance is not None:
-            q = q.filter(Article.relevance_score >= min_relevance)
 
         articles: list[Article] = q.all()
+
+        # Get article IDs that belong to active events
+        from events.models import Event, EventArticle
+        active_event_ids = [
+            e.id for e in
+            session.query(Event.id).filter(Event.status == "active").all()
+        ]
+        event_article_ids: set[int] = set()
+        if active_event_ids:
+            ea_rows = (
+                session.query(EventArticle.article_id)
+                .filter(EventArticle.event_id.in_(active_event_ids))
+                .all()
+            )
+            event_article_ids = {row[0] for row in ea_rows}
 
         # Topic filter (post-load, narrative_tags is JSON string)
         if topic:
@@ -371,7 +392,11 @@ def get_feed(
             ]
 
         # Score and sort
-        scored = [(a, _priority_score(a, now)) for a in articles]
+        scored = [(a, _priority_score(a, now, event_article_ids)) for a in articles]
+
+        # Filter to event articles only if requested
+        if events_only:
+            scored = [(a, s) for a, s in scored if a.id in event_article_ids]
 
         # Personalize if user specified
         if user:
@@ -419,7 +444,7 @@ def get_feed(
         )
 
         return {
-            "items": [_feed_item(a, s, now) for a, s in page_items],
+            "items": [_feed_item(a, s, now, event_article_ids) for a, s in page_items],
             "context": {
                 "rising_topics": _build_rising_topics(context_articles, now),
                 "source_health": _build_source_health(session),
