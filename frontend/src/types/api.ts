@@ -14,6 +14,7 @@ export interface FeedItem {
   narrative_tags: string[];
   published_at: string | null;
   collected_at: string | null;
+  in_event: boolean;
 }
 
 export interface RisingTopic {
