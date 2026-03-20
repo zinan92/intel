@@ -72,6 +72,22 @@ export interface EventInfo {
   status: string;
   narrative_summary: string | null;
   prev_signal_score: number | null;
+  trading_play: string | null;
+}
+
+export interface ScorecardBucket {
+  label: string;
+  min_score: number;
+  event_count: number;
+  avg_change_1d: number;
+  avg_change_3d: number;
+  avg_change_5d: number;
+}
+
+export interface ScorecardResponse {
+  buckets: ScorecardBucket[];
+  total_events_with_data: number;
+  period_days: number;
 }
 
 export interface EventDetail {
