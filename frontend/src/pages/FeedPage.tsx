@@ -20,7 +20,7 @@ const WINDOW_OPTIONS = ["6h", "12h", "24h", "48h", "7d"];
 export function FeedPage() {
   const [searchParams] = useSearchParams();
   const activeUser = searchParams.get("user") ?? "";
-  const [minRelevance, setMinRelevance] = useState(2);
+  const [minRelevance, setMinRelevance] = useState(1);
   const [window, setWindow] = useState("24h");
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
