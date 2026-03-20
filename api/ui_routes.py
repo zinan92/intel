@@ -97,9 +97,8 @@ def _priority_score(article: Article, now: datetime, event_article_ids: set[int]
     kind = _source_kind(article.source)
     kind_w = _KIND_WEIGHT.get(kind, 0.1)
 
-    # Relevance score still contributes if available, but not required
-    rel = article.relevance_score or 0
-    relevance_component = (rel / 5.0) * 1.0  # reduced weight (was *5.0)
+    # Relevance score no longer affects feed ranking — event membership + freshness is enough
+    relevance_component = 0.0
 
     # Momentum
     score = article.score or 0
