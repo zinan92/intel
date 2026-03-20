@@ -1,0 +1,4 @@
+[2026-03-16 08:03 CST] qualitative-collect-light FAILED
+  twitter, substack, youtube are invalid --source values.
+  Valid: hackernews, xueqiu, rss, github_trending, yahoo_finance, google_news, social_kol, reddit, github_release, website_monitor
+  0 articles collected. Cron job needs source names updated.
