@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import * as d3 from "d3";
+import { api } from "../api/client";
 
 const CAT_CONFIG: Record<string, { color: string; label: string; angle: number }> = {
   crypto: { color: "#f59e0b", label: "CRYPTO", angle: Math.PI * 0.15 },
@@ -18,6 +19,32 @@ function categorize(tag: string): string {
   if (s.includes("credit") || s.includes("regulatory") || s.includes("rate") || s.includes("fed") || s.includes("macro") || s.includes("gold")) return "macro";
   if (s.includes("fintech") || s.includes("mastercard") || s.includes("acquisition") || s.includes("paypal")) return "fintech";
   return "other";
+}
+
+function parseTradingPlay(play: string | null): { bullPct: number; bullText: string; bearPct: number; bearText: string } | null {
+  if (!play) return null;
+
+  const bullPctMatch = play.match(/BULL_PCT:\s*(\d+)/);
+  const bearPctMatch = play.match(/BEAR_PCT:\s*(\d+)/);
+  const bullTextMatch = play.match(/BULL:\s*(.+?)(?=\n\n|BEAR_PCT|$)/s);
+  const bearTextMatch = play.match(/BEAR:\s*(.+?)$/s);
+
+  // Fallback for old SCENARIO format
+  if (!bullPctMatch) {
+    const scenarioA = play.match(/SCENARIO A:\s*(.+?)(?=SCENARIO B|$)/s);
+    const scenarioB = play.match(/SCENARIO B:\s*(.+?)$/s);
+    if (scenarioA && scenarioB) {
+      return { bullPct: 50, bullText: scenarioA[1].trim(), bearPct: 50, bearText: scenarioB[1].trim() };
+    }
+    return null;
+  }
+
+  return {
+    bullPct: parseInt(bullPctMatch[1], 10),
+    bullText: bullTextMatch ? bullTextMatch[1].trim() : "",
+    bearPct: bearPctMatch ? parseInt(bearPctMatch[1], 10) : 100 - parseInt(bullPctMatch[1], 10),
+    bearText: bearTextMatch ? bearTextMatch[1].trim() : "",
+  };
 }
 
 interface ActiveEvent {
@@ -59,6 +86,14 @@ export function ConstellationPage() {
     },
     staleTime: 120_000,
   });
+
+  const { data: eventDetail } = useQuery({
+    queryKey: ["event-detail", selectedEvent?.eventId],
+    queryFn: () => api.eventDetail(selectedEvent!.eventId),
+    enabled: selectedEvent !== null,
+  });
+
+  const tradingPlay = eventDetail ? parseTradingPlay(eventDetail.event.trading_play) : null;
 
   useEffect(() => {
     if (!data || !svgRef.current) return;
@@ -442,11 +477,70 @@ export function ConstellationPage() {
               </span>
             ))}
           </div>
+
+          {/* Narrative summary */}
+          {eventDetail?.event.narrative_summary && (
+            <p className="mt-4 text-sm text-slate-300 leading-relaxed">
+              {eventDetail.event.narrative_summary}
+            </p>
+          )}
+
+          {/* Trading play — bull/bear probability */}
+          {tradingPlay && (
+            <div className="mt-4">
+              <p className="text-[9px] text-slate-500 uppercase tracking-wider mb-2">Scenario Analysis</p>
+
+              {/* Probability bar */}
+              <div className="flex h-2 rounded-full overflow-hidden mb-3">
+                <div className="bg-green-500/60" style={{ width: `${tradingPlay.bullPct}%` }} />
+                <div className="bg-red-500/60" style={{ width: `${tradingPlay.bearPct}%` }} />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                {/* Bull */}
+                <div className="bg-green-500/5 border border-green-500/10 rounded-lg p-3">
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <span className="text-green-400 text-xs font-semibold">BULL</span>
+                    <span className="text-green-400/70 text-xs font-mono">{tradingPlay.bullPct}%</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">{tradingPlay.bullText}</p>
+                </div>
+                {/* Bear */}
+                <div className="bg-red-500/5 border border-red-500/10 rounded-lg p-3">
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <span className="text-red-400 text-xs font-semibold">BEAR</span>
+                    <span className="text-red-400/70 text-xs font-mono">{tradingPlay.bearPct}%</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">{tradingPlay.bearText}</p>
+                </div>
+              </div>
+
+              <p className="text-[9px] text-slate-600 mt-2">AI-generated analysis. Not financial advice.</p>
+            </div>
+          )}
+
+          {/* Price impacts */}
+          {eventDetail?.price_impacts && eventDetail.price_impacts.length > 0 && (
+            <div className="mt-4">
+              <p className="text-[9px] text-slate-500 uppercase tracking-wider mb-2">Price Impact</p>
+              <div className="flex gap-4">
+                {eventDetail.price_impacts.map((pi) => (
+                  <div key={pi.ticker} className="font-mono text-xs">
+                    <span className="text-slate-500">${pi.ticker} </span>
+                    <span className={pi.change_1d >= 0 ? "text-green-400" : "text-red-400"}>
+                      {pi.change_1d >= 0 ? "+" : ""}{pi.change_1d.toFixed(1)}%
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <Link
             to={`/events/${selectedEvent.eventId}`}
             className="mt-6 block text-center text-sm bg-brand-500/10 text-brand-400 border border-brand-500/20 rounded-lg py-2 hover:bg-brand-500/20 transition-colors"
           >
-            View Event Detail
+            View Full Detail →
           </Link>
         </div>
       )}

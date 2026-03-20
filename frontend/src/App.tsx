@@ -7,7 +7,6 @@ import { SourcePage } from "./pages/SourcePage";
 import { SearchPage } from "./pages/SearchPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { EventPage } from "./pages/EventPage";
-import { EventHistoryPage } from "./pages/EventHistoryPage";
 import { ConstellationPage } from "./pages/ConstellationPage";
 
 export function App() {
@@ -18,9 +17,8 @@ export function App() {
         <Sidebar />
         <main className="flex-1 min-w-0">
           <Routes>
-            <Route path="/" element={<FeedPage />} />
-            <Route path="/constellation" element={<ConstellationPage />} />
-            <Route path="/events/history" element={<EventHistoryPage />} />
+            <Route path="/" element={<ConstellationPage />} />
+            <Route path="/browse" element={<FeedPage />} />
             <Route path="/events/:id" element={<EventPage />} />
             <Route path="/topics/:slug" element={<TopicPage />} />
             <Route path="/sources/:name" element={<SourcePage />} />
