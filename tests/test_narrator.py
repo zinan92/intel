@@ -49,6 +49,7 @@ def test_generate_narrative_skips_when_already_set(db_session):
     from events.narrator import generate_narratives
     event = _seed_event_with_articles(db_session)
     event.narrative_summary = "Already set"
+    event.trading_play = "SCENARIO A: ..."
     db_session.commit()
     with patch("events.narrator._call_claude") as mock:
         generate_narratives(db_session)
