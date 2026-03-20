@@ -10,7 +10,8 @@ interface Props {
 
 function formatDate(iso: string | null): string {
   if (!iso) return "";
-  return new Date(iso).toLocaleString(undefined, {
+  const utcIso = iso.endsWith("Z") ? iso : iso + "Z";
+  return new Date(utcIso).toLocaleString(undefined, {
     month: "short",
     day: "numeric",
     hour: "2-digit",

@@ -6,7 +6,8 @@ import { ItemDrawer } from "../components/ItemDrawer";
 
 function formatTimeAgo(iso: string | null): string {
   if (!iso) return "";
-  const diff = Date.now() - new Date(iso).getTime();
+  const utcIso = iso.endsWith("Z") ? iso : iso + "Z";
+  const diff = Date.now() - new Date(utcIso).getTime();
   const hours = Math.floor(diff / 3600000);
   if (hours < 1) return "just now";
   if (hours < 24) return `${hours}h ago`;
