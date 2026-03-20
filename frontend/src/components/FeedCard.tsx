@@ -1,8 +1,13 @@
 import type { FeedItem } from "../types/api";
 
-/** Strip HTML tags from text content. */
+/** Strip HTML tags from text content. Handles truncated tags too. */
 export function stripHtml(html: string): string {
-  return html.replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#\d+;/g, " ").trim();
+  return html
+    .replace(/<[^>]*>?/g, "")  // remove tags, including truncated ones without closing >
+    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"').replace(/&#\d+;/g, " ")
+    .replace(/\s{2,}/g, " ")  // collapse whitespace
+    .trim();
 }
 
 const KIND_COLORS: Record<string, string> = {
