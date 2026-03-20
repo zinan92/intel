@@ -36,6 +36,18 @@ def _call_claude(prompt: str) -> str | None:
         return None
 
 
+def _parse_narrator_response(response: str) -> tuple[str, str | None]:
+    marker = "SCENARIO A:"
+    idx = response.find(marker)
+    if idx == -1:
+        return response.strip(), None
+    summary_part = response[:idx].strip()
+    play_part = response[idx:].strip()
+    if summary_part.upper().startswith("SUMMARY:"):
+        summary_part = summary_part[8:].strip()
+    return summary_part, play_part
+
+
 def _build_prompt(event: Event, articles: list[Article]) -> str:
     tag_display = event.narrative_tag.replace("-", " ")
     articles_text = ""
@@ -44,11 +56,16 @@ def _build_prompt(event: Event, articles: list[Article]) -> str:
         content = (a.content or "")[:200]
         articles_text += f"\nArticle {i}: {title}\n{content}\n"
     return (
-        f"Summarize this cross-source event in 2-3 sentences for a trader. "
-        f"What happened, why it matters, and potential market impact. Be concise.\n\n"
+        f"You are a trading analyst. Analyze this cross-source market event.\n\n"
         f"Event: {tag_display}\n"
         f"Sources: {event.source_count} sources, {event.article_count} articles\n"
-        f"{articles_text}"
+        f"{articles_text}\n"
+        f"Respond in this exact format:\n\n"
+        f"SUMMARY: [2-3 sentence summary of what happened and why it matters]\n\n"
+        f"SCENARIO A: If [specific bull condition], then [expected outcome]. "
+        f"Consider [specific action with ticker and timeframe].\n\n"
+        f"SCENARIO B: If [specific bear condition], then [expected outcome]. "
+        f"Consider [specific action with ticker and timeframe]."
     )
 
 
@@ -58,7 +75,7 @@ def generate_narratives(session: Session) -> int:
         .filter(
             Event.status == "active",
             Event.source_count >= 2,
-            Event.narrative_summary.is_(None),
+            Event.trading_play.is_(None),
         )
         .order_by(Event.signal_score.desc())
         .limit(10)
@@ -84,7 +101,9 @@ def generate_narratives(session: Session) -> int:
         narrative = _call_claude(prompt)
 
         if narrative:
-            event.narrative_summary = narrative
+            summary, play = _parse_narrator_response(narrative)
+            event.narrative_summary = summary
+            event.trading_play = play
             generated += 1
             logger.info("[narrator] Generated narrative for '%s'", event.narrative_tag)
         else:

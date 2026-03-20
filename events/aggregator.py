@@ -132,6 +132,39 @@ def run_aggregation(session: Session) -> None:
         event.status = "closed"
         event.updated_at = now
 
+        # Snapshot price outcomes if event has tickers
+        if event.outcome_data is None:
+            try:
+                linked_ids = [
+                    ea.article_id
+                    for ea in session.query(EventArticle)
+                    .filter(EventArticle.event_id == event.id).all()
+                ]
+                tickers = set()
+                for art in session.query(Article).filter(Article.id.in_(linked_ids)).all():
+                    if art.tickers:
+                        try:
+                            for t in json.loads(art.tickers):
+                                if t:
+                                    tickers.add(t)
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+                if tickers:
+                    import asyncio
+                    from bridge.quant import get_price_impacts
+                    impacts = asyncio.run(get_price_impacts(list(tickers)[:5], event.window_start))
+                    if impacts:
+                        outcome = {
+                            "tickers": {
+                                pi["ticker"]: {k: pi.get(k) for k in ["price_at_event", "change_1d", "change_3d", "change_5d"]}
+                                for pi in impacts
+                            },
+                            "captured_at": now.isoformat(),
+                        }
+                        event.outcome_data = json.dumps(outcome)
+            except Exception:
+                logger.warning("[aggregator] Failed outcome for '%s'", event.narrative_tag, exc_info=True)
+
     session.commit()
 
     # Generate narratives for cross-source events

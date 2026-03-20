@@ -26,6 +26,8 @@ class Event(Base):
     status: Mapped[str] = mapped_column(String, default="active")
     narrative_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     prev_signal_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    trading_play: Mapped[str | None] = mapped_column(Text, nullable=True)
+    outcome_data: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow,
