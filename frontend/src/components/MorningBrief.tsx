@@ -21,7 +21,7 @@ export function MorningBrief({ events }: Props) {
   return (
     <div className="mb-6">
       <p className="text-[10px] text-slate-500 uppercase tracking-widest font-mono mb-3">
-        {today} · Morning Brief
+        {today} · 信号简报
       </p>
 
       <Link
@@ -31,9 +31,9 @@ export function MorningBrief({ events }: Props) {
         <div className="flex justify-between items-start">
           <div>
             <div className="text-[11px] font-semibold text-brand-400 uppercase tracking-wide font-mono">
-              {hero.signal_score >= 8 ? "Strong signal" : hero.signal_score >= 5 ? "Moderate signal" : "Emerging signal"}
+              {hero.signal_score >= 8 ? "强信号" : hero.signal_score >= 5 ? "中等信号" : "新兴信号"}
               <VelocityArrow current={hero.signal_score} prev={hero.prev_signal_score} />
-              {" "}· {hero.source_count} independent sources
+              {" "}· {hero.source_count} 个独立信源
             </div>
             <div className="text-lg font-semibold text-white mt-1">
               {hero.narrative_tag.replace(/-/g, " ")}
@@ -66,7 +66,7 @@ export function MorningBrief({ events }: Props) {
       )}
 
       <p className="text-[10px] text-slate-500 uppercase tracking-widest font-mono mt-2">
-        Latest Feed
+        最新信号流
       </p>
     </div>
   );

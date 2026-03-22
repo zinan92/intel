@@ -21,14 +21,14 @@ export function EventCard({ event }: Props) {
       className="block bg-surface-card border border-surface-border rounded-lg p-3 hover:border-brand-500/30 transition-all"
     >
       <div className={`text-[10px] font-semibold uppercase ${scoreColor} font-mono`}>
-        {event.signal_score >= 8 ? "Strong" : event.signal_score >= 5 ? "Moderate" : "Emerging"} · {event.signal_score.toFixed(1)}
+        {event.signal_score >= 8 ? "强信号" : event.signal_score >= 5 ? "中等" : "新兴"} · {event.signal_score.toFixed(1)}
         <VelocityArrow current={event.signal_score} prev={event.prev_signal_score} />
       </div>
       <div className="text-sm font-semibold text-slate-200 mt-0.5 line-clamp-1">
         {event.narrative_tag.replace(/-/g, " ")}
       </div>
       <div className="text-xs text-slate-400 mt-1">
-        {event.source_count} sources
+        {event.source_count} 个信源
         {event.tickers.length > 0 && (
           <span className="ml-1.5 font-mono text-brand-400/70">
             · {event.tickers.slice(0, 2).map(t => `$${t}`).join(" ")}

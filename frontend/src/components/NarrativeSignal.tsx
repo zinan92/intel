@@ -38,10 +38,10 @@ export function NarrativeSignal() {
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <p className="text-[10px] text-slate-500 uppercase tracking-widest font-mono">
-          Narrative Signal
+          叙事信号
         </p>
         <span className="text-[10px] text-slate-600 font-mono">
-          {formatBriefAge(brief.created_at)} · {brief.article_count} articles
+          {formatBriefAge(brief.created_at)} · {brief.article_count} 篇文章
         </span>
       </div>
 

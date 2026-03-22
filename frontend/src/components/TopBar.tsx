@@ -29,7 +29,7 @@ export function TopBar() {
             type="text"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search signals..."
+            placeholder="搜索信号..."
             className="w-56 text-sm bg-slate-800/60 border border-surface-border rounded-lg px-3 py-1.5 text-slate-300 placeholder:text-slate-500 focus:outline-none focus:border-brand-500/50 focus:ring-1 focus:ring-brand-500/20 transition-all"
           />
         </form>

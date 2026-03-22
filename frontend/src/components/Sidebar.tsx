@@ -30,7 +30,7 @@ export function Sidebar() {
       <nav className="sticky top-20 space-y-6 pr-2">
         {/* User selector */}
         <div>
-          <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-2">User</p>
+          <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-2">用户</p>
           <select
             value={activeUser}
             onChange={(e) => handleUserChange(e.target.value)}
@@ -43,7 +43,7 @@ export function Sidebar() {
         </div>
 
         <div>
-          <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-2">Nav</p>
+          <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-2">导航</p>
           <Link
             to={`/${activeUser ? `?user=${encodeURIComponent(activeUser)}` : ""}`}
             className={`flex items-center gap-2 px-2 py-1.5 rounded text-sm transition-colors ${
@@ -51,7 +51,7 @@ export function Sidebar() {
             }`}
           >
             {isActive("/") && <span className="w-1 h-1 rounded-full bg-brand-400" />}
-            Today
+            今日简报
           </Link>
           <Link
             to={`/explore${activeUser ? `?user=${encodeURIComponent(activeUser)}` : ""}`}
@@ -60,7 +60,7 @@ export function Sidebar() {
             }`}
           >
             {isActive("/explore") && <span className="w-1 h-1 rounded-full bg-brand-400" />}
-            Explore
+            信号图谱
           </Link>
           <Link
             to="/search"
@@ -69,7 +69,7 @@ export function Sidebar() {
             }`}
           >
             {isActive("/search") && <span className="w-1 h-1 rounded-full bg-brand-400" />}
-            Search
+            搜索
           </Link>
           {activeUser && (
             <Link
@@ -79,7 +79,7 @@ export function Sidebar() {
               }`}
             >
               {isActive("/settings") && <span className="w-1 h-1 rounded-full bg-brand-400" />}
-              Settings
+              设置
             </Link>
           )}
         </div>

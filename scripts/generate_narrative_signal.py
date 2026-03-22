@@ -69,48 +69,48 @@ def _build_prompt(articles: list[Article], events: list[Event]) -> str:
             events_text += f"\n  {e.narrative_summary[:150]}"
         events_text += "\n"
 
-    return f"""You are a senior trading analyst producing a Narrative Signal brief.
+    return f"""你是一位资深交易分析师，用中文撰写 Narrative Signal 简报。Ticker、专业术语、数据源名称保留英文。
 
-Current time: {date_str}
+当前时间: {date_str}
 
-ACTIVE CROSS-SOURCE EVENTS:
+跨源验证事件:
 {events_text}
 
-RECENT ARTICLES ({len(articles)} total):
+最近文章 ({len(articles)} 篇):
 {articles_text}
 
-Produce a Narrative Signal brief in this EXACT format:
+请严格按照以下格式输出:
 
-🎯 {date_str} — Narrative Signals
+🎯 {date_str} — 叙事信号
 
-📊 [N] articles analyzed | [N] high signals | Top narratives: [top-3-tags]
+📊 分析 [N] 篇文章 | [N] 个高确信信号 | 主线叙事: [前3个主题]
 
-For each major narrative cluster (2-5 clusters), use this format:
+每个主要叙事聚类（2-5个）用以下格式:
 
-━━━ 🔥 [THEME NAME] ━━━
+━━━ 🔥 [主题名称] ━━━
 
-[Number]. **[One-line headline]** | [H/M/L conviction] | [Timeframe]
-   → [Relevant tickers]: [What happened and why it matters] | Edge: [What the market is missing]
-   → Conviction: [H/M/L] — [Why this conviction level]
+[编号]. **[一句话标题]** | [高/中/低] 确信度 | [时间框架]
+   → [相关 ticker]: [发生了什么、为什么重要] | 市场盲点: [市场忽略了什么]
+   → 确信度: [高/中/低] — [为什么给这个确信度]
 
-After all clusters, add:
+所有聚类之后:
 
-━━━ 📌 Other Notable ━━━
-• [1-line bullet for each minor signal, 3-8 items]
+━━━ 📌 其他值得关注 ━━━
+• [每条一句话，3-8条]
 
-⚡️ CROSS-NARRATIVE
-• [Cross-theme connection 1]
-• [Cross-theme connection 2]
-• [Cross-theme connection 3]
+⚡️ 跨叙事关联
+• [跨主题关联分析1]
+• [跨主题关联分析2]
+• [跨主题关联分析3]
 
-🔗 QUANT CHECK
-• [Data point cross-reference 1]
-• [Data point cross-reference 2]
+🔗 数据交叉验证
+• [数据交叉验证1]
+• [数据交叉验证2]
 
 ---
-Sources: [list key sources] | Signal ratio: [high-conviction-count]/[total-signals]
+数据源: [列出主要来源] | 信号比: [高确信数]/[总信号数]
 
-Be specific about tickers, prices, percentages. Use Chinese for A-share/HK content, English for US/global. Mix languages naturally like a bilingual trader would."""
+要求：具体到 ticker、价格、百分比。A股/港股内容用中文，美股/全球内容也用中文描述但 ticker 保留英文。像一个中国交易员写给自己的笔记。"""
 
 
 def generate_brief(limit: int = 100) -> int | None:

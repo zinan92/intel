@@ -54,7 +54,7 @@ export function FeedPage() {
                 : "border-surface-border text-slate-400 hover:border-slate-500"
             }`}
           >
-            {eventsOnly ? "Signal articles" : "All articles"}
+            {eventsOnly ? "信号文章" : "全部文章"}
           </button>
           <div className="flex items-center gap-1">
             {WINDOW_OPTIONS.map((w) => (
