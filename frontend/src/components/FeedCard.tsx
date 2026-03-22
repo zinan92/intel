@@ -94,10 +94,6 @@ export function FeedCard({ item, onClick }: Props) {
         ))}
       </div>
 
-      <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500 font-mono">
-        <span>rel {item.relevance_score ?? "\u2014"}/5</span>
-        <span>score {item.priority_score.toFixed(2)}</span>
-      </div>
     </article>
   );
 }

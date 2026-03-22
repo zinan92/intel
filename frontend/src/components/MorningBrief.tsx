@@ -31,9 +31,9 @@ export function MorningBrief({ events }: Props) {
         <div className="flex justify-between items-start">
           <div>
             <div className="text-[11px] font-semibold text-brand-400 uppercase tracking-wide font-mono">
-              Signal {hero.signal_score.toFixed(1)}
+              {hero.signal_score >= 8 ? "Strong signal" : hero.signal_score >= 5 ? "Moderate signal" : "Emerging signal"}
               <VelocityArrow current={hero.signal_score} prev={hero.prev_signal_score} />
-              {" "}· {hero.source_count} sources
+              {" "}· {hero.source_count} independent sources
             </div>
             <div className="text-lg font-semibold text-white mt-1">
               {hero.narrative_tag.replace(/-/g, " ")}

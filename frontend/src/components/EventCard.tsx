@@ -21,7 +21,7 @@ export function EventCard({ event }: Props) {
       className="block bg-surface-card border border-surface-border rounded-lg p-3 hover:border-brand-500/30 transition-all"
     >
       <div className={`text-[10px] font-semibold uppercase ${scoreColor} font-mono`}>
-        Signal {event.signal_score.toFixed(1)}
+        {event.signal_score >= 8 ? "Strong" : event.signal_score >= 5 ? "Moderate" : "Emerging"} · {event.signal_score.toFixed(1)}
         <VelocityArrow current={event.signal_score} prev={event.prev_signal_score} />
       </div>
       <div className="text-sm font-semibold text-slate-200 mt-0.5 line-clamp-1">

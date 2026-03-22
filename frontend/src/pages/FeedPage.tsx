@@ -13,7 +13,7 @@ const WINDOW_OPTIONS = ["6h", "12h", "24h", "48h", "7d"];
 export function FeedPage() {
   const [searchParams] = useSearchParams();
   const activeUser = searchParams.get("user") ?? "";
-  const [eventsOnly, setEventsOnly] = useState(false);
+  const [eventsOnly, setEventsOnly] = useState(true);
   const [window, setWindow] = useState("24h");
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
@@ -52,7 +52,7 @@ export function FeedPage() {
                 : "border-surface-border text-slate-400 hover:border-slate-500"
             }`}
           >
-            {eventsOnly ? "Event signals only" : "All articles"}
+            {eventsOnly ? "Signal articles" : "All articles"}
           </button>
           <div className="flex items-center gap-1">
             {WINDOW_OPTIONS.map((w) => (

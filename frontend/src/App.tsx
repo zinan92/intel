@@ -17,8 +17,8 @@ export function App() {
         <Sidebar />
         <main className="flex-1 min-w-0">
           <Routes>
-            <Route path="/" element={<ConstellationPage />} />
-            <Route path="/browse" element={<FeedPage />} />
+            <Route path="/" element={<FeedPage />} />
+            <Route path="/explore" element={<ConstellationPage />} />
             <Route path="/events/:id" element={<EventPage />} />
             <Route path="/topics/:slug" element={<TopicPage />} />
             <Route path="/sources/:name" element={<SourcePage />} />

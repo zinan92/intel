@@ -51,16 +51,16 @@ export function Sidebar() {
             }`}
           >
             {isActive("/") && <span className="w-1 h-1 rounded-full bg-brand-400" />}
-            Signals
+            Today
           </Link>
           <Link
-            to={`/browse${activeUser ? `?user=${encodeURIComponent(activeUser)}` : ""}`}
+            to={`/explore${activeUser ? `?user=${encodeURIComponent(activeUser)}` : ""}`}
             className={`flex items-center gap-2 px-2 py-1.5 rounded text-sm transition-colors ${
-              isActive("/browse") ? "bg-slate-800/60 text-brand-400 font-medium" : "text-slate-400 hover:text-slate-200"
+              isActive("/explore") ? "bg-slate-800/60 text-brand-400 font-medium" : "text-slate-400 hover:text-slate-200"
             }`}
           >
-            {isActive("/browse") && <span className="w-1 h-1 rounded-full bg-brand-400" />}
-            Browse
+            {isActive("/explore") && <span className="w-1 h-1 rounded-full bg-brand-400" />}
+            Explore
           </Link>
           <Link
             to="/search"
