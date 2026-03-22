@@ -185,3 +185,13 @@ export interface UserProfile {
   topic_weights: Record<string, number>;
   created_at: string | null;
 }
+
+export interface BriefResponse {
+  brief: {
+    id: number;
+    content: string;
+    article_count: number;
+    signal_count: number;
+    created_at: string | null;
+  } | null;
+}

@@ -10,6 +10,7 @@ import type {
   SourceDetail,
   SearchResponse,
   UserProfile,
+  BriefResponse,
 } from "../types/api";
 
 const BASE = import.meta.env.VITE_API_URL ?? "";
@@ -78,6 +79,9 @@ export const api = {
 
   scorecard: (params: { days?: number; min_events?: number } = {}): Promise<ScorecardResponse> =>
     get(`/api/events/scorecard${buildQuery(params as Record<string, string | number | undefined>)}`),
+
+  latestBrief: (): Promise<BriefResponse> =>
+    get("/api/briefs/latest"),
 
   updateWeights: async (username: string, weights: Record<string, number>): Promise<UserProfile> => {
     const res = await fetch(`${BASE}/api/users/${encodeURIComponent(username)}/weights`, {
