@@ -423,7 +423,7 @@ export function ConstellationPage() {
           Signals appear when the same event is reported by 2+ independent sources.
           Check back in a few hours as collectors gather more data.
         </p>
-        <Link to="/browse" className="text-sm text-brand-400 hover:text-brand-300 mt-2">
+        <Link to="/" className="text-sm text-brand-400 hover:text-brand-300 mt-2">
           Browse all articles →
         </Link>
       </div>
@@ -441,7 +441,7 @@ export function ConstellationPage() {
             <div className="flex items-center gap-3">
               <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: CAT_CONFIG[cat].color }} />
               <span className="text-sm text-slate-300">
-                <span className="font-semibold text-slate-100 capitalize">{top.narrative_tag.replace(/-/g, " ")}</span>
+                <span className="font-semibold text-slate-100">{top.narrative_tag.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase())}</span>
                 <span className="text-slate-500 mx-2">&middot;</span>
                 <span className="font-mono text-xs" style={{ color: CAT_CONFIG[cat].color }}>Signal {top.signal_score.toFixed(1)}</span>
                 <span className="text-slate-500 mx-2">&middot;</span>
