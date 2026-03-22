@@ -5,6 +5,7 @@ import { api } from "../api/client";
 import { FeedCard } from "../components/FeedCard";
 import { ContextRail } from "../components/ContextRail";
 import { MorningBrief } from "../components/MorningBrief";
+import { NarrativeSignal } from "../components/NarrativeSignal";
 import { ItemDrawer } from "../components/ItemDrawer";
 import type { FeedItem } from "../types/api";
 
@@ -40,6 +41,7 @@ export function FeedPage() {
   return (
     <div className="flex gap-6 min-h-0">
       <div className="flex-1 min-w-0">
+        <NarrativeSignal />
         <MorningBrief events={topEvents} />
 
         {/* Filter bar */}
