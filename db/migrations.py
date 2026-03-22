@@ -108,6 +108,13 @@ def run_migrations(engine: Engine) -> None:
         UserProfile.__table__.create(engine)
         logger.info("user_profiles table created")
 
+    # Briefs table
+    if not _table_exists(engine, "briefs"):
+        logger.info("Creating briefs table via migration")
+        from briefs.models import Brief
+        Brief.__table__.create(engine)
+        logger.info("briefs table created")
+
     # Partial unique index: prevent duplicate active events for same tag
     with engine.connect() as conn:
         conn.execute(text(

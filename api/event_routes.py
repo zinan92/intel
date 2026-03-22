@@ -14,6 +14,33 @@ from events.models import Event, EventArticle
 event_router = APIRouter(prefix="/api")
 
 
+@event_router.get("/briefs/latest")
+def get_latest_brief() -> dict[str, Any]:
+    """Get the most recent narrative signal brief."""
+    from briefs.models import Brief
+    session = get_session()
+    try:
+        brief = (
+            session.query(Brief)
+            .filter(Brief.status == "published")
+            .order_by(Brief.created_at.desc())
+            .first()
+        )
+        if not brief:
+            return {"brief": None}
+        return {
+            "brief": {
+                "id": brief.id,
+                "content": brief.content,
+                "article_count": brief.article_count,
+                "signal_count": brief.signal_count,
+                "created_at": brief.created_at.isoformat() if brief.created_at else None,
+            }
+        }
+    finally:
+        session.close()
+
+
 @event_router.get("/events/active")
 def get_active_events() -> dict[str, Any]:
     """List active events ordered by signal_score descending.
