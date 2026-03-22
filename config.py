@@ -82,16 +82,16 @@ ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
 # Runtime (scheduler, health, feed) reads from the DB registry, not this list.
 # To change source intervals or active state, edit the registry via the service layer.
 SOURCE_BOOTSTRAP: list[dict] = [
-    {"source": "hackernews",       "interval_hours": 4,  "category": "frontier-tech"},
-    {"source": "xueqiu",           "interval_hours": 4,  "category": "cn-finance"},
-    {"source": "rss",              "interval_hours": 6,  "category": "mixed"},
-    {"source": "github_trending",  "interval_hours": 12, "category": "frontier-tech"},
-    {"source": "yahoo_finance",    "interval_hours": 4,  "category": "macro"},
-    {"source": "google_news",      "interval_hours": 4,  "category": "macro"},
-    {"source": "social_kol",       "interval_hours": 4,  "category": "mixed"},
-    {"source": "reddit",           "interval_hours": 6,  "category": "mixed"},
-    {"source": "github_release",   "interval_hours": 12, "category": "ai-agent"},
-    {"source": "website_monitor",  "interval_hours": 6,  "category": "mixed"},
+    {"source": "hackernews",       "interval_hours": 1,  "category": "frontier-tech"},
+    {"source": "xueqiu",           "interval_hours": 1,  "category": "cn-finance"},
+    {"source": "rss",              "interval_hours": 1,  "category": "mixed"},
+    {"source": "github_trending",  "interval_hours": 1,  "category": "frontier-tech"},
+    {"source": "yahoo_finance",    "interval_hours": 1,  "category": "macro"},
+    {"source": "google_news",      "interval_hours": 1,  "category": "macro"},
+    {"source": "social_kol",       "interval_hours": 1,  "category": "mixed"},
+    {"source": "reddit",           "interval_hours": 1,  "category": "mixed"},
+    {"source": "github_release",   "interval_hours": 1,  "category": "ai-agent"},
+    {"source": "website_monitor",  "interval_hours": 1,  "category": "mixed"},
 ]
 
 # --- Collector: Social KOL ---
