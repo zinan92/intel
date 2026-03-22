@@ -172,6 +172,15 @@ def _run_event_aggregation() -> None:
         session.close()
 
 
+def _run_narrative_signal() -> None:
+    """Generate narrative signal brief."""
+    try:
+        from scripts.generate_narrative_signal import generate_brief
+        generate_brief(limit=100)
+    except Exception:
+        logger.exception("Narrative signal generation failed")
+
+
 class CollectorScheduler:
     """Manages scheduled collector runs via registry-driven dispatch."""
 
@@ -272,3 +281,14 @@ class CollectorScheduler:
             next_run_time=aggregation_start,
         )
         logger.info("Registered event aggregation job (every 1h)")
+
+        # Narrative signal brief (every 2 hours)
+        brief_start = base_time + timedelta(seconds=30 * (len(jobs) + 2))
+        self._scheduler.add_job(
+            _run_narrative_signal,
+            trigger=IntervalTrigger(hours=2),
+            id="narrative-signal",
+            replace_existing=True,
+            next_run_time=brief_start,
+        )
+        logger.info("Registered narrative signal job (every 2h)")
