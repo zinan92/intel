@@ -57,11 +57,11 @@ Plans:
   3. A fresh clone on macOS: install deps, start server, GET /api/health returns 200
   4. No hardcoded /Users/ paths in codebase
   5. README quick-start works for an unfamiliar developer
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 03-01: TBD
-- [ ] 03-02: TBD
+- [ ] 03-01-PLAN.md — Service: launchd plist, wrapper script, management scripts, CORS hardening, dev/prod mode
+- [ ] 03-02-PLAN.md — Packaging: .env.example, core source verification, graceful degradation, README rewrite
 
 ## Progress
 
