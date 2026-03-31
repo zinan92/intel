@@ -47,6 +47,20 @@ class SchedulerConfig:
 # Module-level storage for last run results (read by health endpoint)
 _last_results: dict[str, CollectorResult] = {}
 
+# Heartbeat: updated every 5 minutes, checked by health endpoints
+_heartbeat_ts: datetime | None = None
+
+
+def get_heartbeat() -> datetime | None:
+    """Return the last heartbeat timestamp, or None if never set."""
+    return _heartbeat_ts
+
+
+def _update_heartbeat() -> None:
+    """Update the heartbeat timestamp to now (UTC)."""
+    global _heartbeat_ts
+    _heartbeat_ts = datetime.now(timezone.utc)
+
 
 def get_last_results() -> dict[str, CollectorResult]:
     """Get the last run result for each collector."""
@@ -261,8 +275,48 @@ class CollectorScheduler:
         """Register all jobs and start the scheduler."""
         self._check_dependencies()
         self._register_jobs()
+        _update_heartbeat()
+        self._log_boot_status()
         self._scheduler.start()
         logger.info("CollectorScheduler started with %d jobs", len(self._scheduler.get_jobs()))
+
+    def _log_boot_status(self) -> None:
+        """Log active/skipped sources and summary at boot time."""
+        from api.health_routes import _REQUIRED_RESOURCES
+        from db.database import get_session
+        from db.models import SourceRegistry
+
+        session = get_session()
+        try:
+            sources = session.query(SourceRegistry).all()
+            active_count = 0
+            skipped_count = 0
+
+            for src in sources:
+                if src.is_active:
+                    # Check for missing env vars on active sources
+                    resource = _REQUIRED_RESOURCES.get(src.source_type)
+                    if resource is not None:
+                        env_key, _ = resource
+                        import os
+                        if not os.environ.get(env_key, "").strip():
+                            logger.warning(
+                                "Source active but missing %s: %s (%s)",
+                                env_key, src.display_name, src.source_type,
+                            )
+                    logger.info("Source active: %s (%s)", src.display_name, src.source_type)
+                    active_count += 1
+                else:
+                    logger.warning("Source skipped: %s (%s) — inactive", src.display_name, src.source_type)
+                    skipped_count += 1
+
+            time_str = datetime.now(timezone.utc).isoformat()
+            logger.info(
+                "%d active sources, %d skipped, scheduler started at %s",
+                active_count, skipped_count, time_str,
+            )
+        finally:
+            session.close()
 
     def shutdown(self) -> None:
         """Gracefully stop the scheduler."""
@@ -361,6 +415,16 @@ class CollectorScheduler:
             next_run_time=brief_start,
         )
         logger.info("Registered narrative signal job (every 2h)")
+
+        # Heartbeat update (every 5 minutes)
+        self._scheduler.add_job(
+            _update_heartbeat,
+            trigger=IntervalTrigger(minutes=5),
+            id="heartbeat",
+            name="Heartbeat update",
+            replace_existing=True,
+        )
+        logger.info("Registered heartbeat job (every 5min)")
 
         # Cleanup old collector runs (weekly, D-14)
         self._scheduler.add_job(

@@ -122,6 +122,44 @@ def run_migrations(engine: Engine) -> None:
         CollectorRun.__table__.create(engine)
         logger.info("collector_runs table created")
 
+    # expected_freshness_hours column on source_registry (Phase 2: health visibility)
+    if _table_exists(engine, "source_registry"):
+        if not _column_exists(engine, "source_registry", "expected_freshness_hours"):
+            logger.info("Adding column source_registry.expected_freshness_hours (REAL)")
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE source_registry ADD COLUMN expected_freshness_hours REAL"))
+                conn.commit()
+
+        # Seed defaults for rows where expected_freshness_hours is NULL (idempotent)
+        _freshness_defaults = {
+            "rss": 2.0,
+            "hackernews": 2.0,
+            "reddit": 2.0,
+            "github_release": 12.0,
+            "github_trending": 12.0,
+            "yahoo_finance": 6.0,
+        }
+        with engine.connect() as conn:
+            for source_type, hours in _freshness_defaults.items():
+                conn.execute(
+                    text(
+                        "UPDATE source_registry "
+                        "SET expected_freshness_hours = :hours "
+                        "WHERE source_type = :st AND expected_freshness_hours IS NULL"
+                    ),
+                    {"hours": hours, "st": source_type},
+                )
+            # All others default to 4.0
+            conn.execute(
+                text(
+                    "UPDATE source_registry "
+                    "SET expected_freshness_hours = 4.0 "
+                    "WHERE expected_freshness_hours IS NULL"
+                )
+            )
+            conn.commit()
+        logger.info("Seeded expected_freshness_hours defaults for source_registry")
+
     # Partial unique index: prevent duplicate active events for same tag
     with engine.connect() as conn:
         conn.execute(text(

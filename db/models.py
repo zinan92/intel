@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Index, Integer, String, Text
+from sqlalchemy import DateTime, Float, Index, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -27,6 +27,7 @@ class SourceRegistry(Base):
     retired_at: Mapped[datetime | None] = mapped_column(DateTime)
     schedule_hours: Mapped[int | None] = mapped_column(Integer)
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+    expected_freshness_hours: Mapped[float | None] = mapped_column(Float)
 
     __table_args__ = (
         Index("idx_source_registry_type", "source_type"),
