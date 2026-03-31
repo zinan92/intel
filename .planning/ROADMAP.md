@@ -60,7 +60,7 @@ Plans:
 **Plans:** 2 plans
 
 Plans:
-- [ ] 03-01-PLAN.md — Service: launchd plist, wrapper script, management scripts, CORS hardening, dev/prod mode
+- [x] 03-01-PLAN.md — Service: launchd plist, wrapper script, management scripts, CORS hardening, dev/prod mode
 - [ ] 03-02-PLAN.md — Packaging: .env.example, core source verification, graceful degradation, README rewrite
 
 ## Progress
