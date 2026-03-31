@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 import pytest
 from sqlalchemy import create_engine, text
@@ -38,7 +38,7 @@ def session(engine):
 
 class TestCollectorRunPersistence:
     def test_create_and_query(self, session: Session) -> None:
-        now = datetime.now(timezone.utc)
+        now = datetime.utcnow()
         run = CollectorRun(
             source_type="rss",
             source_key="techcrunch",
@@ -68,7 +68,7 @@ class TestCollectorRunPersistence:
         assert result.completed_at == now
 
     def test_create_error_run(self, session: Session) -> None:
-        now = datetime.now(timezone.utc)
+        now = datetime.utcnow()
         run = CollectorRun(
             source_type="xueqiu",
             source_key="xq_hot",
