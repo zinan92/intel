@@ -25,11 +25,11 @@ Make park-intel reliable and open-source-ready in 3 phases. Fix the silent failu
   2. A timeout/connection error retries up to 3 times with backoff; each attempt is recorded
   3. A 401/auth error fails immediately without retry; error category is visible in the run record
   4. Existing data in park_intel.db survives the migration unchanged
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 01-01: TBD
-- [ ] 01-02: TBD
+- [ ] 01-01-PLAN.md — Foundation: error types, CollectorRun model, migration, tenacity dependency
+- [ ] 01-02-PLAN.md — Integration: retry in adapters, recording in scheduler, cleanup job
 
 ### Phase 2: Health Visibility
 **Goal**: Open /health in a browser and immediately see which sources are working, which are broken, and whether collection volume is normal
@@ -70,6 +70,6 @@ Phases execute in numeric order: 1 -> 2 -> 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Collector Reliability | 0/2 | Not started | - |
+| 1. Collector Reliability | 0/2 | Planned | - |
 | 2. Health Visibility | 0/2 | Not started | - |
 | 3. Persistent Run & Open-Source | 0/2 | Not started | - |
