@@ -195,3 +195,37 @@ export interface BriefResponse {
     created_at: string | null;
   } | null;
 }
+
+export interface HealthSource {
+  source_type: string;
+  display_name: string;
+  status: "ok" | "stale" | "degraded" | "error" | "disabled" | "no_data";
+  is_active: boolean;
+  freshness_age_hours: number | null;
+  expected_freshness_hours: number | null;
+  articles_24h: number;
+  articles_7d_avg: number | null;
+  volume_anomaly: boolean | null;
+  last_run_at: string | null;
+  last_run_status: string | null;
+  last_error: string | null;
+  last_error_category: string | null;
+  disabled_reason: string | null;
+}
+
+export interface HealthSourcesResponse {
+  scheduler_alive: boolean;
+  scheduler_heartbeat: string | null;
+  sources: HealthSource[];
+}
+
+export interface HealthSummary {
+  total_sources: number;
+  healthy_count: number;
+  stale_count: number;
+  degraded_count: number;
+  error_count: number;
+  disabled_count: number;
+  total_articles_24h: number;
+  scheduler_alive: boolean;
+}

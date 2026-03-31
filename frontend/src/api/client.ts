@@ -11,6 +11,8 @@ import type {
   SearchResponse,
   UserProfile,
   BriefResponse,
+  HealthSourcesResponse,
+  HealthSummary,
 } from "../types/api";
 
 const BASE = import.meta.env.VITE_API_URL ?? "";
@@ -82,6 +84,12 @@ export const api = {
 
   latestBrief: (): Promise<BriefResponse> =>
     get("/api/briefs/latest"),
+
+  healthSources: (): Promise<HealthSourcesResponse> =>
+    get("/api/health/sources"),
+
+  healthSummary: (): Promise<HealthSummary> =>
+    get("/api/health/summary"),
 
   updateWeights: async (username: string, weights: Record<string, number>): Promise<UserProfile> => {
     const res = await fetch(`${BASE}/api/users/${encodeURIComponent(username)}/weights`, {
