@@ -30,11 +30,11 @@ Anyone can clone, configure, and run a self-hosted market intelligence pipeline 
 - ✓ Retry logic for transient external API failures — Phase 1
 - ✓ Scheduler health monitoring (heartbeat, crash detection) — Phase 2
 - ✓ Source Health Dashboard (/health page, per-source status, volume anomaly) — Phase 2
-- [ ] Persistent service deployment (launchd config, auto-restart on crash)
-- [ ] Open-source onboarding (clone → configure → run experience)
-- [ ] Core sources zero-config (RSS, HackerNews, Reddit work without tokens)
-- [ ] Optional sources graceful degradation (skip sources missing tokens, clear docs on how to enable)
-- [ ] README rewrite for open-source audience (setup guide, architecture overview, contributing)
+- ✓ Persistent service deployment (launchd config, auto-restart on crash) — Phase 3
+- ✓ Open-source onboarding (clone → configure → run experience) — Phase 3
+- ✓ Core sources zero-config (RSS, HackerNews, Reddit work without tokens) — Phase 3
+- ✓ Optional sources graceful degradation (skip sources missing tokens, clear docs) — Phase 3
+- ✓ README rewrite for open-source audience (setup guide, architecture) — Phase 3
 
 ### Out of Scope
 
@@ -93,4 +93,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-31 after Phase 2 completion*
+*Last updated: 2026-03-31 after Phase 3 completion — all v1 requirements delivered*
