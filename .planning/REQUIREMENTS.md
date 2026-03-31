@@ -32,12 +32,12 @@
 - [x] **SHIP-01**: launchd LaunchAgent plist with KeepAlive, absolute paths, log file paths
 - [x] **SHIP-02**: Wrapper script activates venv and starts uvicorn (no reload flag)
 - [x] **SHIP-03**: Service auto-restarts on crash
-- [ ] **SHIP-04**: .env.example with all environment variables documented (required vs optional)
-- [ ] **SHIP-05**: Core sources (RSS, HackerNews, Reddit) work without any API keys
-- [ ] **SHIP-06**: Optional sources skip gracefully with clear log message when tokens missing
+- [x] **SHIP-04**: .env.example with all environment variables documented (required vs optional)
+- [x] **SHIP-05**: Core sources (RSS, HackerNews, Reddit) work without any API keys
+- [x] **SHIP-06**: Optional sources skip gracefully with clear log message when tokens missing
 - [x] **SHIP-07**: No hardcoded absolute paths (audit /Users/ references)
 - [x] **SHIP-08**: CORS restricted to localhost by default (configurable via env var)
-- [ ] **SHIP-09**: README rewritten for open-source audience (quick start, architecture)
+- [x] **SHIP-09**: README rewritten for open-source audience (quick start, architecture)
 
 ## v2 Requirements
 
@@ -93,12 +93,12 @@
 | SHIP-01 | Phase 3 | Complete |
 | SHIP-02 | Phase 3 | Complete |
 | SHIP-03 | Phase 3 | Complete |
-| SHIP-04 | Phase 3 | Pending |
-| SHIP-05 | Phase 3 | Pending |
-| SHIP-06 | Phase 3 | Pending |
+| SHIP-04 | Phase 3 | Complete |
+| SHIP-05 | Phase 3 | Complete |
+| SHIP-06 | Phase 3 | Complete |
 | SHIP-07 | Phase 3 | Complete |
 | SHIP-08 | Phase 3 | Complete |
-| SHIP-09 | Phase 3 | Pending |
+| SHIP-09 | Phase 3 | Complete |
 
 **Coverage:**
 - v1 requirements: 25 total
