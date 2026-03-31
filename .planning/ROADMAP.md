@@ -11,7 +11,7 @@ Make park-intel reliable and open-source-ready in 3 phases. Fix the silent failu
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
 - [ ] **Phase 1: Collector Reliability** - Stop swallowing errors, add retry, persist every run
-- [ ] **Phase 2: Health Visibility** - API endpoints + frontend health page showing source status and anomalies
+- [x] **Phase 2: Health Visibility** - API endpoints + frontend health page showing source status and anomalies (completed 2026-03-31)
 - [ ] **Phase 3: Persistent Run & Open-Source** - launchd service, zero-config core sources, README for public release
 
 ## Phase Details
@@ -41,11 +41,11 @@ Plans:
   3. Scheduler crash is detectable via health endpoint within 10 minutes
   4. Volume anomaly (50%+ drop from 7-day average) is visually flagged on the source card
   5. Disabled sources appear with reason and enable instructions
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 - [x] 02-01-PLAN.md — Backend: health API endpoints, migration, heartbeat, boot logging
-- [ ] 02-02-PLAN.md — Frontend: health page with source cards, banner, nav link
+- [x] 02-02-PLAN.md — Frontend: health page with source cards, banner, nav link
 
 ### Phase 3: Persistent Run & Open-Source
 **Goal**: Anyone can clone the repo, run one setup command, and have a working pipeline with persistent background service
@@ -71,5 +71,5 @@ Phases execute in numeric order: 1 -> 2 -> 3
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Collector Reliability | 2/2 | Complete | 2026-03-31 |
-| 2. Health Visibility | 1/2 | In Progress|  |
+| 2. Health Visibility | 2/2 | Complete   | 2026-03-31 |
 | 3. Persistent Run & Open-Source | 0/2 | Not started | - |
