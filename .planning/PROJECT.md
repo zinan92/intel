@@ -26,8 +26,8 @@ Anyone can clone, configure, and run a self-hosted market intelligence pipeline 
 
 ### Active
 
-- [ ] Fix collector silent failures (errors surfaced, not swallowed)
-- [ ] Retry logic for transient external API failures
+- ✓ Fix collector silent failures (errors surfaced, not swallowed) — Phase 1
+- ✓ Retry logic for transient external API failures — Phase 1
 - [ ] Scheduler health monitoring (detect thread crash, track run history)
 - [ ] Source Health Dashboard (per-source freshness, collection volume trends, anomaly detection)
 - [ ] Persistent service deployment (launchd config, auto-restart on crash)
@@ -93,4 +93,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-31 after initialization*
+*Last updated: 2026-03-31 after Phase 1 completion*
