@@ -9,6 +9,8 @@ from typing import AsyncGenerator
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 from api.event_routes import event_router
 from api.health_routes import health_router
@@ -74,6 +76,19 @@ app.include_router(ui_router)
 app.include_router(event_router)
 app.include_router(user_router)
 app.include_router(health_router)
+
+# Serve frontend static files (built with `cd frontend && npm run build`)
+_frontend_dist = BASE_DIR / "frontend" / "dist"
+if _frontend_dist.is_dir():
+    app.mount("/assets", StaticFiles(directory=_frontend_dist / "assets"), name="static")
+
+    @app.get("/{path:path}")
+    async def _serve_frontend(path: str) -> FileResponse:
+        """Serve frontend SPA — all non-API routes fall through to index.html."""
+        file_path = _frontend_dist / path
+        if file_path.is_file():
+            return FileResponse(file_path)
+        return FileResponse(_frontend_dist / "index.html")
 
 if __name__ == "__main__":
     uvicorn.run(
