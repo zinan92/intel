@@ -10,7 +10,12 @@ passing config from the registry record instead of global config.
 
 import json
 import logging
+import time
 from typing import Any, Callable
+
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential_jitter
+
+from sources.errors import CollectorResult, ErrorCategory, categorize_error, is_retryable
 
 logger = logging.getLogger(__name__)
 
@@ -198,23 +203,78 @@ def get_adapter(source_type: str) -> AdapterFn | None:
     return _ADAPTERS.get(source_type)
 
 
-def collect_from_source(record: dict[str, Any]) -> list[dict[str, Any]]:
-    """Dispatch collection for a source registry record.
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential_jitter(initial=2, max=30, jitter=2),
+    retry=retry_if_exception(is_retryable),
+    reraise=True,
+)
+def _call_adapter_with_retry(adapter_fn: AdapterFn, record: dict[str, Any]) -> list[dict[str, Any]]:
+    """Call adapter with automatic retry for transient errors."""
+    return adapter_fn(record)
+
+
+def collect_from_source(record: dict[str, Any]) -> tuple[list[dict[str, Any]], CollectorResult]:
+    """Dispatch collection for a source registry record with retry and result capture.
 
     Args:
         record: dict with at least source_key, source_type, and config/config_json.
 
     Returns:
-        List of article dicts, or empty list if adapter is missing or fails.
+        Tuple of (articles, CollectorResult). Articles is empty list on failure.
+        CollectorResult carries status, error info, retry count, and duration.
     """
     source_type = record["source_type"]
+    source_key = record.get("source_key", "")
+    t0 = time.monotonic()
+
     adapter = get_adapter(source_type)
     if adapter is None:
-        logger.warning("No adapter for source type %r (key=%s)", source_type, record.get("source_key"))
-        return []
+        logger.warning("No adapter for source type %r (key=%s)", source_type, source_key)
+        duration_ms = int((time.monotonic() - t0) * 1000)
+        result = CollectorResult(
+            source_type=source_type,
+            source_key=source_key,
+            status="error",
+            articles_fetched=0,
+            articles_saved=0,
+            duration_ms=duration_ms,
+            error_message=f"No adapter for source type {source_type!r}",
+            error_category=ErrorCategory.CONFIG.value,
+            retry_count=0,
+        )
+        return ([], result)
 
     try:
-        return adapter(record)
-    except Exception:
-        logger.exception("Adapter failed for %s (type=%s)", record.get("source_key"), source_type)
-        return []
+        articles = _call_adapter_with_retry(adapter, record)
+        retry_count = _call_adapter_with_retry.statistics.get("attempt_number", 1) - 1
+        duration_ms = int((time.monotonic() - t0) * 1000)
+        result = CollectorResult(
+            source_type=source_type,
+            source_key=source_key,
+            status="ok",
+            articles_fetched=len(articles),
+            articles_saved=0,
+            duration_ms=duration_ms,
+            error_message=None,
+            error_category=None,
+            retry_count=retry_count,
+        )
+        return (articles, result)
+    except Exception as exc:
+        retry_count = _call_adapter_with_retry.statistics.get("attempt_number", 1) - 1
+        duration_ms = int((time.monotonic() - t0) * 1000)
+        category = categorize_error(exc)
+        logger.exception("Adapter failed for %s (type=%s)", source_key, source_type)
+        result = CollectorResult(
+            source_type=source_type,
+            source_key=source_key,
+            status="error",
+            articles_fetched=0,
+            articles_saved=0,
+            duration_ms=duration_ms,
+            error_message=str(exc)[:500],
+            error_category=category.value,
+            retry_count=retry_count,
+        )
+        return ([], result)
