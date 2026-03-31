@@ -71,6 +71,15 @@ export function Sidebar() {
             {isActive("/search") && <span className="w-1 h-1 rounded-full bg-brand-400" />}
             搜索
           </Link>
+          <Link
+            to="/health"
+            className={`flex items-center gap-2 px-2 py-1.5 rounded text-sm transition-colors ${
+              isActive("/health") ? "bg-slate-800/60 text-brand-400 font-medium" : "text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            {isActive("/health") && <span className="w-1 h-1 rounded-full bg-brand-400" />}
+            数据健康
+          </Link>
           {activeUser && (
             <Link
               to={`/settings?user=${encodeURIComponent(activeUser)}`}

@@ -8,6 +8,7 @@ import { SearchPage } from "./pages/SearchPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { EventPage } from "./pages/EventPage";
 import { ConstellationPage } from "./pages/ConstellationPage";
+import { HealthPage } from "./pages/HealthPage";
 
 export function App() {
   return (
@@ -24,6 +25,7 @@ export function App() {
             <Route path="/sources/:name" element={<SourcePage />} />
             <Route path="/search" element={<SearchPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/health" element={<HealthPage />} />
           </Routes>
         </main>
       </div>
