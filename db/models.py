@@ -65,3 +65,28 @@ class Article(Base):
 
     def __repr__(self) -> str:
         return f"<Article(id={self.id}, source={self.source!r}, title={self.title!r})>"
+
+
+class CollectorRun(Base):
+    """Immutable log of each collector execution attempt (D-12)."""
+
+    __tablename__ = "collector_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source_type: Mapped[str] = mapped_column(String, nullable=False)
+    source_key: Mapped[str | None] = mapped_column(String)
+    status: Mapped[str] = mapped_column(String, nullable=False)  # "ok" or "error"
+    articles_fetched: Mapped[int] = mapped_column(Integer, default=0)
+    articles_saved: Mapped[int] = mapped_column(Integer, default=0)
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    error_category: Mapped[str | None] = mapped_column(String)  # transient/auth/parse/config
+    retry_count: Mapped[int] = mapped_column(Integer, default=0)
+    completed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+    __table_args__ = (
+        Index("idx_collector_runs_type_time", "source_type", "completed_at"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<CollectorRun(id={self.id}, source_type={self.source_type!r}, status={self.status!r})>"

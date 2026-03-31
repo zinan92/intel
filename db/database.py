@@ -29,7 +29,7 @@ def get_engine() -> Engine:
         _engine = create_engine(
             f"sqlite:///{DB_PATH}",
             echo=False,
-            connect_args={"check_same_thread": False, "timeout": 30},
+            connect_args={"check_same_thread": False, "timeout": 30},  # timeout=30s -> SQLite busy_timeout=30000ms (RELY-03: >=5000ms)
         )
         event.listen(_engine, "connect", _set_sqlite_pragma)
     return _engine

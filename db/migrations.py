@@ -115,6 +115,13 @@ def run_migrations(engine: Engine) -> None:
         Brief.__table__.create(engine)
         logger.info("briefs table created")
 
+    # Collector run log table (Phase 1: reliability instrumentation)
+    if not _table_exists(engine, "collector_runs"):
+        logger.info("Creating collector_runs table via migration")
+        from db.models import CollectorRun
+        CollectorRun.__table__.create(engine)
+        logger.info("collector_runs table created")
+
     # Partial unique index: prevent duplicate active events for same tag
     with engine.connect() as conn:
         conn.execute(text(
