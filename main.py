@@ -2,6 +2,7 @@
 
 import logging
 import logging.handlers
+import os
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -14,7 +15,7 @@ from api.health_routes import health_router
 from api.routes import router
 from api.ui_routes import ui_router
 from api.user_routes import user_router
-from config import API_HOST, API_PORT, BASE_DIR
+from config import API_HOST, API_PORT, BASE_DIR, CORS_ORIGINS
 from db.database import init_db
 from scheduler import CollectorScheduler
 
@@ -62,7 +63,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -75,4 +76,9 @@ app.include_router(user_router)
 app.include_router(health_router)
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host=API_HOST, port=API_PORT, reload=True)
+    uvicorn.run(
+        "main:app",
+        host=API_HOST,
+        port=API_PORT,
+        reload=os.getenv("PARK_INTEL_DEV", "") == "1",
+    )
