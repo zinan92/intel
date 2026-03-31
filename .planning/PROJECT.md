@@ -28,8 +28,8 @@ Anyone can clone, configure, and run a self-hosted market intelligence pipeline 
 
 - ✓ Fix collector silent failures (errors surfaced, not swallowed) — Phase 1
 - ✓ Retry logic for transient external API failures — Phase 1
-- [ ] Scheduler health monitoring (detect thread crash, track run history)
-- [ ] Source Health Dashboard (per-source freshness, collection volume trends, anomaly detection)
+- ✓ Scheduler health monitoring (heartbeat, crash detection) — Phase 2
+- ✓ Source Health Dashboard (/health page, per-source status, volume anomaly) — Phase 2
 - [ ] Persistent service deployment (launchd config, auto-restart on crash)
 - [ ] Open-source onboarding (clone → configure → run experience)
 - [ ] Core sources zero-config (RSS, HackerNews, Reddit work without tokens)
@@ -93,4 +93,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-31 after Phase 1 completion*
+*Last updated: 2026-03-31 after Phase 2 completion*
