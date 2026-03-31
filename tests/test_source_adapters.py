@@ -32,15 +32,17 @@ class TestCollectFromSource:
 
     def test_unknown_type_returns_empty(self):
         record = _record("unknown:x", "unknown_type", {})
-        result = collect_from_source(record)
-        assert result == []
+        articles, result = collect_from_source(record)
+        assert articles == []
+        assert result.status == "error"
 
-    def test_returns_list(self):
-        """Result is always a list of dicts."""
+    @patch("tenacity.nap.time.sleep")
+    def test_returns_list(self, mock_sleep):
+        """Result is always a tuple of (list, CollectorResult)."""
         with patch("sources.adapters._adapt_rss", return_value=[{"title": "Test"}]):
             record = _record("rss:test", "rss", {"url": "http://example.com/feed"})
-            result = collect_from_source(record)
-            assert isinstance(result, list)
+            articles, result = collect_from_source(record)
+            assert isinstance(articles, list)
 
 
 class TestRSSAdapter:
