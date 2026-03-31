@@ -126,3 +126,223 @@ def _check_source_disabled(source_type: str) -> str | None:
     if not value.strip():
         return message
     return None
+
+
+# ---------------------------------------------------------------------------
+# Database helpers
+# ---------------------------------------------------------------------------
+
+
+def _get_scheduler_alive() -> bool:
+    """Check if the scheduler heartbeat is recent (< 10 minutes)."""
+    from scheduler import get_heartbeat
+
+    heartbeat = get_heartbeat()
+    if heartbeat is None:
+        return False
+    age = (datetime.now(timezone.utc) - heartbeat).total_seconds()
+    return age < 600  # 10 minutes
+
+
+def _build_source_details(session) -> list[dict[str, Any]]:
+    """Build per-source health details from DB queries.
+
+    Returns a list of dicts, one per source in the registry.
+    """
+    from sqlalchemy import Date, case, cast, distinct, func
+
+    from db.models import CollectorRun, SourceRegistry
+
+    now = datetime.now(timezone.utc)
+    cutoff_24h = now - timedelta(hours=24)
+    cutoff_7d = now - timedelta(days=7)
+
+    # Fetch all sources
+    sources = session.query(SourceRegistry).all()
+
+    # Get latest run per source_type via subquery
+    latest_subq = (
+        session.query(
+            CollectorRun.source_type,
+            func.max(CollectorRun.completed_at).label("max_completed"),
+        )
+        .group_by(CollectorRun.source_type)
+        .subquery()
+    )
+
+    latest_runs_rows = (
+        session.query(CollectorRun)
+        .join(
+            latest_subq,
+            (CollectorRun.source_type == latest_subq.c.source_type)
+            & (CollectorRun.completed_at == latest_subq.c.max_completed),
+        )
+        .all()
+    )
+    latest_runs: dict[str, Any] = {}
+    for run in latest_runs_rows:
+        latest_runs[run.source_type] = run
+
+    # Get 24h article counts per source_type
+    articles_24h_rows = (
+        session.query(
+            CollectorRun.source_type,
+            func.sum(CollectorRun.articles_fetched).label("count_24h"),
+        )
+        .filter(CollectorRun.completed_at >= cutoff_24h)
+        .group_by(CollectorRun.source_type)
+        .all()
+    )
+    articles_24h: dict[str, int] = {row.source_type: row.count_24h or 0 for row in articles_24h_rows}
+
+    # Get 7-day total + distinct days per source_type for average
+    articles_7d_rows = (
+        session.query(
+            CollectorRun.source_type,
+            func.sum(CollectorRun.articles_fetched).label("total_7d"),
+            func.count(distinct(cast(CollectorRun.completed_at, Date))).label("days_with_data"),
+        )
+        .filter(CollectorRun.completed_at >= cutoff_7d)
+        .group_by(CollectorRun.source_type)
+        .all()
+    )
+    articles_7d_stats: dict[str, tuple[int, int]] = {
+        row.source_type: (row.total_7d or 0, row.days_with_data or 0)
+        for row in articles_7d_rows
+    }
+
+    result = []
+    for src in sources:
+        st = src.source_type
+
+        # Disabled check
+        disabled_reason = _check_source_disabled(st)
+
+        # Latest run info
+        latest = latest_runs.get(st)
+        last_run_at = None
+        last_run_status = None
+        last_error = None
+        last_error_category = None
+        freshness_age_hours = None
+
+        if latest is not None:
+            last_run_at = latest.completed_at.isoformat() if latest.completed_at else None
+            last_run_status = latest.status
+            last_error = latest.error_message
+            last_error_category = latest.error_category if latest.status == "error" else None
+            if latest.completed_at:
+                # SQLite returns naive datetimes; treat as UTC
+                completed = latest.completed_at
+                if completed.tzinfo is None:
+                    completed = completed.replace(tzinfo=timezone.utc)
+                age_td = now - completed
+                freshness_age_hours = round(age_td.total_seconds() / 3600, 2)
+
+        # Determine status
+        if disabled_reason is not None:
+            status = "disabled"
+        elif not src.is_active:
+            status = "disabled"
+        else:
+            status = compute_status(
+                age_hours=freshness_age_hours,
+                expected_freshness_hours=src.expected_freshness_hours,
+                last_error_category=last_error_category,
+            )
+
+        # Volume stats
+        count_24h = articles_24h.get(st, 0)
+        total_7d, days = articles_7d_stats.get(st, (0, 0))
+        avg_7d = total_7d / days if days > 0 else 0.0
+        volume_anomaly = compute_volume_anomaly(
+            articles_24h=count_24h,
+            articles_7d_avg=avg_7d,
+            days_with_data=days,
+        )
+
+        result.append({
+            "source_type": st,
+            "display_name": src.display_name,
+            "status": status,
+            "is_active": bool(src.is_active),
+            "freshness_age_hours": freshness_age_hours,
+            "expected_freshness_hours": src.expected_freshness_hours,
+            "articles_24h": count_24h,
+            "articles_7d_avg": round(avg_7d, 1),
+            "volume_anomaly": volume_anomaly,
+            "last_run_at": last_run_at,
+            "last_run_status": last_run_status,
+            "last_error": last_error,
+            "last_error_category": last_error_category,
+            "disabled_reason": disabled_reason,
+        })
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Endpoints
+# ---------------------------------------------------------------------------
+
+
+def get_session():
+    """Import and return a DB session. Separated for test patching."""
+    from db.database import get_session as _get_session
+    return _get_session()
+
+
+@health_router.get("/sources")
+def health_sources() -> dict[str, Any]:
+    """Per-source health status with freshness, volume, anomaly detection."""
+    session = get_session()
+    try:
+        sources = _build_source_details(session)
+        scheduler_alive = _get_scheduler_alive()
+        return {
+            "scheduler_alive": scheduler_alive,
+            "sources": sources,
+        }
+    finally:
+        session.close()
+
+
+@health_router.get("/summary")
+def health_summary() -> dict[str, Any]:
+    """Aggregate health summary across all sources."""
+    session = get_session()
+    try:
+        sources = _build_source_details(session)
+        scheduler_alive = _get_scheduler_alive()
+
+        status_counts = {
+            "healthy_count": 0,
+            "stale_count": 0,
+            "degraded_count": 0,
+            "error_count": 0,
+            "disabled_count": 0,
+        }
+        total_articles_24h = 0
+
+        for src in sources:
+            s = src["status"]
+            if s == "ok":
+                status_counts["healthy_count"] += 1
+            elif s == "stale":
+                status_counts["stale_count"] += 1
+            elif s == "degraded":
+                status_counts["degraded_count"] += 1
+            elif s == "error":
+                status_counts["error_count"] += 1
+            elif s in ("disabled", "no_data"):
+                status_counts["disabled_count"] += 1
+            total_articles_24h += src["articles_24h"]
+
+        return {
+            "total_sources": len(sources),
+            **status_counts,
+            "total_articles_24h": total_articles_24h,
+            "scheduler_alive": scheduler_alive,
+        }
+    finally:
+        session.close()
