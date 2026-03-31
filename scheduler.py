@@ -116,6 +116,27 @@ def _cleanup_old_runs() -> None:
         session.close()
 
 
+def _cleanup_old_articles() -> None:
+    """Delete articles older than 6 months to keep database size manageable."""
+    from db.database import get_session
+    from db.models import Article
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=180)
+    session = get_session()
+    try:
+        deleted = session.query(Article).filter(
+            Article.collected_at < cutoff
+        ).delete()
+        session.commit()
+        if deleted:
+            logger.info("Cleaned up %d articles older than 6 months", deleted)
+    except Exception:
+        session.rollback()
+        logger.exception("Failed to clean up old articles")
+    finally:
+        session.close()
+
+
 def _run_source_type(source_type: str) -> None:
     """Run all active source instances of a given type through the adapter layer.
 
@@ -231,10 +252,10 @@ class _ArticleSaver:
 
 
 def _run_llm_tagger() -> None:
-    """Run the LLM tagger on the most recent unscored articles (scheduled mode: limit=50)."""
+    """Run the LLM tagger on the most recent unscored articles (scheduled mode: limit=500)."""
     try:
         from scripts.run_llm_tagger import run_tagger
-        run_tagger(limit=50)
+        run_tagger(limit=500)
     except ImportError:
         logger.warning("LLM tagger script not found, skipping")
     except Exception as e:
@@ -435,3 +456,13 @@ class CollectorScheduler:
             replace_existing=True,
         )
         logger.info("Registered cleanup_old_runs job (weekly)")
+
+        # Cleanup old articles (weekly, 6-month retention)
+        self._scheduler.add_job(
+            _cleanup_old_articles,
+            trigger=IntervalTrigger(weeks=1, timezone=self._config.timezone),
+            id="cleanup_old_articles",
+            name="Cleanup articles older than 6 months",
+            replace_existing=True,
+        )
+        logger.info("Registered cleanup_old_articles job (weekly, 6-month retention)")
