@@ -17,15 +17,15 @@
 
 ### Health Visibility
 
-- [ ] **HLTH-01**: GET /api/health/sources returns per-source status (ok/stale/degraded/error/disabled) with freshness age, article counts, last error
-- [ ] **HLTH-02**: GET /api/health/summary returns aggregate stats (total sources, healthy count, degraded count, total articles 24h)
-- [ ] **HLTH-03**: Scheduler heartbeat updated every 5 minutes; health endpoint reports scheduler alive/dead
-- [ ] **HLTH-04**: Per-source freshness policy (expected_freshness_hours in source_registry) replaces hardcoded 24h
-- [ ] **HLTH-05**: Startup boot log lists active sources, skipped sources (with reason), scheduler start time
+- [x] **HLTH-01**: GET /api/health/sources returns per-source status (ok/stale/degraded/error/disabled) with freshness age, article counts, last error
+- [x] **HLTH-02**: GET /api/health/summary returns aggregate stats (total sources, healthy count, degraded count, total articles 24h)
+- [x] **HLTH-03**: Scheduler heartbeat updated every 5 minutes; health endpoint reports scheduler alive/dead
+- [x] **HLTH-04**: Per-source freshness policy (expected_freshness_hours in source_registry) replaces hardcoded 24h
+- [x] **HLTH-05**: Startup boot log lists active sources, skipped sources (with reason), scheduler start time
 - [ ] **HLTH-06**: Health page at /health shows all source statuses color-coded (green/yellow/red) with freshness, 24h count, last error
 - [ ] **HLTH-07**: Overall health banner ("8/10 sources healthy")
-- [ ] **HLTH-08**: Volume anomaly flag when source count drops below 50% of 7-day average (number + color, not charts)
-- [ ] **HLTH-09**: Disabled sources shown with reason and enable instructions
+- [x] **HLTH-08**: Volume anomaly flag when source count drops below 50% of 7-day average (number + color, not charts)
+- [x] **HLTH-09**: Disabled sources shown with reason and enable instructions
 
 ### Persistent Run & Open-Source
 
@@ -81,15 +81,15 @@
 | RELY-05 | Phase 1 | Complete |
 | RELY-06 | Phase 1 | Complete |
 | RELY-07 | Phase 1 | Complete |
-| HLTH-01 | Phase 2 | Pending |
-| HLTH-02 | Phase 2 | Pending |
-| HLTH-03 | Phase 2 | Pending |
-| HLTH-04 | Phase 2 | Pending |
-| HLTH-05 | Phase 2 | Pending |
+| HLTH-01 | Phase 2 | Complete |
+| HLTH-02 | Phase 2 | Complete |
+| HLTH-03 | Phase 2 | Complete |
+| HLTH-04 | Phase 2 | Complete |
+| HLTH-05 | Phase 2 | Complete |
 | HLTH-06 | Phase 2 | Pending |
 | HLTH-07 | Phase 2 | Pending |
-| HLTH-08 | Phase 2 | Pending |
-| HLTH-09 | Phase 2 | Pending |
+| HLTH-08 | Phase 2 | Complete |
+| HLTH-09 | Phase 2 | Complete |
 | SHIP-01 | Phase 3 | Pending |
 | SHIP-02 | Phase 3 | Pending |
 | SHIP-03 | Phase 3 | Pending |

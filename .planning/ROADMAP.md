@@ -41,10 +41,10 @@ Plans:
   3. Scheduler crash is detectable via health endpoint within 10 minutes
   4. Volume anomaly (50%+ drop from 7-day average) is visually flagged on the source card
   5. Disabled sources appear with reason and enable instructions
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
-- [ ] 02-01-PLAN.md — Backend: health API endpoints, migration, heartbeat, boot logging
+- [x] 02-01-PLAN.md — Backend: health API endpoints, migration, heartbeat, boot logging
 - [ ] 02-02-PLAN.md — Frontend: health page with source cards, banner, nav link
 
 ### Phase 3: Persistent Run & Open-Source
@@ -71,5 +71,5 @@ Phases execute in numeric order: 1 -> 2 -> 3
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Collector Reliability | 2/2 | Complete | 2026-03-31 |
-| 2. Health Visibility | 0/2 | Planned | - |
+| 2. Health Visibility | 1/2 | In Progress|  |
 | 3. Persistent Run & Open-Source | 0/2 | Not started | - |
