@@ -53,6 +53,55 @@ def get_last_results() -> dict[str, CollectorResult]:
     return dict(_last_results)
 
 
+def _record_collector_run(result, *, saved_count: int) -> None:
+    """Write a CollectorRun row to the database (RELY-07)."""
+    from db.database import get_session
+    from db.models import CollectorRun
+
+    session = get_session()
+    try:
+        run = CollectorRun(
+            source_type=result.source_type,
+            source_key=result.source_key,
+            status=result.status,
+            articles_fetched=result.articles_fetched,
+            articles_saved=saved_count,
+            duration_ms=result.duration_ms,
+            error_message=result.error_message,
+            error_category=result.error_category,
+            retry_count=result.retry_count,
+            completed_at=datetime.now(timezone.utc),
+        )
+        session.add(run)
+        session.commit()
+    except Exception:
+        session.rollback()
+        logger.exception("Failed to record CollectorRun for %s", result.source_key)
+    finally:
+        session.close()
+
+
+def _cleanup_old_runs() -> None:
+    """Delete collector_runs older than 30 days (D-14)."""
+    from db.database import get_session
+    from db.models import CollectorRun
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+    session = get_session()
+    try:
+        deleted = session.query(CollectorRun).filter(
+            CollectorRun.completed_at < cutoff
+        ).delete()
+        session.commit()
+        if deleted:
+            logger.info("Cleaned up %d old collector_runs rows", deleted)
+    except Exception:
+        session.rollback()
+        logger.exception("Failed to clean up old collector_runs")
+    finally:
+        session.close()
+
+
 def _run_source_type(source_type: str) -> None:
     """Run all active source instances of a given type through the adapter layer.
 
@@ -89,18 +138,38 @@ def _run_source_type(source_type: str) -> None:
             "category": instance.category,
             "config_json": instance.config_json,
         }
+        inst_start = time.time()
         try:
-            articles = collect_from_source(record)
+            articles, adapter_result = collect_from_source(record)
             fetched = len(articles)
             total_fetched += fetched
+            saved = 0
             if articles:
                 # Use a minimal collector to save (reuses BaseCollector.save dedup)
                 saver = _ArticleSaver(source_type)
                 saved = saver.save(articles)
                 total_saved += saved
+            # Record to DB (RELY-07)
+            _record_collector_run(adapter_result, saved_count=saved)
         except Exception as e:
             logger.exception("[%s] Instance %s failed", source_type, instance.source_key)
             errors.append(f"{instance.source_key}: {e}")
+            # Record failure to DB even if something unexpected happened
+            from sources.errors import CollectorResult as AdapterResult, categorize_error
+            duration_ms = int((time.time() - inst_start) * 1000)
+            category = categorize_error(e)
+            fallback_result = AdapterResult(
+                source_type=source_type,
+                source_key=instance.source_key,
+                status="error",
+                articles_fetched=0,
+                articles_saved=0,
+                duration_ms=duration_ms,
+                error_message=str(e)[:500],
+                error_category=category.value,
+                retry_count=0,
+            )
+            _record_collector_run(fallback_result, saved_count=0)
 
     duration = round(time.time() - start, 1)
     error_msg = "; ".join(errors) if errors else None
@@ -292,3 +361,13 @@ class CollectorScheduler:
             next_run_time=brief_start,
         )
         logger.info("Registered narrative signal job (every 2h)")
+
+        # Cleanup old collector runs (weekly, D-14)
+        self._scheduler.add_job(
+            _cleanup_old_runs,
+            trigger=IntervalTrigger(weeks=1, timezone=self._config.timezone),
+            id="cleanup_old_runs",
+            name="Cleanup old collector runs",
+            replace_existing=True,
+        )
+        logger.info("Registered cleanup_old_runs job (weekly)")
