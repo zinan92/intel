@@ -2,7 +2,7 @@
 
 ## What This Is
 
-An open-source qualitative signal pipeline that collects frontier-tech, macro, and market content from 10+ source types (RSS, HackerNews, Reddit, GitHub, etc.), enriches articles with keyword tags and LLM-based relevance scoring, clusters them into narrative events, and serves them through a REST API with a feed-first frontend workbench. Currently a personal tool being prepared for public open-source release.
+An open-source qualitative signal pipeline that collects frontier-tech, macro, and market content from 10+ source types (RSS, HackerNews, Reddit, GitHub, etc.), enriches articles with keyword tags and LLM-based relevance scoring, clusters them into narrative events, and serves everything through a REST API with a feed-first frontend workbench. Ships with a health dashboard for monitoring source freshness, automatic retry for transient failures, and launchd-based persistent deployment.
 
 ## Core Value
 
@@ -23,18 +23,21 @@ Anyone can clone, configure, and run a self-hosted market intelligence pipeline 
 - ✓ REST API (articles, events, signals, users, health) — existing
 - ✓ Feed-first React frontend workbench — existing
 - ✓ 283+ test suite — existing
+- ✓ Collector error categorization (transient/auth/parse/config) — v1.0
+- ✓ CollectorRun persistent model with retry tracking — v1.0
+- ✓ Tenacity retry (3 attempts, exponential backoff + jitter) — v1.0
+- ✓ Health API (/api/health/sources, /api/health/summary) — v1.0
+- ✓ Scheduler heartbeat with crash detection — v1.0
+- ✓ Per-source freshness policy (expected_freshness_hours) — v1.0
+- ✓ /health dashboard with color-coded source cards — v1.0
+- ✓ Volume anomaly detection (50% threshold) — v1.0
+- ✓ launchd LaunchAgent with auto-restart — v1.0
+- ✓ CORS hardened to localhost, dev/prod mode — v1.0
+- ✓ .env.example, zero-config core sources, README rewrite — v1.0
 
 ### Active
 
-- ✓ Fix collector silent failures (errors surfaced, not swallowed) — Phase 1
-- ✓ Retry logic for transient external API failures — Phase 1
-- ✓ Scheduler health monitoring (heartbeat, crash detection) — Phase 2
-- ✓ Source Health Dashboard (/health page, per-source status, volume anomaly) — Phase 2
-- ✓ Persistent service deployment (launchd config, auto-restart on crash) — Phase 3
-- ✓ Open-source onboarding (clone → configure → run experience) — Phase 3
-- ✓ Core sources zero-config (RSS, HackerNews, Reddit work without tokens) — Phase 3
-- ✓ Optional sources graceful degradation (skip sources missing tokens, clear docs) — Phase 3
-- ✓ README rewrite for open-source audience (setup guide, architecture) — Phase 3
+(None — v1.0 milestone shipped. Define next milestone requirements via `/gsd:new-milestone`)
 
 ### Out of Scope
 
@@ -93,4 +96,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-31 after Phase 3 completion — all v1 requirements delivered*
+*Last updated: 2026-03-31 after v1.0 milestone*
