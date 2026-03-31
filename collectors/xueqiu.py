@@ -270,6 +270,10 @@ class XueqiuCollector(BaseCollector):
 
     def collect(self) -> list[dict[str, Any]]:
         """Collect from hot timelines + KOL feeds."""
+        if not XUEQIU_COOKIE:
+            logger.warning("[%s] Skipping collection: XUEQIU_COOKIE not configured", self.source)
+            return []
+
         all_articles: list[dict[str, Any]] = []
 
         # 1. Hot timelines (requests — fast, no WAF)
