@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 01-01-PLAN.md
-last_updated: "2026-03-31T10:43:10.826Z"
+stopped_at: Completed 01-02-PLAN.md
+last_updated: "2026-03-31T10:52:09.084Z"
 progress:
   total_phases: 3
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 2
-  completed_plans: 1
+  completed_plans: 2
 ---
 
 # Project State
@@ -42,6 +42,7 @@ Plan: 2 of 2
 
 *Updated after each plan completion*
 | Phase 01-collector-reliability P01 | 5min | 2 tasks | 7 files |
+| Phase 01 P02 | 7min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -57,6 +58,8 @@ Recent decisions affecting current work:
 - [Roadmap]: Single database with busy_timeout; split to health.db only if SQLITE_BUSY errors appear
 - [Phase 01-collector-reliability]: FileNotFoundError check ordered before OSError (subclass relationship)
 - [Phase 01-collector-reliability]: busy_timeout at 30s (6x RELY-03 requirement) -- documented, not changed
+- [Phase 01]: Patched tenacity.nap.time.sleep in tests to avoid real waits
+- [Phase 01]: Fallback error recording in scheduler for unexpected exceptions
 
 ### Pending Todos
 
@@ -70,6 +73,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-31T10:43:10.824Z
-Stopped at: Completed 01-01-PLAN.md
+Last session: 2026-03-31T10:52:09.082Z
+Stopped at: Completed 01-02-PLAN.md
 Resume file: None
