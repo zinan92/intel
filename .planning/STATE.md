@@ -1,3 +1,17 @@
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+status: unknown
+stopped_at: Completed 01-01-PLAN.md
+last_updated: "2026-03-31T10:43:10.826Z"
+progress:
+  total_phases: 3
+  completed_phases: 0
+  total_plans: 2
+  completed_plans: 1
+---
+
 # Project State
 
 ## Project Reference
@@ -5,20 +19,17 @@
 See: .planning/PROJECT.md (updated 2026-03-31)
 
 **Core value:** Anyone can clone, configure, and run a self-hosted market intelligence pipeline with zero-config core sources and a health view that makes data freshness visible at a glance.
-**Current focus:** Phase 1 - Collector Reliability
+**Current focus:** Phase 01 — collector-reliability
 
 ## Current Position
 
-Phase: 1 of 3 (Collector Reliability)
-Plan: 0 of 2 in current phase
-Status: Ready to plan
-Last activity: 2026-03-31 -- Roadmap revised after Codex review (5→3 phases, 33→25 requirements)
-
-Progress: [░░░░░░░░░░] 0%
+Phase: 01 (collector-reliability) — EXECUTING
+Plan: 2 of 2
 
 ## Performance Metrics
 
 **Velocity:**
+
 - Total plans completed: 0
 - Average duration: -
 - Total execution time: 0 hours
@@ -30,6 +41,7 @@ Progress: [░░░░░░░░░░] 0%
 | - | - | - | - |
 
 *Updated after each plan completion*
+| Phase 01-collector-reliability P01 | 5min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -43,6 +55,8 @@ Recent decisions affecting current work:
 - [Codex Review]: Extend existing UI health primitives (ContextRail) instead of building standalone dashboard
 - [Roadmap]: Start without pybreaker; add only if retry storms observed
 - [Roadmap]: Single database with busy_timeout; split to health.db only if SQLITE_BUSY errors appear
+- [Phase 01-collector-reliability]: FileNotFoundError check ordered before OSError (subclass relationship)
+- [Phase 01-collector-reliability]: busy_timeout at 30s (6x RELY-03 requirement) -- documented, not changed
 
 ### Pending Todos
 
@@ -56,6 +70,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-31
-Stopped at: Roadmap revised, ready to plan Phase 1
+Last session: 2026-03-31T10:43:10.824Z
+Stopped at: Completed 01-01-PLAN.md
 Resume file: None

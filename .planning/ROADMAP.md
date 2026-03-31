@@ -28,7 +28,7 @@ Make park-intel reliable and open-source-ready in 3 phases. Fix the silent failu
 **Plans:** 2 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Foundation: error types, CollectorRun model, migration, tenacity dependency
+- [x] 01-01-PLAN.md — Foundation: error types, CollectorRun model, migration, tenacity dependency
 - [ ] 01-02-PLAN.md — Integration: retry in adapters, recording in scheduler, cleanup job
 
 ### Phase 2: Health Visibility

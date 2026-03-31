@@ -7,12 +7,12 @@
 
 ### Collector Reliability
 
-- [ ] **RELY-01**: CollectorRun model persists every collection execution (source_type, status, articles_fetched, articles_saved, duration_ms, error_message, retry_count)
-- [ ] **RELY-02**: Idempotent migration adds collector_runs table without breaking existing data
-- [ ] **RELY-03**: SQLite busy_timeout verified/set to 5000ms
+- [x] **RELY-01**: CollectorRun model persists every collection execution (source_type, status, articles_fetched, articles_saved, duration_ms, error_message, retry_count)
+- [x] **RELY-02**: Idempotent migration adds collector_runs table without breaking existing data
+- [x] **RELY-03**: SQLite busy_timeout verified/set to 5000ms
 - [ ] **RELY-04**: Transient failures (timeout, connection error, rate limit) automatically retry with exponential backoff and jitter (3 attempts)
 - [ ] **RELY-05**: Non-transient failures (401/403 auth, parse errors, missing config) are NOT retried
-- [ ] **RELY-06**: Errors categorized into 4 types: transient, auth, parse, config
+- [x] **RELY-06**: Errors categorized into 4 types: transient, auth, parse, config
 - [ ] **RELY-07**: Every collection attempt (success or failure) writes a CollectorRun row
 
 ### Health Visibility
@@ -74,12 +74,12 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| RELY-01 | Phase 1 | Pending |
-| RELY-02 | Phase 1 | Pending |
-| RELY-03 | Phase 1 | Pending |
+| RELY-01 | Phase 1 | Complete |
+| RELY-02 | Phase 1 | Complete |
+| RELY-03 | Phase 1 | Complete |
 | RELY-04 | Phase 1 | Pending |
 | RELY-05 | Phase 1 | Pending |
-| RELY-06 | Phase 1 | Pending |
+| RELY-06 | Phase 1 | Complete |
 | RELY-07 | Phase 1 | Pending |
 | HLTH-01 | Phase 2 | Pending |
 | HLTH-02 | Phase 2 | Pending |
