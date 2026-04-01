@@ -25,18 +25,26 @@ Core sources work out of the box with zero API keys. Optional sources (Xueqiu, L
 git clone https://github.com/zinan92/intel.git park-intel
 cd park-intel
 
-# Backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env          # edit .env to add optional API keys
-python main.py                # starts on http://localhost:8001
 
-# Frontend
-cd frontend && npm install && npm run dev
-# open http://localhost:5174
+# Build frontend (one-time)
+cd frontend && npm install && npm run build && cd ..
+
+# Start server (API + frontend served together)
+python main.py                # open http://localhost:8001
 ```
 
-The built-in scheduler starts collecting automatically. Check `http://localhost:8001/health` to see source status.
+The built-in scheduler starts collecting automatically. Visit `http://localhost:8001/health` to see source status.
+
+**Run as background service (macOS):**
+
+```bash
+bash scripts/install-service.sh    # auto-starts on boot, restarts on crash
+bash scripts/service-status.sh     # check if running
+bash scripts/uninstall-service.sh  # stop and remove
+```
 
 ## Core vs Optional Sources
 
