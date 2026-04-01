@@ -213,9 +213,15 @@ export interface HealthSource {
   disabled_reason: string | null;
 }
 
+export interface ProcessHealth {
+  started_at: string;
+  uptime_seconds: number;
+  restart_loop_warning: boolean;
+}
+
 export interface HealthSourcesResponse {
   scheduler_alive: boolean;
-  scheduler_heartbeat: string | null;
+  process?: ProcessHealth;
   sources: HealthSource[];
 }
 
@@ -228,4 +234,5 @@ export interface HealthSummary {
   disabled_count: number;
   total_articles_24h: number;
   scheduler_alive: boolean;
+  process?: ProcessHealth;
 }

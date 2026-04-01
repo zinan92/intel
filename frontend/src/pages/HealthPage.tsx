@@ -52,6 +52,14 @@ export function HealthPage() {
         </p>
       </div>
 
+      {/* Restart loop warning */}
+      {!isLoading && !isError && data?.process?.restart_loop_warning && (
+        <div className="bg-red-900/30 border border-red-500/50 rounded-lg px-4 py-3 text-sm text-red-300">
+          Service uptime is under 10 minutes — possible restart loop. Check{" "}
+          <code className="text-red-200">logs/park-intel-stderr.log</code> for errors.
+        </div>
+      )}
+
       {/* Health banner */}
       {!isLoading && !isError && data && (
         <div className="bg-slate-800/50 border border-surface-border rounded-lg px-4 py-3 flex items-center justify-between">
