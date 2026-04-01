@@ -50,10 +50,23 @@ _last_results: dict[str, CollectorResult] = {}
 # Heartbeat: updated every 5 minutes, checked by health endpoints
 _heartbeat_ts: datetime | None = None
 
+# Process start time: detects restart loops (if uptime < 10 min, something is wrong)
+_process_start_ts: datetime = datetime.now(timezone.utc)
+
 
 def get_heartbeat() -> datetime | None:
     """Return the last heartbeat timestamp, or None if never set."""
     return _heartbeat_ts
+
+
+def get_process_start() -> datetime:
+    """Return when this process started (UTC)."""
+    return _process_start_ts
+
+
+def get_uptime_seconds() -> float:
+    """Return seconds since process start."""
+    return (datetime.now(timezone.utc) - _process_start_ts).total_seconds()
 
 
 def _update_heartbeat() -> None:

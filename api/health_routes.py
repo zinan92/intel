@@ -144,6 +144,19 @@ def _get_scheduler_alive() -> bool:
     return age < 600  # 10 minutes
 
 
+def _get_process_health() -> dict[str, Any]:
+    """Return process uptime and restart-loop detection."""
+    from scheduler import get_process_start, get_uptime_seconds
+
+    uptime = get_uptime_seconds()
+    start = get_process_start()
+    return {
+        "started_at": start.isoformat(),
+        "uptime_seconds": round(uptime),
+        "restart_loop_warning": uptime < 600,  # < 10 min = likely restarting
+    }
+
+
 def _build_source_details(session) -> list[dict[str, Any]]:
     """Build per-source health details from DB queries.
 
@@ -299,8 +312,10 @@ def health_sources() -> dict[str, Any]:
     try:
         sources = _build_source_details(session)
         scheduler_alive = _get_scheduler_alive()
+        process_health = _get_process_health()
         return {
             "scheduler_alive": scheduler_alive,
+            "process": process_health,
             "sources": sources,
         }
     finally:
@@ -314,6 +329,7 @@ def health_summary() -> dict[str, Any]:
     try:
         sources = _build_source_details(session)
         scheduler_alive = _get_scheduler_alive()
+        process_health = _get_process_health()
 
         status_counts = {
             "healthy_count": 0,
@@ -343,6 +359,7 @@ def health_summary() -> dict[str, Any]:
             **status_counts,
             "total_articles_24h": total_articles_24h,
             "scheduler_alive": scheduler_alive,
+            "process": process_health,
         }
     finally:
         session.close()
