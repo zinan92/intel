@@ -12,6 +12,9 @@ if [ -n "$ORPHAN_PID" ]; then
     sleep 1
 fi
 
+# Ensure claude CLI and homebrew binaries are in PATH (launchd has minimal PATH)
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:$PATH"
+
 # Activate virtual environment
 source .venv/bin/activate
 
