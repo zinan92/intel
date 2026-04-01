@@ -56,17 +56,24 @@ def run_aggregation(session: Session) -> None:
 
     # 3. For each tag, create or update event
     for tag, tag_arts in tag_articles.items():
-        active_event = (
+        # Look for any existing event with this tag (active or closed)
+        existing_event = (
             session.query(Event)
-            .filter(
-                Event.narrative_tag == tag,
-                Event.status == "active",
-                Event.window_end > now,
-            )
+            .filter(Event.narrative_tag == tag)
             .first()
         )
 
-        if active_event is None:
+        if existing_event is not None:
+            # Reactivate closed events with fresh window if new articles arrive
+            if existing_event.status == "closed":
+                timestamps = [_article_timestamp(a) for a in tag_arts]
+                earliest = min(timestamps)
+                existing_event.window_start = earliest
+                existing_event.window_end = earliest + timedelta(hours=_WINDOW_HOURS)
+                existing_event.status = "active"
+                existing_event.updated_at = now
+            active_event = existing_event
+        else:
             timestamps = [_article_timestamp(a) for a in tag_arts]
             earliest = min(timestamps)
             active_event = Event(
