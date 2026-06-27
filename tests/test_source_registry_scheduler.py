@@ -2,6 +2,7 @@
 
 import json
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -68,6 +69,27 @@ class TestSchedulerUsesRegistry:
         types = {s.source_type for s in active}
         for t in types:
             assert get_adapter(t) is not None, f"No adapter for active source type: {t}"
+
+    def test_collector_scheduler_does_not_register_newsletter_delivery(self):
+        """Daily Feishu delivery is owned by external automation, not the collector service."""
+        from scheduler import CollectorScheduler
+
+        fake_session = MagicMock()
+        fake_sources = [
+            SimpleNamespace(source_type="rss", schedule_hours=1),
+            SimpleNamespace(source_type="reddit", schedule_hours=2),
+        ]
+
+        with patch("db.database.get_session", return_value=fake_session), \
+             patch("sources.registry.list_active_sources", return_value=fake_sources):
+            scheduler = CollectorScheduler()
+            scheduler._register_jobs()
+
+        job_ids = {job.id for job in scheduler._scheduler.get_jobs()}
+        assert "collector-rss" in job_ids
+        assert "collector-reddit" in job_ids
+        assert "event-aggregation" in job_ids
+        assert "finance-daily-newsletter" not in job_ids
 
 
 class TestHealthUsesRegistry:

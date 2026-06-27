@@ -15,7 +15,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 logger = logging.getLogger(__name__)
@@ -290,15 +289,6 @@ def _run_event_aggregation() -> None:
         session.close()
 
 
-def _run_finance_daily_newsletter() -> None:
-    """Generate and deliver the Finance Daily Newsletter."""
-    try:
-        from scripts.publish_finance_daily_newsletter import publish_finance_daily_newsletter
-        publish_finance_daily_newsletter(limit=100, generate=True)
-    except Exception:
-        logger.exception("Finance daily newsletter delivery failed")
-
-
 class CollectorScheduler:
     """Manages scheduled collector runs via registry-driven dispatch."""
 
@@ -439,18 +429,6 @@ class CollectorScheduler:
             next_run_time=aggregation_start,
         )
         logger.info("Registered event aggregation job (every 1h)")
-
-        # Finance Daily Newsletter: generated every morning before China A-share
-        # market open, archived to Obsidian, and delivered to Feishu. The brief
-        # generator applies freshness, dedup, and publish quality gates before
-        # replacing the current published brief.
-        self._scheduler.add_job(
-            _run_finance_daily_newsletter,
-            trigger=CronTrigger(hour=8, minute=0, timezone=self._config.timezone),
-            id="finance-daily-newsletter",
-            replace_existing=True,
-        )
-        logger.info("Registered finance daily newsletter job (08:00 %s)", self._config.timezone)
 
         # Heartbeat update (every 5 minutes)
         self._scheduler.add_job(

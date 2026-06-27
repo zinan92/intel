@@ -48,7 +48,7 @@ bash scripts/uninstall-service.sh  # stop and remove
 
 ## Finance Daily Newsletter
 
-The built-in scheduler publishes a Finance Daily Newsletter every day at `08:00 Asia/Shanghai`. It generates a rolling 24-hour brief, applies freshness and quality gates, archives the markdown output, sends the brief to Feishu, and includes a source status block so delivery issues are visible in the same push.
+The Finance Daily Newsletter is published by an external daily automation, not by the long-running collector scheduler. Keep the park-intel service focused on continuous collection, tagging, and event aggregation; schedule `scripts/publish_finance_daily_newsletter.py` separately at `08:00 Asia/Shanghai` to generate the rolling 24-hour brief, archive the markdown output, send it to Feishu, and include a source status block so delivery issues are visible in the same push.
 
 Configure delivery in `.env`:
 
