@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
+import config as cfg
 from db.models import Base, SourceRegistry
 from sources.registry import get_source_by_key, list_active_sources, list_all_sources
 from sources.seed import seed_source_registry
@@ -142,12 +143,16 @@ class TestSeedAttributes:
         assert len(all_sources) == len(active_sources)
 
     def test_schedule_hours_from_config(self, session: Session):
-        """Schedule hours should be derived from ACTIVE_SOURCES intervals."""
+        """Schedule hours should be derived from SOURCE_BOOTSTRAP intervals."""
         seed_source_registry(session)
-        # RSS is 6h in ACTIVE_SOURCES
+        expected = next(
+            entry["interval_hours"]
+            for entry in cfg.SOURCE_BOOTSTRAP
+            if entry["source"] == "rss"
+        )
         rss_sources = [s for s in list_all_sources(session) if s.source_type == "rss"]
         assert len(rss_sources) > 0
-        assert all(s.schedule_hours == 6 for s in rss_sources)
+        assert all(s.schedule_hours == expected for s in rss_sources)
 
     def test_rss_config_has_url(self, session: Session):
         seed_source_registry(session)

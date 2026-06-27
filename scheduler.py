@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 logger = logging.getLogger(__name__)
@@ -289,13 +290,13 @@ def _run_event_aggregation() -> None:
         session.close()
 
 
-def _run_narrative_signal() -> None:
-    """Generate narrative signal brief."""
+def _run_finance_daily_newsletter() -> None:
+    """Generate and deliver the Finance Daily Newsletter."""
     try:
-        from scripts.generate_narrative_signal import generate_brief
-        generate_brief(limit=100)
+        from scripts.publish_finance_daily_newsletter import publish_finance_daily_newsletter
+        publish_finance_daily_newsletter(limit=100, generate=True)
     except Exception:
-        logger.exception("Narrative signal generation failed")
+        logger.exception("Finance daily newsletter delivery failed")
 
 
 class CollectorScheduler:
@@ -439,16 +440,17 @@ class CollectorScheduler:
         )
         logger.info("Registered event aggregation job (every 1h)")
 
-        # Narrative signal brief (every 2 hours)
-        brief_start = base_time + timedelta(seconds=30 * (len(jobs) + 2))
+        # Finance Daily Newsletter: generated every morning before China A-share
+        # market open, archived to Obsidian, and delivered to Feishu. The brief
+        # generator applies freshness, dedup, and publish quality gates before
+        # replacing the current published brief.
         self._scheduler.add_job(
-            _run_narrative_signal,
-            trigger=IntervalTrigger(hours=2),
-            id="narrative-signal",
+            _run_finance_daily_newsletter,
+            trigger=CronTrigger(hour=8, minute=0, timezone=self._config.timezone),
+            id="finance-daily-newsletter",
             replace_existing=True,
-            next_run_time=brief_start,
         )
-        logger.info("Registered narrative signal job (every 2h)")
+        logger.info("Registered finance daily newsletter job (08:00 %s)", self._config.timezone)
 
         # Heartbeat update (every 5 minutes)
         self._scheduler.add_job(

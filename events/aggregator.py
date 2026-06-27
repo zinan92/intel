@@ -31,16 +31,31 @@ def _article_timestamp(article: Article) -> datetime:
     return article.published_at or article.collected_at
 
 
+def _close_expired_events(session: Session, now: datetime) -> list[Event]:
+    expired = (
+        session.query(Event)
+        .filter(Event.status == "active", Event.window_end < now)
+        .all()
+    )
+    for event in expired:
+        event.status = "closed"
+        event.updated_at = now
+    return expired
+
+
 def run_aggregation(session: Session) -> None:
     """Run one aggregation cycle: cluster recent articles into events."""
     now = datetime.utcnow()
     cutoff = now - timedelta(hours=_WINDOW_HOURS)
+
+    expired = _close_expired_events(session, now)
 
     # 1. Fetch recent articles with narrative tags
     articles = (
         session.query(Article)
         .filter(
             Article.collected_at >= cutoff,
+            (Article.published_at.is_(None)) | (Article.published_at >= cutoff),
             Article.narrative_tags.isnot(None),
             Article.narrative_tags != "",
             Article.narrative_tags != "[]",
@@ -56,26 +71,26 @@ def run_aggregation(session: Session) -> None:
 
     # 3. For each tag, create or update event
     for tag, tag_arts in tag_articles.items():
-        # Look for any existing event with this tag (active or closed)
+        timestamps = [_article_timestamp(a) for a in tag_arts]
+        earliest = min(timestamps)
+
+        # Only update the currently live event instance. Closed events are
+        # historical artifacts and must not be reactivated; otherwise a tag like
+        # "gold-price-rally" accumulates stale March summaries into June briefs.
         existing_event = (
             session.query(Event)
-            .filter(Event.narrative_tag == tag)
+            .filter(
+                Event.narrative_tag == tag,
+                Event.status == "active",
+                Event.window_end >= now,
+            )
+            .order_by(Event.created_at.desc())
             .first()
         )
 
         if existing_event is not None:
-            # Reactivate closed events with fresh window if new articles arrive
-            if existing_event.status == "closed":
-                timestamps = [_article_timestamp(a) for a in tag_arts]
-                earliest = min(timestamps)
-                existing_event.window_start = earliest
-                existing_event.window_end = earliest + timedelta(hours=_WINDOW_HOURS)
-                existing_event.status = "active"
-                existing_event.updated_at = now
             active_event = existing_event
         else:
-            timestamps = [_article_timestamp(a) for a in tag_arts]
-            earliest = min(timestamps)
             active_event = Event(
                 narrative_tag=tag,
                 window_start=earliest,
@@ -112,6 +127,10 @@ def run_aggregation(session: Session) -> None:
             .filter(Article.id.in_(linked_article_ids))
             .all()
         )
+        linked_articles = [
+            article for article in linked_articles
+            if active_event.window_start <= _article_timestamp(article) < active_event.window_end
+        ]
 
         sources = {a.source for a in linked_articles}
         relevances = [
@@ -129,48 +148,40 @@ def run_aggregation(session: Session) -> None:
         active_event.signal_score = round(len(sources) * avg_rel, 2)
         active_event.updated_at = now
 
-    # 4. Close expired events
-    expired = (
-        session.query(Event)
-        .filter(Event.status == "active", Event.window_end < now)
-        .all()
-    )
+    # 4. Snapshot price outcomes for events closed at the start of this run.
     for event in expired:
-        event.status = "closed"
-        event.updated_at = now
-
-        # Snapshot price outcomes if event has tickers
-        if event.outcome_data is None:
-            try:
-                linked_ids = [
-                    ea.article_id
-                    for ea in session.query(EventArticle)
-                    .filter(EventArticle.event_id == event.id).all()
-                ]
-                tickers = set()
-                for art in session.query(Article).filter(Article.id.in_(linked_ids)).all():
-                    if art.tickers:
-                        try:
-                            for t in json.loads(art.tickers):
-                                if t:
-                                    tickers.add(t)
-                        except (json.JSONDecodeError, TypeError):
-                            pass
-                if tickers:
-                    import asyncio
-                    from bridge.quant import get_price_impacts
-                    impacts = asyncio.run(get_price_impacts(list(tickers)[:5], event.window_start))
-                    if impacts:
-                        outcome = {
-                            "tickers": {
-                                pi["ticker"]: {k: pi.get(k) for k in ["price_at_event", "change_1d", "change_3d", "change_5d"]}
-                                for pi in impacts
-                            },
-                            "captured_at": now.isoformat(),
-                        }
-                        event.outcome_data = json.dumps(outcome)
-            except Exception:
-                logger.warning("[aggregator] Failed outcome for '%s'", event.narrative_tag, exc_info=True)
+        if event.outcome_data is not None:
+            continue
+        try:
+            linked_ids = [
+                ea.article_id
+                for ea in session.query(EventArticle)
+                .filter(EventArticle.event_id == event.id).all()
+            ]
+            tickers = set()
+            for art in session.query(Article).filter(Article.id.in_(linked_ids)).all():
+                if art.tickers:
+                    try:
+                        for t in json.loads(art.tickers):
+                            if t:
+                                tickers.add(t)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+            if tickers:
+                import asyncio
+                from bridge.quant import get_price_impacts
+                impacts = asyncio.run(get_price_impacts(list(tickers)[:5], event.window_start))
+                if impacts:
+                    outcome = {
+                        "tickers": {
+                            pi["ticker"]: {k: pi.get(k) for k in ["price_at_event", "change_1d", "change_3d", "change_5d"]}
+                            for pi in impacts
+                        },
+                        "captured_at": now.isoformat(),
+                    }
+                    event.outcome_data = json.dumps(outcome)
+        except Exception:
+            logger.warning("[aggregator] Failed outcome for '%s'", event.narrative_tag, exc_info=True)
 
     session.commit()
 
