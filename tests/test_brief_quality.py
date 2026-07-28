@@ -54,6 +54,18 @@ def test_validate_published_brief_rejects_stale_gold_breakout_fact():
     assert any("gold" in issue for issue in result.issues)
 
 
+def test_validate_published_brief_does_not_combine_unrelated_price_facts():
+    content = VALID_BRIEF + """
+    - Gold 当前约 $4,074，不追旧叙事。
+    - 铜价 $15,000 是情景目标，非已实现。
+    - BTC 突破关键位后再确认。
+    """
+
+    result = validate_published_brief(content)
+
+    assert result.passed
+
+
 def test_validate_published_brief_requires_trader_sections():
     result = validate_published_brief("Only a short summary without sections.")
     assert not result.passed

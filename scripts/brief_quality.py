@@ -43,6 +43,19 @@ def _numbered_titles(content: str) -> list[str]:
     return titles
 
 
+def _contains_stale_gold_breakout_fact(content: str) -> bool:
+    """Reject the bad gold claim only when its terms describe one fact.
+
+    A brief can separately mention gold, a $15,000 copper target, and another
+    asset's breakout. Searching the full document makes those unrelated facts
+    look like a false $5,000 gold breakout.
+    """
+    return any(
+        all(pattern.search(line) for pattern in _STALE_GOLD_PATTERNS)
+        for line in content.splitlines()
+    )
+
+
 def validate_published_brief(content: str) -> BriefValidation:
     """Validate that a generated brief is safe to publish to traders."""
     issues: list[str] = []
@@ -60,7 +73,7 @@ def validate_published_brief(content: str) -> BriefValidation:
     if duplicates:
         issues.append(f"duplicate numbered insight titles: {', '.join(duplicates[:3])}")
 
-    if all(pattern.search(stripped) for pattern in _STALE_GOLD_PATTERNS):
+    if _contains_stale_gold_breakout_fact(stripped):
         issues.append("gold appears to be described as a $5,000 breakout/record fact")
 
     required_sections = [
