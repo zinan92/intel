@@ -1,12 +1,13 @@
-"""Generate Narrative Signal brief using Claude CLI."""
+"""Generate Narrative Signal briefs with the DeepSeek Chat Completions API."""
 import logging
+import os
 import re
-import shutil
-import subprocess
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
+
+import requests
 
 from db.database import get_session, init_db
 from db.models import Article
@@ -20,6 +21,9 @@ logger = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 BRIEF_TIMEZONE = ZoneInfo("Asia/Shanghai")
 BRIEF_WINDOW_HOURS = 24
+DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions"
+DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-pro"
+DEFAULT_DEEPSEEK_API_KEY_FILE = Path("/Users/wendy/park-hands/_secrets/deepseek api.md")
 SOURCE_LABELS = {
     "rss": "财经媒体",
     "google_news": "新闻聚合",
@@ -143,76 +147,63 @@ def _source_health_summary(session, window_start: datetime, window_end: datetime
     return "- 核心财经、新闻、社区、开发者与A股社交来源在本窗口有新增；无关键覆盖缺口。"
 
 
-def _call_claude(prompt: str) -> str | None:
-    claude_path = shutil.which("claude")
-    if not claude_path:
-        logger.warning("claude CLI not found")
-        return None
+def _deepseek_api_key() -> str | None:
+    key = os.getenv("DEEPSEEK_API_KEY", "").strip()
+    if key:
+        return key
+
+    key_path = Path(
+        os.getenv("DEEPSEEK_API_KEY_FILE", str(DEFAULT_DEEPSEEK_API_KEY_FILE))
+    ).expanduser()
     try:
-        result = subprocess.run(
-            [claude_path, "-p", prompt, "--output-format", "text"],
-            capture_output=True, text=True, timeout=120,
-        )
-        if result.returncode != 0:
-            logger.warning("claude CLI error: %s", (result.stderr or result.stdout)[:500])
-            return None
-        return _clean_model_output(result.stdout)
-    except subprocess.TimeoutExpired:
-        logger.warning("claude CLI timed out (120s)")
-        return None
-    except Exception:
-        logger.exception("claude CLI failed")
+        secret_text = key_path.read_text(encoding="utf-8")
+    except OSError:
+        logger.error("DeepSeek API key is not configured")
         return None
 
+    match = re.search(r"(?:DEEPSEEK_API_KEY\s*[=:]\s*)?(sk-[A-Za-z0-9_-]+)", secret_text)
+    if not match:
+        logger.error("DeepSeek API key is not configured")
+        return None
+    return match.group(1)
 
-def _call_codex(prompt: str) -> str | None:
-    codex_path = shutil.which("codex")
-    if not codex_path:
-        logger.error("codex CLI not found")
-        return None
+
+def _call_deepseek(prompt: str) -> tuple[str | None, str | None]:
+    key = _deepseek_api_key()
+    if not key:
+        return None, None
+
+    requested_model = os.getenv("DEEPSEEK_MODEL", DEFAULT_DEEPSEEK_MODEL).strip()
     try:
-        result = subprocess.run(
-            [
-                codex_path,
-                "--ask-for-approval",
-                "never",
-                "exec",
-                "--sandbox",
-                "read-only",
-                "--cd",
-                str(PROJECT_ROOT),
-                "-",
-            ],
-            input=prompt,
-            capture_output=True,
-            text=True,
-            timeout=240,
+        response = requests.post(
+            DEEPSEEK_API_URL,
+            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            json={
+                "model": requested_model,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.2,
+                "max_tokens": 6000,
+            },
+            timeout=180,
         )
-        if result.returncode != 0:
-            logger.error("codex CLI error: %s", (result.stderr or result.stdout)[:500])
-            return None
-        return _clean_model_output(result.stdout)
-    except subprocess.TimeoutExpired:
-        logger.error("codex CLI timed out (240s)")
-        return None
-    except Exception:
-        logger.exception("codex CLI failed")
-        return None
+        response.raise_for_status()
+        data = response.json()
+        content = _clean_model_output(data["choices"][0]["message"]["content"])
+        if not content:
+            logger.error("DeepSeek API returned an empty response")
+            return None, None
+        return content, str(data.get("model") or requested_model)
+    except (requests.RequestException, KeyError, IndexError, TypeError, ValueError):
+        logger.exception("DeepSeek API request failed")
+        return None, None
 
 
 def _call_llm(prompt: str) -> tuple[str | None, str | None]:
-    """Generate with Claude first, then fallback to Codex CLI."""
-    content = _call_claude(prompt)
+    """Generate with DeepSeek only; an unavailable provider fails closed."""
+    content, model = _call_deepseek(prompt)
     if content:
-        logger.info("Brief generated with claude CLI")
-        return content, "claude"
-
-    logger.warning("Falling back to codex CLI for brief generation")
-    content = _call_codex(prompt)
-    if content:
-        logger.info("Brief generated with codex CLI fallback")
-        return content, "codex"
-
+        logger.info("Brief generated with DeepSeek model %s", model)
+        return content, f"deepseek:{model}"
     return None, None
 
 

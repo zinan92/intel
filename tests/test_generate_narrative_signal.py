@@ -74,6 +74,45 @@ def test_current_brief_window_is_rolling_24h():
     assert start == now - timedelta(hours=24)
 
 
+def test_deepseek_reads_api_key_from_configured_secret_file(tmp_path, monkeypatch):
+    from scripts.generate_narrative_signal import _deepseek_api_key
+
+    secret_file = tmp_path / "deepseek.md"
+    secret_file.write_text("DEEPSEEK_API_KEY=sk-test-key", encoding="utf-8")
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.setenv("DEEPSEEK_API_KEY_FILE", str(secret_file))
+
+    assert _deepseek_api_key() == "sk-test-key"
+
+
+def test_call_deepseek_uses_expected_request_shape(monkeypatch):
+    from scripts import generate_narrative_signal as mod
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test-key")
+    monkeypatch.delenv("DEEPSEEK_MODEL", raising=False)
+
+    with patch.object(mod.requests, "post") as post:
+        post.return_value.json.return_value = {
+            "model": "deepseek-v4-pro",
+            "choices": [{"message": {"content": "generated brief"}}],
+        }
+        content, model = mod._call_deepseek("write a brief")
+
+    assert (content, model) == ("generated brief", "deepseek-v4-pro")
+    assert post.call_args.kwargs["json"]["model"] == "deepseek-v4-pro"
+    assert post.call_args.kwargs["headers"]["Authorization"] == "Bearer sk-test-key"
+    post.return_value.raise_for_status.assert_called_once()
+
+
+def test_call_deepseek_rejects_malformed_response(monkeypatch):
+    from scripts import generate_narrative_signal as mod
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test-key")
+    with patch.object(mod.requests, "post") as post:
+        post.return_value.json.return_value = {"choices": []}
+        assert mod._call_deepseek("write a brief") == (None, None)
+
+
 def test_select_publishable_articles_filters_stale_noise_and_dedups():
     from scripts.generate_narrative_signal import _select_publishable_articles
 
