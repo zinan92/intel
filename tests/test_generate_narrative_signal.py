@@ -93,13 +93,13 @@ def test_call_deepseek_uses_expected_request_shape(monkeypatch):
 
     with patch.object(mod.requests, "post") as post:
         post.return_value.json.return_value = {
-            "model": "deepseek-v4-pro",
+            "model": "deepseek-v4-flash",
             "choices": [{"message": {"content": "generated brief"}}],
         }
         content, model = mod._call_deepseek("write a brief")
 
-    assert (content, model) == ("generated brief", "deepseek-v4-pro")
-    assert post.call_args.kwargs["json"]["model"] == "deepseek-v4-pro"
+    assert (content, model) == ("generated brief", "deepseek-v4-flash")
+    assert post.call_args.kwargs["json"]["model"] == "deepseek-v4-flash"
     assert post.call_args.kwargs["headers"]["Authorization"] == "Bearer sk-test-key"
     post.return_value.raise_for_status.assert_called_once()
 
