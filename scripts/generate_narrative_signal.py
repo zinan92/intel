@@ -182,6 +182,7 @@ def _call_deepseek(prompt: str) -> tuple[str | None, str | None]:
             json={
                 "model": requested_model,
                 "messages": [{"role": "user", "content": prompt}],
+                "thinking": {"type": "disabled"},
                 "temperature": 0.2,
                 "max_tokens": 6000,
             },

@@ -100,6 +100,7 @@ def test_call_deepseek_uses_expected_request_shape(monkeypatch):
 
     assert (content, model) == ("generated brief", "deepseek-v4-flash")
     assert post.call_args.kwargs["json"]["model"] == "deepseek-v4-flash"
+    assert post.call_args.kwargs["json"]["thinking"] == {"type": "disabled"}
     assert post.call_args.kwargs["headers"]["Authorization"] == "Bearer sk-test-key"
     post.return_value.raise_for_status.assert_called_once()
 
