@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run LLM tagger on articles that haven't been scored yet.
 
-Uses Claude Code CLI (claude -p) — no API key needed.
+Uses the DeepSeek API with a file-based credential.
 """
 
 import argparse

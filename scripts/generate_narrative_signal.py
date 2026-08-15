@@ -1,8 +1,6 @@
-"""Generate Narrative Signal brief using Claude CLI."""
+"""Generate Narrative Signal brief using DeepSeek API."""
 import json
 import logging
-import shutil
-import subprocess
 import sys
 from datetime import datetime, timedelta
 
@@ -10,30 +8,17 @@ from db.database import get_session, init_db
 from db.models import Article
 from events.models import Event
 from briefs.models import Brief
+from llm.deepseek import DeepSeekClient, DeepSeekError
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
 
-def _call_claude(prompt: str) -> str | None:
-    claude_path = shutil.which("claude")
-    if not claude_path:
-        logger.error("claude CLI not found")
-        return None
+def _call_deepseek(prompt: str) -> str | None:
     try:
-        result = subprocess.run(
-            [claude_path, "-p", prompt, "--output-format", "text"],
-            capture_output=True, text=True, timeout=120,
-        )
-        if result.returncode != 0:
-            logger.error("claude CLI error: %s", result.stderr[:300])
-            return None
-        return result.stdout.strip()
-    except subprocess.TimeoutExpired:
-        logger.error("claude CLI timed out (120s)")
-        return None
-    except Exception:
-        logger.exception("claude CLI failed")
+        return DeepSeekClient().complete(prompt, timeout=120, max_tokens=8192)
+    except DeepSeekError as exc:
+        logger.error("DeepSeek brief generation failed: %s", exc)
         return None
 
 
@@ -147,7 +132,7 @@ def generate_brief(limit: int = 100) -> int | None:
         prompt = _build_prompt(articles, events)
         logger.info("Generating brief from %d articles, %d events...", len(articles), len(events))
 
-        content = _call_claude(prompt)
+        content = _call_deepseek(prompt)
         if not content:
             logger.error("Failed to generate brief")
             return None

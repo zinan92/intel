@@ -1,11 +1,11 @@
-"""LLM-based article tagger using Claude Code CLI for relevance scoring and narrative tagging."""
+"""DeepSeek-based article relevance scoring and narrative tagging."""
 
 import json
 import logging
-import os
-import subprocess
 import time
 from typing import Any
+
+from llm.deepseek import DeepSeekClient, DeepSeekError
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +19,8 @@ def _extract_json_array(text: str) -> list[dict]:
         parsed = json.loads(text)
         if isinstance(parsed, list):
             return parsed
+        if isinstance(parsed, dict) and isinstance(parsed.get("results"), list):
+            return parsed["results"]
     except json.JSONDecodeError:
         pass
 
@@ -51,28 +53,29 @@ _SYSTEM_PROMPT = """You are a trading analyst assistant. For each article, you m
 
 2. Generate **narrative_tags** — short descriptive phrases (2-4 words each) capturing the article's trading-relevant narrative. Examples: "nvidia-earnings-beat", "fed-rate-pause", "btc-etf-inflows", "china-stimulus-hope".
 
-Respond with a JSON array. Each element must have:
+Respond with a JSON object whose "results" value is an array. Each array element must have:
 - "id": the article id (integer)
 - "relevance_score": integer 1-5
 - "narrative_tags": list of 1-3 short narrative tag strings
 
-Example response:
-[
+Example JSON response:
+{"results": [
   {"id": 1, "relevance_score": 4, "narrative_tags": ["nvidia-earnings-beat", "ai-capex-growth"]},
   {"id": 2, "relevance_score": 2, "narrative_tags": ["general-market-commentary"]}
-]
+]}
 
-Respond ONLY with the JSON array, no other text."""
+Respond ONLY with the JSON object, no other text."""
 
-# Pause between CLI calls to avoid hammering
+# Pause between API calls to avoid hammering
 _MIN_INTERVAL = 2.0
 
 
 class LLMTagger:
-    """Batch LLM tagger using Claude Code CLI."""
+    """Batch LLM tagger using the DeepSeek API."""
 
-    def __init__(self, batch_size: int = 10) -> None:
+    def __init__(self, batch_size: int = 10, client: DeepSeekClient | None = None) -> None:
         self.batch_size = batch_size
+        self.client = client or DeepSeekClient()
         self._last_call = 0.0
         self._batches_processed = 0
 
@@ -98,30 +101,17 @@ class LLMTagger:
             source = a.get("source", "unknown")
             parts.append(f"[Article ID={a['id']}, source={source}]\nTitle: {title}\nContent: {content}\n")
 
-        user_msg = _SYSTEM_PROMPT + "\n\nHere are the articles to score:\n\n" + "\n---\n".join(parts)
+        user_msg = "Here are the articles to score. Return JSON only:\n\n" + "\n---\n".join(parts)
 
         self._rate_limit()
         try:
-            # Clear CLAUDECODE env var to allow nested CLI calls
-            env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
-            result = subprocess.run(
-                ["claude", "-p", user_msg, "--output-format", "json", "--model", "claude-sonnet-4-6"],
-                capture_output=True,
-                text=True,
+            text = self.client.complete(
+                user_msg,
+                system_prompt=_SYSTEM_PROMPT,
+                json_mode=True,
                 timeout=120,
-                env=env,
+                max_tokens=4096,
             )
-
-            if result.returncode != 0:
-                logger.error("claude CLI failed: %s", result.stderr.strip())
-                return []
-
-            # claude --output-format json wraps response in {"type":"result","result":"..."}
-            outer = json.loads(result.stdout)
-            text = outer.get("result", result.stdout).strip()
-
-            # Sonnet may include analysis text before the JSON array.
-            # Extract the JSON array from wherever it appears.
             results = _extract_json_array(text)
             self._batches_processed += 1
 
@@ -143,11 +133,8 @@ class LLMTagger:
         except json.JSONDecodeError as e:
             logger.error("Failed to parse LLM response: %s", e)
             return []
-        except subprocess.TimeoutExpired:
-            logger.error("claude CLI timed out")
-            return []
-        except Exception as e:
-            logger.error("claude CLI call failed: %s", e)
+        except DeepSeekError as e:
+            logger.error("DeepSeek tagging failed: %s", e)
             return []
 
     @property
