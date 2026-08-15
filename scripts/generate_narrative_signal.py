@@ -24,7 +24,7 @@ BRIEF_WINDOW_HOURS = 24
 DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions"
 # DeepSeek documents this alias as the current V4-Flash release (V4-Flash-0731).
 DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash"
-DEFAULT_DEEPSEEK_API_KEY_FILE = Path("/Users/wendy/park-hands/_secrets/deepseek api.md")
+DEFAULT_DEEPSEEK_API_KEY_FILE = Path("/Users/wendy/park-hands/_secrets/deepseek-key")
 SOURCE_LABELS = {
     "rss": "财经媒体",
     "google_news": "新闻聚合",
