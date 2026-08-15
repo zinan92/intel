@@ -1,7 +1,5 @@
-"""LLM narrative generation for cross-source events via claude CLI."""
+"""LLM narrative generation for cross-source events via DeepSeek API."""
 import logging
-import shutil
-import subprocess
 import time
 from datetime import datetime, timedelta
 
@@ -9,31 +7,18 @@ from sqlalchemy.orm import Session
 
 from db.models import Article
 from events.models import Event, EventArticle
+from llm.deepseek import DeepSeekClient, DeepSeekError
 
 logger = logging.getLogger(__name__)
 
 _RATE_LIMIT_SECONDS = 2
 
 
-def _call_claude(prompt: str) -> str | None:
-    claude_path = shutil.which("claude")
-    if not claude_path:
-        logger.warning("claude CLI not found — narrative generation disabled")
-        return None
+def _call_deepseek(prompt: str) -> str | None:
     try:
-        result = subprocess.run(
-            [claude_path, "-p", prompt, "--output-format", "text"],
-            capture_output=True, text=True, timeout=30,
-        )
-        if result.returncode != 0:
-            logger.warning("claude CLI returned %d: %s", result.returncode, result.stderr[:200])
-            return None
-        return result.stdout.strip()
-    except subprocess.TimeoutExpired:
-        logger.warning("claude CLI timed out for narrative generation")
-        return None
-    except Exception:
-        logger.exception("claude CLI failed")
+        return DeepSeekClient().complete(prompt, timeout=30, max_tokens=2048)
+    except DeepSeekError as exc:
+        logger.warning("DeepSeek narrative generation failed: %s", exc)
         return None
 
 
@@ -133,7 +118,7 @@ def generate_narratives(session: Session) -> int:
             continue
 
         prompt = _build_prompt(event, articles)
-        narrative = _call_claude(prompt)
+        narrative = _call_deepseek(prompt)
 
         if narrative:
             summary, play = _parse_narrator_response(narrative)

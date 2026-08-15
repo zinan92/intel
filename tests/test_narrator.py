@@ -51,7 +51,7 @@ def test_generate_narrative_skips_when_already_set(db_session):
     event.narrative_summary = "Already set"
     event.trading_play = "SCENARIO A: ..."
     db_session.commit()
-    with patch("events.narrator._call_claude") as mock:
+    with patch("events.narrator._call_deepseek") as mock:
         generate_narratives(db_session)
         mock.assert_not_called()
 
@@ -61,15 +61,15 @@ def test_generate_narrative_skips_single_source(db_session):
     event = _seed_event_with_articles(db_session)
     event.source_count = 1
     db_session.commit()
-    with patch("events.narrator._call_claude") as mock:
+    with patch("events.narrator._call_deepseek") as mock:
         generate_narratives(db_session)
         mock.assert_not_called()
 
 
-def test_generate_narrative_calls_claude(db_session):
+def test_generate_narrative_calls_deepseek(db_session):
     from events.narrator import generate_narratives
     event = _seed_event_with_articles(db_session)
-    with patch("events.narrator._call_claude") as mock:
+    with patch("events.narrator._call_deepseek") as mock:
         mock.return_value = "BTC ETFs saw record inflows."
         generate_narratives(db_session)
     refreshed = db_session.query(Event).filter_by(id=event.id).first()
@@ -128,7 +128,7 @@ def test_generate_narrative_ignores_articles_outside_event_window(db_session):
 def test_generate_narrative_handles_cli_failure(db_session):
     from events.narrator import generate_narratives
     event = _seed_event_with_articles(db_session)
-    with patch("events.narrator._call_claude") as mock:
+    with patch("events.narrator._call_deepseek") as mock:
         mock.return_value = None
         generate_narratives(db_session)
     refreshed = db_session.query(Event).filter_by(id=event.id).first()
