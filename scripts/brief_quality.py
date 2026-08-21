@@ -30,6 +30,9 @@ _STALE_GOLD_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"5,?000"),
     re.compile(r"record\s+high|历史新高|突破", re.I),
 ]
+_PRICE_TARGET_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(r"预测|预计|目标价?|情景|forecast|target|could|may", re.I),
+]
 
 
 def _numbered_titles(content: str) -> list[str]:
@@ -52,6 +55,7 @@ def _contains_stale_gold_breakout_fact(content: str) -> bool:
     """
     return any(
         all(pattern.search(line) for pattern in _STALE_GOLD_PATTERNS)
+        and not any(pattern.search(line) for pattern in _PRICE_TARGET_PATTERNS)
         for line in content.splitlines()
     )
 

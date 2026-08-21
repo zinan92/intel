@@ -54,6 +54,18 @@ def test_validate_published_brief_rejects_stale_gold_breakout_fact():
     assert any("gold" in issue for issue in result.issues)
 
 
+def test_validate_published_brief_accepts_gold_price_target():
+    content = VALID_BRIEF + """
+    2. **黄金两个月高位回落** | 中 确信度 | 数月
+       → XAU/USD: Morgan Stanley 预测明年突破 $5,000；这是目标价，非已发生事实。
+       → 交易含义: 只跟踪实际价格与利率变化，不把目标价当现价。
+    """
+
+    result = validate_published_brief(content)
+
+    assert result.passed
+
+
 def test_validate_published_brief_does_not_combine_unrelated_price_facts():
     content = VALID_BRIEF + """
     - Gold 当前约 $4,074，不追旧叙事。
