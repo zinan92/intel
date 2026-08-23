@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -68,6 +68,9 @@ class WeeklyDryRunResult:
     provider: str
     draft: dict[str, Any]
     markdown: str
+    calendar_bundle: Any = None
+    source_status: dict[str, str] = field(default_factory=dict)
+    snapshot_paths: tuple[Path, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -567,6 +570,9 @@ def generate_weekly_dry_run(
         provider=provider or "unknown",
         draft=draft,
         markdown=markdown,
+        calendar_bundle=calendar_bundle,
+        source_status=dict(calendar_bundle.source_status) if calendar_bundle is not None else {},
+        snapshot_paths=tuple(snapshot.path for snapshot in calendar_bundle.snapshots) if calendar_bundle is not None else (),
     )
 
 
