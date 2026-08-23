@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -124,11 +124,22 @@ def load_weekly_archives(week_ending: date | str, archive_dir: Path = DEFAULT_AR
     return WeeklyArchives(window, tuple(archives), tuple(missing), status)
 
 
-def _prompt(bundle: WeeklyArchives) -> str:
+def _prompt(bundle: WeeklyArchives, calendar_bundle: Any = None) -> str:
     daily_inputs = "\n\n".join(
         f"INPUT {archive.input_id} ({archive.day.isoformat()})\n{archive.content[:12000]}"
         for archive in bundle.archives
     )
+    calendar_inputs = "not connected"
+    if calendar_bundle is not None:
+        calendar_inputs = "\n".join(
+            f"INPUT {event.event_id} | {event.kind} | {event.event_date} | "
+            f"{event.country or ''} | {event.name} | consensus={event.consensus or ''} | "
+            f"previous={event.previous or ''} | verification={event.verification_state}"
+            for event in calendar_bundle.events
+        ) or "no candidates"
+    calendar_shape = ""
+    if calendar_bundle is not None:
+        calendar_shape = ',\n  "watchlist": [{"title":"event", "why_it_matters":"reason", "affected_assets":[], "surprise_upside":"scenario", "surprise_downside":"scenario", "source_refs":[]}],\n  "earnings": [{"title":"earnings", "why_it_matters":"reason", "affected_assets":[], "surprise_upside":"scenario", "surprise_downside":"scenario", "source_refs":[]}]'
     return f"""You are the synthesis stage of a Weekly Finance Newsletter pipeline.
 You do not browse, call APIs, or invent source data. Use only the Daily archive inputs below.
 
@@ -148,7 +159,7 @@ Return JSON only with this shape:
       "source_refs": ["daily:YYYY-MM-DD"]
     }}
   ],
-  "source_health": "reader-facing coverage statement"
+  "source_health": "reader-facing coverage statement"{calendar_shape}
 }}
 
 Rules:
@@ -162,9 +173,15 @@ Rules:
 - Do not turn a forecast, target, or scenario into a completed fact.
 - Do not include database fields, source identifiers, or collection metrics in prose.
 - The next-week calendar is not connected in this milestone; do not invent watch events.
+- When calendar inputs are present, every watchlist and earnings item must cite a supplied calendar input ID.
+- Watchlist source_refs may reference macro inputs only; earnings source_refs may reference earnings inputs only.
+- Keep no more than 4 watchlist items and 3 earnings items.
 
 Daily archive inputs:
 {daily_inputs}
+
+Calendar inputs:
+{calendar_inputs}
 """
 
 
@@ -182,6 +199,8 @@ Quality gate errors:
 Do not invent, convert, round, or restate numeric values. Remove a numeric claim
 when it cannot be copied exactly from the source excerpts. Keep source_refs
 unchanged and keep the required JSON shape.
+Move any earnings input out of watchlist and into earnings; watchlist may contain
+macro inputs only. Keep no more than 4 watchlist items and 3 earnings items.
 If the errors mention length, return exactly 2 or 3 themes and keep every text
 field short enough for the rendered Markdown to remain under 3600 characters.
 
@@ -260,7 +279,11 @@ def _normalized_numbers(text: str) -> set[tuple[str, Decimal]]:
     return values
 
 
-def validate_weekly_draft(draft: dict[str, Any], source_text: dict[str, str]) -> WeeklyValidation:
+def validate_weekly_draft(
+    draft: dict[str, Any],
+    source_text: dict[str, str],
+    calendar_events: tuple[Any, ...] | None = None,
+) -> WeeklyValidation:
     issues: list[str] = []
     themes = draft.get("lookback_themes")
     if not isinstance(themes, list) or not 2 <= len(themes) <= 4:
@@ -269,6 +292,8 @@ def validate_weekly_draft(draft: dict[str, Any], source_text: dict[str, str]) ->
 
     titles: set[str] = set()
     canonical_numbers = _normalized_numbers(" ".join(source_text.values()))
+    calendar_ids = {event.event_id for event in calendar_events or ()}
+    calendar_by_id = {event.event_id: event for event in calendar_events or ()}
     for index, theme in enumerate(themes):
         if not isinstance(theme, dict):
             issues.append(f"theme {index + 1} is not an object")
@@ -291,13 +316,82 @@ def validate_weekly_draft(draft: dict[str, Any], source_text: dict[str, str]) ->
             formatted = ", ".join(f"{unit}{value}" for unit, value in ungrounded)
             issues.append(f"theme {index + 1} has ungrounded numeric claims: {formatted}")
 
+    if calendar_events is not None:
+        for field, label in (("watchlist", "watchlist"), ("earnings", "earnings")):
+            items = draft.get(field)
+            if not isinstance(items, list):
+                issues.append(f"weekly draft is missing {label}")
+                continue
+            for index, item in enumerate(items):
+                if not isinstance(item, dict):
+                    issues.append(f"{label} item {index + 1} is not an object")
+                    continue
+                required = ("title", "why_it_matters", "affected_assets", "surprise_upside", "surprise_downside", "source_refs")
+                missing = [key for key in required if not item.get(key)]
+                if missing:
+                    issues.append(f"{label} item {index + 1} missing fields: {', '.join(missing)}")
+                refs = item.get("source_refs") or []
+                unknown = [ref for ref in refs if ref not in calendar_ids and ref not in source_text]
+                if unknown:
+                    issues.append(f"{label} item {index + 1} has unknown source refs: {', '.join(unknown)}")
+                for ref in refs:
+                    event = calendar_by_id.get(ref)
+                    if event is not None and ((label == "watchlist" and event.kind != "macro") or (label == "earnings" and event.kind != "earnings")):
+                        issues.append(f"{label} item {index + 1} references the wrong event kind")
+                numeric_item = {key: value for key, value in item.items() if key != "source_refs"}
+                ungrounded = sorted(_normalized_numbers(_all_text(numeric_item)) - canonical_numbers)
+                if ungrounded:
+                    formatted = ", ".join(f"{unit}{value}" for unit, value in ungrounded)
+                    issues.append(f"{label} item {index + 1} has ungrounded numeric claims: {formatted}")
+
     source_health = str(draft.get("source_health", ""))
     if not source_health.strip():
         issues.append("weekly draft is missing source health")
     return WeeklyValidation(passed=not issues, issues=tuple(issues))
 
 
-def render_weekly_markdown(draft: dict[str, Any], bundle: WeeklyArchives) -> str:
+def _beijing_time(event: Any) -> str | None:
+    if event.verified_time_gmt is None:
+        return None
+    try:
+        value = datetime.strptime(event.verified_time_gmt, "%H:%M") + timedelta(hours=8)
+    except ValueError:
+        return None
+    day = event.verified_date or event.event_date
+    if value.day != 1:
+        day = day + timedelta(days=value.day - 1)
+    return f"{day.isoformat()} {value:%H:%M} 北京时间"
+
+
+def _compact(value: Any, limit: int) -> str:
+    text = str(value or "").strip()
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def _ensure_verified_watchlist(draft: dict[str, Any], calendar_bundle: Any) -> dict[str, Any]:
+    if calendar_bundle is None:
+        return draft
+    watchlist = list(draft.get("watchlist") or [])
+    referenced = {ref for item in watchlist for ref in item.get("source_refs", [])}
+    mandatory: list[dict[str, Any]] = []
+    for event in calendar_bundle.events:
+        if event.kind != "macro" or event.verification_state != "verified" or event.event_id in referenced:
+            continue
+        mandatory.append(
+            {
+                "title": event.name,
+                "why_it_matters": "官方来源已复核，属于下周需要提前标记的宏观观察点。",
+                "affected_assets": [event.country or "global rates"],
+                "surprise_upside": "数据或表态偏强，收益率与相关货币上行。",
+                "surprise_downside": "数据或表态偏弱，长债与避险资产受益。",
+                "source_refs": [event.event_id],
+            }
+        )
+    draft["watchlist"] = (mandatory + watchlist)[:4]
+    return draft
+
+
+def render_weekly_markdown(draft: dict[str, Any], bundle: WeeklyArchives, calendar_bundle: Any = None) -> str:
     generated_at = datetime.now().astimezone().isoformat(timespec="seconds")
     lines = [
         "---",
@@ -328,51 +422,128 @@ def render_weekly_markdown(draft: dict[str, Any], bundle: WeeklyArchives) -> str
                 "",
             ]
         )
-    lines.extend(
-        [
-            "## Things to watch for next week",
-            "",
-            "### Macro & international events",
-            "",
-            "- Calendar discovery is not connected in this milestone; no events are asserted.",
-            "",
-            "### Major earnings",
-            "",
-            "- Earnings discovery is not connected in this milestone; no earnings are asserted.",
-            "",
-            "## Source Status",
-            "",
-            f"- Daily archives: {bundle.coverage_status} ({bundle.daily_count}/7).",
-            f"- Weekly lookback: {bundle.window.lookback_start.isoformat()} through {bundle.window.lookback_end.isoformat()}.",
-            f"- Calendar and earnings discovery: not connected in this milestone.",
-            "- Synthesis: bounded DeepSeek draft; weekly facts are rendered from validated Daily inputs.",
-            "",
-            "This is a trading research brief, not investment advice.",
-        ]
-    )
+    lines.extend(["## Things to watch for next week", "", "### Macro & international events", ""])
+    if calendar_bundle is None:
+        lines.extend(["- Calendar discovery is not connected in this milestone; no events are asserted.", ""])
+    else:
+        event_by_id = {event.event_id: event for event in calendar_bundle.events}
+        for item in draft.get("watchlist", [])[:4]:
+            event = next((event_by_id.get(ref) for ref in item.get("source_refs", []) if event_by_id.get(ref)), None)
+            if event is None or event.kind != "macro":
+                continue
+            date_label = _beijing_time(event) if event.verification_state == "verified" else event.event_date.isoformat()
+            status_label = "已复核" if event.verification_state == "verified" else "发现源，时间待复核"
+            lines.extend([
+                f"- **{event.name}**（{date_label}；{status_label}）：{_compact(item['why_it_matters'], 150)}",
+                f"  影响资产：{', '.join(str(asset) for asset in item.get('affected_assets', [])[:6])}；上行情景：{_compact(item['surprise_upside'], 100)}；下行情景：{_compact(item['surprise_downside'], 100)}",
+            ])
+        if not any(event.kind == "macro" for event in event_by_id.values() if any(event.event_id in item.get("source_refs", []) for item in draft.get("watchlist", []))):
+            lines.append("- No macro candidates available from the current source window.")
+        lines.append("")
+    lines.extend(["### Major earnings", ""])
+    if calendar_bundle is None:
+        lines.extend(["- Earnings discovery is not connected in this milestone; no earnings are asserted.", ""])
+    else:
+        event_by_id = {event.event_id: event for event in calendar_bundle.events}
+        for item in draft.get("earnings", [])[:3]:
+            event = next((event_by_id.get(ref) for ref in item.get("source_refs", []) if event_by_id.get(ref)), None)
+            if event is None or event.kind != "earnings":
+                continue
+            timing = event.time_gmt or "时间未提供"
+            eps = f"；EPS 预测 {event.eps_forecast}" if event.eps_forecast else ""
+            lines.extend([
+                f"- **{event.symbol or event.name}**（{event.event_date.isoformat()}，{timing}{eps}）：{_compact(item['why_it_matters'], 150)}",
+                f"  影响资产：{', '.join(str(asset) for asset in item.get('affected_assets', [])[:6])}；上行情景：{_compact(item['surprise_upside'], 100)}；下行情景：{_compact(item['surprise_downside'], 100)}",
+            ])
+        if not any(event.kind == "earnings" for event in event_by_id.values() if any(event.event_id in item.get("source_refs", []) for item in draft.get("earnings", []))):
+            lines.append("- No earnings candidates available from the current source window.")
+        lines.append("")
+    source_status = [
+        "## Source Status",
+        "",
+        f"- Daily archives: {bundle.coverage_status} ({bundle.daily_count}/7).",
+        f"- Weekly lookback: {bundle.window.lookback_start.isoformat()} through {bundle.window.lookback_end.isoformat()}.",
+    ]
+    if calendar_bundle is None:
+        source_status.append("- Calendar and earnings discovery: not connected in this milestone.")
+    else:
+        source_status.extend([
+            f"- Calendar snapshots: {len(calendar_bundle.snapshots)} retained.",
+            "- Exact event times are shown only for verified events; discovery-only events show date only.",
+            "- Source status: " + "; ".join(f"{key}={value}" for key, value in sorted(calendar_bundle.source_status.items())) + ".",
+        ])
+    source_status.extend([
+        "- Synthesis: bounded DeepSeek draft; weekly facts are rendered from validated inputs.",
+        "",
+        "This is a trading research brief, not investment advice.",
+    ])
+    lines.extend(source_status)
     return "\n".join(lines) + "\n"
 
 
 def generate_weekly_dry_run(
     week_ending: date | str,
     archive_dir: Path = DEFAULT_ARCHIVE_DIR,
+    calendar_bundle: Any = None,
+    include_calendar: bool = False,
+    snapshot_dir: Path | None = None,
+    official_schedules: tuple[Any, ...] = (),
 ) -> WeeklyDryRunResult:
     bundle = load_weekly_archives(week_ending, archive_dir)
     if bundle.coverage_status == "insufficient":
         raise WeeklyGenerationError(
             f"insufficient Daily Newsletter coverage: {bundle.daily_count}/7"
         )
-    prompt = _prompt(bundle)
+    if include_calendar and calendar_bundle is None:
+        from scripts.weekly_calendar_sources import (
+            collect_calendar_bundle,
+            fetch_official_schedules,
+            merge_verified_schedules,
+            verify_calendar_events,
+        )
+
+        calendar_bundle = collect_calendar_bundle(
+            bundle.window,
+            snapshot_dir or Path("/tmp/park-intel-weekly-calendar-snapshots"),
+        )
+        if not official_schedules:
+            official_schedules, official_status = fetch_official_schedules(bundle.window)
+            calendar_bundle = replace(
+                calendar_bundle,
+                source_status={**calendar_bundle.source_status, **official_status},
+            )
+        if official_schedules:
+            calendar_bundle = replace(
+                calendar_bundle,
+                events=merge_verified_schedules(
+                    verify_calendar_events(calendar_bundle.events, official_schedules),
+                    official_schedules,
+                ),
+            )
+    prompt = _prompt(bundle, calendar_bundle)
     content, provider = _call_deepseek(prompt)
     if not content:
         raise WeeklyGenerationError("weekly synthesis returned no content")
     source_text = {archive.input_id: archive.content for archive in bundle.archives}
+    if calendar_bundle is not None:
+        source_text.update({
+            event.event_id: " ".join(
+                str(value or "")
+                for value in (event.name, event.event_date, event.time_gmt, event.consensus, event.previous, event.eps_forecast)
+            )
+            for event in calendar_bundle.events
+        })
     markdown = ""
     for attempt in range(2):
         draft = _parse_json(content)
-        validation = validate_weekly_draft(draft, source_text)
+        draft = _ensure_verified_watchlist(draft, calendar_bundle)
+        validation = validate_weekly_draft(
+            draft,
+            source_text,
+            tuple(calendar_bundle.events) if calendar_bundle is not None else None,
+        )
         if validation.passed:
-            markdown = render_weekly_markdown(draft, bundle)
+            markdown = render_weekly_markdown(draft, bundle, calendar_bundle)
             if len(markdown) <= MAX_WEEKLY_MARKDOWN_CHARS:
                 break
             validation = WeeklyValidation(
@@ -404,10 +575,17 @@ def main() -> int:
     parser.add_argument("--week-ending", required=True, help="Sunday in YYYY-MM-DD")
     parser.add_argument("--archive-dir", type=Path, default=DEFAULT_ARCHIVE_DIR)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--include-calendar", action="store_true")
+    parser.add_argument("--snapshot-dir", type=Path)
     args = parser.parse_args()
     if not args.dry_run:
         parser.error("this milestone only supports --dry-run")
-    result = generate_weekly_dry_run(args.week_ending, args.archive_dir)
+    result = generate_weekly_dry_run(
+        args.week_ending,
+        args.archive_dir,
+        include_calendar=args.include_calendar,
+        snapshot_dir=args.snapshot_dir,
+    )
     print(f"weekly_dry_run: pass provider={result.provider} coverage={result.coverage_status}")
     print(result.markdown)
     return 0
