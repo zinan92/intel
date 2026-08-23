@@ -1,6 +1,7 @@
 """LLM narrative generation for cross-source events via DeepSeek API."""
 import logging
 import time
+from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -77,13 +78,21 @@ def _build_prompt(event: Event, articles: list[Article]) -> str:
     )
 
 
+def _article_timestamp(article: Article):
+    return article.published_at or article.collected_at
+
+
 def generate_narratives(session: Session) -> int:
+    now = datetime.utcnow()
+    cutoff = now - timedelta(hours=48)
     events = (
         session.query(Event)
         .filter(
             Event.status == "active",
             Event.source_count >= 2,
             Event.trading_play.is_(None),
+            Event.window_start >= cutoff,
+            Event.window_end >= now,
         )
         .order_by(Event.signal_score.desc())
         .limit(10)
@@ -99,9 +108,12 @@ def generate_narratives(session: Session) -> int:
             .join(EventArticle, EventArticle.article_id == Article.id)
             .filter(EventArticle.event_id == event.id)
             .order_by(Article.relevance_score.desc().nullslast())
-            .limit(3)
             .all()
         )
+        articles = [
+            article for article in articles
+            if event.window_start <= _article_timestamp(article) < event.window_end
+        ][:3]
         if not articles:
             continue
 

@@ -61,6 +61,44 @@ def migrate_article_sources(session) -> dict[str, int]:
 
 def run_migrations(engine: Engine) -> None:
     """Run all pending migrations idempotently."""
+    # Table-level migrations first. Some older DBs only have articles, and
+    # column migrations below must not ALTER a table that does not exist yet.
+    if not _table_exists(engine, "source_registry"):
+        logger.info("Creating source_registry table via migration")
+        from db.models import SourceRegistry
+        SourceRegistry.__table__.create(engine)
+        logger.info("source_registry table created")
+
+    if not _table_exists(engine, "events"):
+        logger.info("Creating events table via migration")
+        from events.models import Event
+        Event.__table__.create(engine)
+        logger.info("events table created")
+
+    if not _table_exists(engine, "event_articles"):
+        logger.info("Creating event_articles table via migration")
+        from events.models import EventArticle
+        EventArticle.__table__.create(engine)
+        logger.info("event_articles table created")
+
+    if not _table_exists(engine, "user_profiles"):
+        logger.info("Creating user_profiles table via migration")
+        from users.models import UserProfile
+        UserProfile.__table__.create(engine)
+        logger.info("user_profiles table created")
+
+    if not _table_exists(engine, "briefs"):
+        logger.info("Creating briefs table via migration")
+        from briefs.models import Brief
+        Brief.__table__.create(engine)
+        logger.info("briefs table created")
+
+    if not _table_exists(engine, "collector_runs"):
+        logger.info("Creating collector_runs table via migration")
+        from db.models import CollectorRun
+        CollectorRun.__table__.create(engine)
+        logger.info("collector_runs table created")
+
     # Column-add migrations for existing tables
     migrations = [
         ("articles", "relevance_score", "INTEGER"),
@@ -80,47 +118,6 @@ def run_migrations(engine: Engine) -> None:
                 conn.commit()
             else:
                 logger.debug("Column %s.%s already exists, skipping", table, column)
-
-    # Table-level migrations: create new tables if missing
-    if not _table_exists(engine, "source_registry"):
-        logger.info("Creating source_registry table via migration")
-        from db.models import SourceRegistry
-        SourceRegistry.__table__.create(engine)
-        logger.info("source_registry table created")
-
-    # Event aggregation tables
-    if not _table_exists(engine, "events"):
-        logger.info("Creating events table via migration")
-        from events.models import Event
-        Event.__table__.create(engine)
-        logger.info("events table created")
-
-    if not _table_exists(engine, "event_articles"):
-        logger.info("Creating event_articles table via migration")
-        from events.models import EventArticle
-        EventArticle.__table__.create(engine)
-        logger.info("event_articles table created")
-
-    # User profile table
-    if not _table_exists(engine, "user_profiles"):
-        logger.info("Creating user_profiles table via migration")
-        from users.models import UserProfile
-        UserProfile.__table__.create(engine)
-        logger.info("user_profiles table created")
-
-    # Briefs table
-    if not _table_exists(engine, "briefs"):
-        logger.info("Creating briefs table via migration")
-        from briefs.models import Brief
-        Brief.__table__.create(engine)
-        logger.info("briefs table created")
-
-    # Collector run log table (Phase 1: reliability instrumentation)
-    if not _table_exists(engine, "collector_runs"):
-        logger.info("Creating collector_runs table via migration")
-        from db.models import CollectorRun
-        CollectorRun.__table__.create(engine)
-        logger.info("collector_runs table created")
 
     # expected_freshness_hours column on source_registry (Phase 2: health visibility)
     if _table_exists(engine, "source_registry"):

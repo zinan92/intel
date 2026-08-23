@@ -76,6 +76,55 @@ def test_generate_narrative_calls_deepseek(db_session):
     assert refreshed.narrative_summary == "BTC ETFs saw record inflows."
 
 
+def test_generate_narrative_ignores_articles_outside_event_window(db_session):
+    from events.narrator import generate_narratives
+
+    now = datetime.utcnow()
+    event = Event(
+        narrative_tag="gold-price-rally",
+        window_start=now - timedelta(hours=2),
+        window_end=now + timedelta(hours=2),
+        source_count=2,
+        article_count=2,
+        signal_score=8.0,
+        status="active",
+    )
+    db_session.add(event)
+    db_session.flush()
+
+    stale = Article(
+        source="rss",
+        source_id="stale_gold",
+        title="Gold hit record highs above $5,000",
+        content="Old stale gold narrative.",
+        relevance_score=5,
+        published_at=now - timedelta(days=30),
+        collected_at=now - timedelta(days=30),
+    )
+    fresh = Article(
+        source="google_news",
+        source_id="fresh_gold",
+        title="Gold trades around $4,000",
+        content="Fresh gold narrative.",
+        relevance_score=4,
+        published_at=now - timedelta(hours=1),
+        collected_at=now - timedelta(hours=1),
+    )
+    db_session.add_all([stale, fresh])
+    db_session.flush()
+    db_session.add(EventArticle(event_id=event.id, article_id=stale.id))
+    db_session.add(EventArticle(event_id=event.id, article_id=fresh.id))
+    db_session.commit()
+
+    with patch("events.narrator._call_deepseek") as mock:
+        mock.return_value = "Fresh gold summary"
+        generate_narratives(db_session)
+
+    prompt = mock.call_args[0][0]
+    assert "Gold trades around $4,000" in prompt
+    assert "record highs above $5,000" not in prompt
+
+
 def test_generate_narrative_handles_api_failure(db_session):
     from events.narrator import generate_narratives
     event = _seed_event_with_articles(db_session)

@@ -15,7 +15,7 @@
 
 ## What It Does
 
-park-intel is a self-hosted market intelligence pipeline. It collects articles from 10+ source types (RSS, Hacker News, Reddit, GitHub, and more), enriches them with keyword tagging and optional LLM-based relevance scoring, clusters related articles into narrative events, and serves everything through a REST API with a feed-first frontend.
+park-intel is a self-hosted market intelligence pipeline. It collects articles from 10+ source types (RSS, Hacker News, Reddit, GitHub, and more), enriches them with keyword tagging and optional LLM-based relevance scoring, clusters related articles into narrative events, publishes a daily finance newsletter, and serves everything through a REST API with a feed-first frontend.
 
 Core sources work out of the box with zero API keys. Optional sources (Xueqiu, LLM tagging) activate when you add their credentials.
 
@@ -44,6 +44,30 @@ The built-in scheduler starts collecting automatically. Visit `http://localhost:
 bash scripts/install-service.sh    # auto-starts on boot, restarts on crash
 bash scripts/service-status.sh     # check if running
 bash scripts/uninstall-service.sh  # stop and remove
+```
+
+## Finance Daily Newsletter
+
+The Finance Daily Newsletter is published by an external daily automation, not by the long-running collector scheduler. Keep the park-intel service focused on continuous collection, tagging, and event aggregation; schedule `scripts/publish_finance_daily_newsletter.py` separately at `08:00 Asia/Shanghai` to generate the rolling 24-hour brief, archive the markdown output, send it to Feishu, and include a source status block so delivery issues are visible in the same push.
+
+Configure delivery in `.env`:
+
+```bash
+OBSIDIAN_FINANCE_NEWSLETTER_DIR=/Users/wendy/park-io/007_finance daily newsletter
+FEISHU_BOT_WEBHOOK=https://open.feishu.cn/open-apis/bot/v2/hook/...
+PARK_INTEL_SKIP_FEISHU=0
+```
+
+Run manually without sending Feishu:
+
+```bash
+PARK_INTEL_SKIP_FEISHU=1 PYTHONPATH=. python scripts/publish_finance_daily_newsletter.py --no-generate
+```
+
+Generate, archive, and send immediately:
+
+```bash
+PYTHONPATH=. python scripts/publish_finance_daily_newsletter.py
 ```
 
 ## Core vs Optional Sources
@@ -173,6 +197,9 @@ python scripts/run_llm_tagger.py --backfill     # backfill historical articles
 
 # Backfill ticker extraction
 python scripts/backfill_tickers.py
+
+# Publish Finance Daily Newsletter
+python scripts/publish_finance_daily_newsletter.py
 ```
 
 ## Project Structure
@@ -191,6 +218,7 @@ api/                     # REST API routes
 db/                      # SQLAlchemy models, migrations, database init
 frontend/                # React + TypeScript + Vite frontend
 scripts/                 # Management and utility scripts
+scripts/publish_finance_daily_newsletter.py # Daily newsletter delivery
 tests/                   # 290+ pytest tests
 ```
 

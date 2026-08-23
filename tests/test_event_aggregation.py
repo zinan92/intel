@@ -79,6 +79,61 @@ def test_aggregate_updates_existing_event(db_session: Session):
     assert events[0].article_count == 2
 
 
+def test_aggregate_does_not_reactivate_closed_event(db_session: Session):
+    from events.aggregator import run_aggregation
+
+    now = datetime.utcnow()
+    old_event = Event(
+        narrative_tag="gold-price-rally",
+        window_start=now - timedelta(days=30),
+        window_end=now - timedelta(days=28),
+        status="closed",
+        narrative_summary="Gold hit record highs above $5,000/oz.",
+    )
+    db_session.add(old_event)
+    db_session.commit()
+
+    _make_article(db_session, "rss", ["gold-price-rally"], relevance=4, hours_ago=1)
+    run_aggregation(db_session)
+
+    events = db_session.query(Event).order_by(Event.id).all()
+    assert len(events) == 2
+    assert events[0].id == old_event.id
+    assert events[0].status == "closed"
+    assert events[1].status == "active"
+    assert events[1].narrative_summary is None
+
+
+def test_aggregate_closes_expired_event_before_linking_fresh_articles(db_session: Session):
+    from events.aggregator import run_aggregation
+
+    now = datetime.utcnow()
+    old_event = Event(
+        narrative_tag="btc-breakdown",
+        window_start=now - timedelta(hours=72),
+        window_end=now - timedelta(hours=24),
+        status="active",
+    )
+    db_session.add(old_event)
+    db_session.commit()
+
+    fresh = _make_article(db_session, "rss", ["btc-breakdown"], relevance=5, hours_ago=1)
+    run_aggregation(db_session)
+
+    old_refreshed = db_session.query(Event).filter(Event.id == old_event.id).first()
+    new_event = (
+        db_session.query(Event)
+        .filter(Event.narrative_tag == "btc-breakdown", Event.status == "active")
+        .one()
+    )
+    assert old_refreshed.status == "closed"
+    assert new_event.id != old_event.id
+
+    links = db_session.query(EventArticle).filter(EventArticle.article_id == fresh.id).all()
+    assert len(links) == 1
+    assert links[0].event_id == new_event.id
+
+
 def test_aggregate_closes_expired_events(db_session: Session):
     from events.aggregator import run_aggregation
 
@@ -119,6 +174,28 @@ def test_aggregate_uses_collected_at_when_published_at_null(db_session: Session)
     events = db_session.query(Event).all()
     assert len(events) == 1
     assert events[0].window_start is not None
+
+
+def test_aggregate_ignores_stale_rediscovered_article(db_session: Session):
+    from events.aggregator import run_aggregation
+
+    now = datetime.utcnow()
+    article = Article(
+        source="google_news",
+        source_id="stale_google_news",
+        title="Old article rediscovered today",
+        narrative_tags=json.dumps(["stale-topic"]),
+        relevance_score=4,
+        published_at=now - timedelta(days=30),
+        collected_at=now - timedelta(hours=1),
+    )
+    db_session.add(article)
+    db_session.commit()
+
+    run_aggregation(db_session)
+
+    events = db_session.query(Event).all()
+    assert len(events) == 0
 
 
 def test_aggregate_ignores_articles_without_narrative_tags(db_session: Session):
