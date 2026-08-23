@@ -53,9 +53,8 @@ The Finance Daily Newsletter is published by an external daily automation, not b
 Configure delivery in `.env`:
 
 ```bash
-OBSIDIAN_FINANCE_NEWSLETTER_DIR=/Users/wendy/park-io/finance daily newsletter
+OBSIDIAN_FINANCE_NEWSLETTER_DIR=/Users/wendy/park-io/007_finance daily newsletter
 FEISHU_BOT_WEBHOOK=https://open.feishu.cn/open-apis/bot/v2/hook/...
-FEISHU_BOT_SECRET=
 PARK_INTEL_SKIP_FEISHU=0
 ```
 

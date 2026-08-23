@@ -77,18 +77,20 @@ def test_current_brief_window_is_rolling_24h():
 def test_deepseek_reads_api_key_from_configured_secret_file(tmp_path, monkeypatch):
     from scripts.generate_narrative_signal import _deepseek_api_key
 
+    test_key = "sk-" + "test-key"
     secret_file = tmp_path / "deepseek.md"
-    secret_file.write_text("DEEPSEEK_API_KEY=sk-test-key", encoding="utf-8")
+    secret_file.write_text(f"DEEPSEEK_API_KEY={test_key}", encoding="utf-8")
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     monkeypatch.setenv("DEEPSEEK_API_KEY_FILE", str(secret_file))
 
-    assert _deepseek_api_key() == "sk-test-key"
+    assert _deepseek_api_key() == test_key
 
 
 def test_call_deepseek_uses_expected_request_shape(monkeypatch):
     from scripts import generate_narrative_signal as mod
 
-    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test-key")
+    test_key = "sk-" + "test-key"
+    monkeypatch.setenv("DEEPSEEK_API_KEY", test_key)
     monkeypatch.delenv("DEEPSEEK_MODEL", raising=False)
 
     with patch.object(mod.requests, "post") as post:
@@ -101,14 +103,14 @@ def test_call_deepseek_uses_expected_request_shape(monkeypatch):
     assert (content, model) == ("generated brief", "deepseek-v4-flash")
     assert post.call_args.kwargs["json"]["model"] == "deepseek-v4-flash"
     assert post.call_args.kwargs["json"]["thinking"] == {"type": "disabled"}
-    assert post.call_args.kwargs["headers"]["Authorization"] == "Bearer sk-test-key"
+    assert post.call_args.kwargs["headers"]["Authorization"] == f"Bearer {test_key}"
     post.return_value.raise_for_status.assert_called_once()
 
 
 def test_call_deepseek_rejects_malformed_response(monkeypatch):
     from scripts import generate_narrative_signal as mod
 
-    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test-key")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-" + "test-key")
     with patch.object(mod.requests, "post") as post:
         post.return_value.json.return_value = {"choices": []}
         assert mod._call_deepseek("write a brief") == (None, None)

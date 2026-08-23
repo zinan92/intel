@@ -26,7 +26,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(PROJECT_ROOT / ".env")
 
 BRIEF_TIMEZONE = ZoneInfo("Asia/Shanghai")
-DEFAULT_OBSIDIAN_DIR = Path("/Users/wendy/park-io/finance daily newsletter")
+DEFAULT_OBSIDIAN_DIR = Path("/Users/wendy/park-io/007_finance daily newsletter")
 MAX_FEISHU_TEXT_CHARS = 16000
 
 SOURCE_LABELS = {
