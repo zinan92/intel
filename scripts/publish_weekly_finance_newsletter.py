@@ -111,6 +111,19 @@ def publish_weekly_finance_newsletter(
 
     window = weekly_window(week_ending)
     archive_path, manifest_path, snapshot_dir = _paths(archive_dir, window.week_ending)
+    revisions = _read_revisions(manifest_path)
+    published = [entry for entry in revisions if entry.get("status") == "published"]
+    previous = published[-1] if published else None
+    if previous and not force_resend and not dry_run:
+        return WeeklyDeliveryResult(
+            window.week_ending,
+            "noop",
+            archive_path,
+            manifest_path,
+            str(previous.get("content_sha256") or ""),
+            False,
+            dict(previous.get("source_status") or {}),
+        )
     result = generate_weekly_dry_run(
         window.week_ending,
         archive_dir=Path(os.getenv("OBSIDIAN_FINANCE_NEWSLETTER_DIR", str(DEFAULT_ARCHIVE_DIR))),
@@ -118,9 +131,6 @@ def publish_weekly_finance_newsletter(
         snapshot_dir=snapshot_dir,
     )
     content_hash = _sha256(result.markdown)
-    revisions = _read_revisions(manifest_path)
-    published = [entry for entry in revisions if entry.get("status") == "published"]
-    previous = published[-1] if published else None
 
     if previous and previous.get("content_sha256") == content_hash and not force_resend:
         return WeeklyDeliveryResult(

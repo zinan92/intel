@@ -48,16 +48,18 @@ def test_weekly_publish_same_hash_is_noop(tmp_path, monkeypatch):
     assert len(sends) == 1
 
 
-def test_weekly_publish_changed_hash_requires_force_resend(tmp_path, monkeypatch):
+def test_weekly_publish_existing_week_noops_without_regenerating(tmp_path, monkeypatch):
     from scripts import publish_weekly_finance_newsletter as mod
 
-    responses = [_result("# Weekly Finance Newsletter | v1\n"), _result("# Weekly Finance Newsletter | v2\n")]
-    monkeypatch.setattr(mod, "generate_weekly_dry_run", lambda *args, **kwargs: responses.pop(0))
+    calls = []
+    monkeypatch.setattr(mod, "generate_weekly_dry_run", lambda *args, **kwargs: calls.append(1) or _result("# Weekly Finance Newsletter | v1\n"))
     monkeypatch.setattr(mod, "_send_to_feishu", lambda markdown, archive_path: True)
 
     mod.publish_weekly_finance_newsletter(date(2026, 8, 23), archive_dir=tmp_path)
-    with pytest.raises(mod.WeeklyDeliveryError, match="force-resend"):
-        mod.publish_weekly_finance_newsletter(date(2026, 8, 23), archive_dir=tmp_path)
+    result = mod.publish_weekly_finance_newsletter(date(2026, 8, 23), archive_dir=tmp_path)
+
+    assert result.status == "noop"
+    assert calls == [1]
 
 
 def test_weekly_publish_force_resend_creates_a_new_revision(tmp_path, monkeypatch):
