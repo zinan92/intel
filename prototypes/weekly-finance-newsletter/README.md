@@ -12,4 +12,3 @@ This branch is a throwaway primary source for Issue #8. It is not the production
 - Verification: official BEA and Federal Reserve calendars for the highest-impact US events.
 - Delivery during evaluation: Obsidian and one Feishu send.
 - Deferred until Park approves the content: launchd schedule, public website route, database model, and production collectors.
-
