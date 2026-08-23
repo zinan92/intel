@@ -181,3 +181,106 @@ def test_weekly_dry_run_repairs_an_oversized_model_draft_once(tmp_path, monkeypa
     assert len(result.markdown) <= mod.MAX_WEEKLY_MARKDOWN_CHARS
     assert len(calls) == 2
     assert "length" in calls[1]
+
+
+def test_weekly_dry_run_renders_verified_and_discovery_watchlists(tmp_path, monkeypatch):
+    from scripts import weekly_finance_newsletter as mod
+    from scripts.weekly_calendar_sources import CalendarBundle, CalendarEvent
+
+    _seed_week(tmp_path)
+    macro = CalendarEvent(
+        event_id="nasdaq:macro:2026-08-26:United States:GDP",
+        kind="macro",
+        event_date=date(2026, 8, 26),
+        time_gmt="12:30",
+        country="United States",
+        name="GDP (Second Estimate)",
+        consensus="1.5%",
+        previous="1.4%",
+        provider="nasdaq",
+        verification_state="verified",
+        verified_date=date(2026, 8, 26),
+        verified_time_gmt="12:30",
+        verification_source="BEA",
+    )
+    earnings = CalendarEvent(
+        event_id="nasdaq:earnings:2026-08-26:NVDA",
+        kind="earnings",
+        event_date=date(2026, 8, 26),
+        time_gmt=None,
+        country=None,
+        name="NVIDIA Corporation",
+        symbol="NVDA",
+        eps_forecast="$2.01",
+        provider="nasdaq",
+    )
+    bundle = CalendarBundle(
+        events=(macro, earnings),
+        snapshots=(),
+        source_status={"nasdaq": "ok"},
+    )
+    draft = json.loads(_valid_model_response())
+    draft["watchlist"] = [
+        {
+            "title": "美国 GDP",
+            "why_it_matters": "验证增长与利率路径。",
+            "affected_assets": ["USD", "Gold"],
+            "surprise_upside": "高于预期推升收益率。",
+            "surprise_downside": "低于预期利好长债。",
+            "source_refs": [macro.event_id],
+        }
+    ]
+    draft["earnings"] = [
+        {
+            "title": "NVDA 财报",
+            "why_it_matters": "验证 AI capex。",
+            "affected_assets": ["NVDA"],
+            "surprise_upside": "指引上修。",
+            "surprise_downside": "需求指引转弱。",
+            "source_refs": [earnings.event_id],
+        }
+    ]
+    monkeypatch.setattr(mod, "_call_deepseek", lambda prompt: (json.dumps(draft), "deepseek-v4-flash"))
+
+    result = mod.generate_weekly_dry_run(date(2026, 8, 23), tmp_path, calendar_bundle=bundle)
+
+    assert "GDP (Second Estimate)" in result.markdown
+    assert "verified" in result.markdown
+    assert "NVDA" in result.markdown
+    assert len(result.markdown) <= mod.MAX_WEEKLY_MARKDOWN_CHARS
+    assert "NVIDIA Corporation" not in result.markdown.split("### Major earnings")[0]
+
+
+def test_weekly_quality_rejects_earnings_in_macro_watchlist():
+    from scripts import weekly_finance_newsletter as mod
+    from scripts.weekly_calendar_sources import CalendarEvent
+
+    draft = json.loads(_valid_model_response())
+    earnings = CalendarEvent(
+        event_id="nasdaq:earnings:2026-08-26:NVDA",
+        kind="earnings",
+        event_date=date(2026, 8, 26),
+        time_gmt="time-after-hours",
+        country=None,
+        name="NVIDIA Corporation",
+        provider="nasdaq",
+        symbol="NVDA",
+    )
+    draft["watchlist"] = [{
+        "title": "NVDA",
+        "why_it_matters": "财报验证 AI capex。",
+        "affected_assets": ["NVDA"],
+        "surprise_upside": "指引上修。",
+        "surprise_downside": "指引转弱。",
+        "source_refs": [earnings.event_id],
+    }]
+    draft["earnings"] = []
+
+    result = mod.validate_weekly_draft(
+        draft,
+        {"daily:2026-08-17": "黄金约 $4,500"},
+        (earnings,),
+    )
+
+    assert not result.passed
+    assert any("wrong event kind" in issue for issue in result.issues)
