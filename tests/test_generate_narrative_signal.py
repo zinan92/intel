@@ -50,8 +50,8 @@ def _session():
     return sessionmaker(bind=engine)()
 
 
-def _seed_articles(session, count=6):
-    now = datetime.utcnow()
+def _seed_articles(session, count=6, now=None):
+    now = now or datetime.utcnow()
     for idx in range(count):
         session.add(Article(
             source="rss",
@@ -74,6 +74,12 @@ def test_current_brief_window_is_rolling_24h():
     assert slot == "rolling_24h"
     assert end == now
     assert start == now - timedelta(hours=24)
+
+
+def test_window_end_for_archive_date_uses_utc_midnight():
+    from scripts.generate_narrative_signal import window_end_for_archive_date
+
+    assert window_end_for_archive_date("2026-08-26") == datetime(2026, 8, 26, 0, 0, 0)
 
 
 def test_deepseek_reads_api_key_from_configured_secret_file(tmp_path, monkeypatch):
@@ -315,3 +321,31 @@ def test_generate_brief_publishes_only_after_quality_passes():
     rows = session.query(Brief).order_by(Brief.id).all()
     assert [row.status for row in rows] == ["archived", "published"]
     assert rows[1].provider == "test"
+
+
+def test_generate_historical_brief_does_not_replace_current_published_brief():
+    from scripts import generate_narrative_signal as mod
+
+    session = _session()
+    historical_end = datetime(2026, 8, 26, 0, 0, 0)
+    _seed_articles(session, now=historical_end)
+    current = Brief(content=VALID_BRIEF, article_count=1, signal_count=1, status="published")
+    session.add(current)
+    session.commit()
+    current_id = current.id
+
+    with patch.object(mod, "init_db", return_value=None), \
+         patch.object(mod, "get_session", return_value=session), \
+         patch.object(mod, "_call_llm", return_value=(VALID_BRIEF, "codex-cli")):
+        brief_id = mod.generate_brief(
+            limit=10,
+            window_end=historical_end,
+            publish_current=False,
+        )
+
+    current_after = session.get(Brief, current_id)
+    historical = session.get(Brief, brief_id)
+    assert current_after.status == "published"
+    assert historical.status == "archived"
+    assert historical.created_at == historical_end
+    assert historical.provider == "codex-cli"

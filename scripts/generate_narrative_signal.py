@@ -7,7 +7,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -61,6 +61,13 @@ def current_brief_window(now: datetime | None = None) -> tuple[datetime, datetim
     utc_end = now or datetime.utcnow()
     utc_start = utc_end - timedelta(hours=BRIEF_WINDOW_HOURS)
     return utc_start.replace(tzinfo=None), utc_end.replace(tzinfo=None), "rolling_24h"
+
+
+def window_end_for_archive_date(value: date | str) -> datetime:
+    """Return the UTC-naive daily window end for a Beijing archive date."""
+
+    archive_date = date.fromisoformat(value) if isinstance(value, str) else value
+    return datetime.combine(archive_date, time.min)
 
 
 def _clean_model_output(text: str) -> str | None:
@@ -456,13 +463,18 @@ def _build_prompt(
 重要价格规则：必须区分“当前价格/已发生事实”和“目标价/情景价/分析师预测”。如果文章只是 price target、scenario、forecast，不得写成“已经突破”。published_at 明显早于本窗口的旧文章不得作为今日事实。"""
 
 
-def generate_brief(limit: int = 100) -> int | None:
-    """Generate a narrative signal brief. Returns brief ID or None on failure."""
+def generate_brief(
+    limit: int = 100,
+    *,
+    window_end: datetime | None = None,
+    publish_current: bool = True,
+) -> int | None:
+    """Generate a brief for a current or explicit historical 24-hour window."""
     init_db()
     session = get_session()
 
     try:
-        now = datetime.utcnow()
+        now = window_end or datetime.utcnow()
         window_start, window_end, slot = current_brief_window(now)
 
         # Get only the active fixed-window batch. Guard against stale rediscovery:
@@ -520,6 +532,7 @@ def generate_brief(limit: int = 100) -> int | None:
                 signal_count=0,
                 status="rejected",
                 provider=provider,
+                created_at=now,
             )
             session.add(rejected)
             session.commit()
@@ -531,19 +544,21 @@ def generate_brief(limit: int = 100) -> int | None:
         signal_count += content.count("Conviction: H") + content.count("Conviction: M") + content.count("Conviction: L")
         signal_count += len(re.findall(r"^\s*\d+[.)、]", content, flags=re.MULTILINE))
 
-        # A successful new batch replaces the previously published user-facing
-        # brief. Historical rows remain in DB as archived artifacts.
-        session.query(Brief).filter(Brief.status == "published").update(
-            {"status": "archived"},
-            synchronize_session=False,
-        )
+        if publish_current:
+            # A successful current batch replaces the previously published
+            # user-facing brief. Historical backfills stay archived.
+            session.query(Brief).filter(Brief.status == "published").update(
+                {"status": "archived"},
+                synchronize_session=False,
+            )
 
         brief = Brief(
             content=content,
             article_count=len(articles),
             signal_count=max(signal_count, 1),
-            status="published",
+            status="published" if publish_current else "archived",
             provider=provider,
+            created_at=now,
         )
         session.add(brief)
         session.commit()

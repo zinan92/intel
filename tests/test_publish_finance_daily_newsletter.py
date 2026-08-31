@@ -1,5 +1,5 @@
 """Tests for Finance Daily Newsletter delivery."""
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -133,3 +133,32 @@ def test_publish_skips_delivery_when_generation_fails(monkeypatch):
 
     assert result is None
     save.assert_not_called()
+
+
+def test_backfill_archives_historical_brief_without_sending_feishu(monkeypatch):
+    from scripts import publish_finance_daily_newsletter as mod
+
+    session = _session()
+    historical = Brief(
+        id=12,
+        content="brief",
+        article_count=6,
+        signal_count=1,
+        status="archived",
+        provider="codex-cli",
+        created_at=datetime(2026, 8, 26, 0, 0, 0),
+    )
+    session.add(historical)
+    session.commit()
+
+    with patch.object(mod, "generate_brief", return_value=12) as generate, \
+         patch.object(mod, "get_session", return_value=session), \
+         patch.object(mod, "save_to_obsidian", return_value=Path("/tmp/backfill.md")), \
+         patch.object(mod, "send_to_feishu") as send:
+        result = mod.publish_finance_daily_newsletter(archive_date=date(2026, 8, 26))
+
+    assert result is not None
+    assert result.feishu_sent is False
+    assert generate.call_args.kwargs["publish_current"] is False
+    assert generate.call_args.kwargs["window_end"] == datetime(2026, 8, 26, 0, 0, 0)
+    send.assert_not_called()

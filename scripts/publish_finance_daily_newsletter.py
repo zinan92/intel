@@ -9,7 +9,7 @@ import os
 import re
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 
 from briefs.models import Brief
 from db.database import get_session
-from scripts.generate_narrative_signal import generate_brief
+from scripts.generate_narrative_signal import generate_brief, window_end_for_archive_date
 
 logger = logging.getLogger(__name__)
 
@@ -257,9 +257,24 @@ def send_to_feishu(brief: Brief, obsidian_path: Path, source_health: str) -> boo
     return True
 
 
-def publish_finance_daily_newsletter(limit: int = 100, *, generate: bool = True) -> DeliveryResult | None:
-    """Generate the latest brief, archive it to Obsidian, and send it to Feishu."""
-    brief_id = generate_brief(limit=limit) if generate else None
+def publish_finance_daily_newsletter(
+    limit: int = 100,
+    *,
+    generate: bool = True,
+    archive_date: date | None = None,
+) -> DeliveryResult | None:
+    """Publish the current Daily Brief or archive one explicit historical day."""
+
+    is_backfill = archive_date is not None
+    brief_id = (
+        generate_brief(
+            limit=limit,
+            window_end=window_end_for_archive_date(archive_date) if archive_date else None,
+            publish_current=not is_backfill,
+        )
+        if generate
+        else None
+    )
 
     session = get_session()
     try:
@@ -273,7 +288,11 @@ def publish_finance_daily_newsletter(limit: int = 100, *, generate: bool = True)
 
         source_health = _source_health_text(session)
         obsidian_path = save_to_obsidian(brief, source_health)
-        feishu_sent = send_to_feishu(brief, obsidian_path, source_health)
+        if is_backfill:
+            logger.info("Historical Daily backfill for %s is archive-only; Feishu skipped", archive_date)
+            feishu_sent = False
+        else:
+            feishu_sent = send_to_feishu(brief, obsidian_path, source_health)
         return DeliveryResult(
             brief_id=brief.id,
             obsidian_path=obsidian_path,
@@ -292,9 +311,21 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Publish Finance Daily Newsletter")
     parser.add_argument("--limit", type=int, default=100)
     parser.add_argument("--no-generate", action="store_true", help="Deliver latest published brief without generating a new one")
+    parser.add_argument("--for-date", help="Archive one historical Beijing date (YYYY-MM-DD) without sending Feishu")
     args = parser.parse_args()
 
-    result = publish_finance_daily_newsletter(limit=args.limit, generate=not args.no_generate)
+    if args.no_generate and args.for_date:
+        parser.error("--no-generate cannot be combined with --for-date")
+    try:
+        archive_date = date.fromisoformat(args.for_date) if args.for_date else None
+    except ValueError:
+        parser.error("--for-date must use YYYY-MM-DD")
+
+    result = publish_finance_daily_newsletter(
+        limit=args.limit,
+        generate=not args.no_generate,
+        archive_date=archive_date,
+    )
     if result is None:
         raise SystemExit("Finance daily newsletter delivery failed")
     print(f"Delivered brief #{result.brief_id} to {result.obsidian_path}; feishu_sent={result.feishu_sent}")
