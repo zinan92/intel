@@ -17,4 +17,5 @@ class Brief(Base):
     article_count: Mapped[int] = mapped_column(Integer, default=0)
     signal_count: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String, default="published")
+    provider: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

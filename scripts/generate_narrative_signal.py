@@ -31,7 +31,7 @@ DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash"
 DEFAULT_DEEPSEEK_API_KEY_FILE = Path("/Users/wendy/park-hands/_secrets/deepseek-key")
 CODEX_TIMEOUT_SECONDS = 300
 CODEX_FALLBACK_PREFIX = """你是 Finance Newsletter 的备用叙事生成器。
-只使用下方任务中已经提供的冻结文章、事件和来源文本；不得调用工具、读取文件、访问网络、重新获取数据、读取旧日报或补造事实。
+只使用下方任务中已经提供的冻结文章、事件和来源文本；不得调用工具、从文件系统读取输入、访问网络、重新获取数据或补造事实。
 严格遵守原任务的输出格式，只返回可供原质量门验证的正文或 JSON。
 """
 SOURCE_LABELS = {
@@ -236,6 +236,9 @@ def _call_codex(prompt: str) -> tuple[str | None, str | None]:
             "--sandbox",
             "read-only",
             "--skip-git-repo-check",
+            "--ignore-user-config",
+            "--color",
+            "never",
             "--disable",
             "shell_tool",
             "--disable",
@@ -253,12 +256,13 @@ def _call_codex(prompt: str) -> tuple[str | None, str | None]:
             str(output_path),
             "-C",
             str(root),
-            f"{CODEX_FALLBACK_PREFIX}\n原任务如下：\n{prompt}",
+            "-",
         ]
         try:
             completed = subprocess.run(
                 command,
                 cwd=str(root),
+                input=f"{CODEX_FALLBACK_PREFIX}\n原任务如下：\n{prompt}",
                 capture_output=True,
                 text=True,
                 timeout=CODEX_TIMEOUT_SECONDS,
@@ -337,7 +341,7 @@ def _call_deepseek(prompt: str) -> tuple[str | None, str | None]:
 
 
 def _call_llm(prompt: str) -> tuple[str | None, str | None]:
-    """Generate with DeepSeek first, then one audited Codex CLI fallback."""
+    """Generate with DeepSeek, using Codex only for explicit quota exhaustion."""
 
     global _last_codex_failure
     _last_codex_failure = "not_attempted"
@@ -346,6 +350,12 @@ def _call_llm(prompt: str) -> tuple[str | None, str | None]:
         logger.info("Brief generated with DeepSeek model %s", model)
         return content, f"deepseek:{model}"
     deepseek_failure = _last_deepseek_failure
+    if deepseek_failure != "http_402":
+        logger.error(
+            "DeepSeek failed without a quota signal; Codex fallback is not allowed (%s)",
+            deepseek_failure,
+        )
+        return None, None
     content, provider = _call_codex(prompt)
     if content:
         logger.info("Brief generated with Codex CLI fallback after DeepSeek failure (%s)", deepseek_failure)
@@ -509,6 +519,7 @@ def generate_brief(limit: int = 100) -> int | None:
                 article_count=len(articles),
                 signal_count=0,
                 status="rejected",
+                provider=provider,
             )
             session.add(rejected)
             session.commit()
@@ -532,6 +543,7 @@ def generate_brief(limit: int = 100) -> int | None:
             article_count=len(articles),
             signal_count=max(signal_count, 1),
             status="published",
+            provider=provider,
         )
         session.add(brief)
         session.commit()

@@ -108,6 +108,7 @@ def run_migrations(engine: Engine) -> None:
         ("events", "prev_signal_score", "REAL"),
         ("events", "trading_play", "TEXT"),
         ("events", "outcome_data", "TEXT"),
+        ("briefs", "provider", "TEXT"),
     ]
 
     with engine.connect() as conn:

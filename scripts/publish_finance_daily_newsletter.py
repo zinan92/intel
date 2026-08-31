@@ -176,6 +176,7 @@ generated_at: {generated_at}
 article_count: {brief.article_count}
 signal_count: {brief.signal_count}
 source: park-intel
+provider: {brief.provider or "unknown"}
 ---
 
 # 财经日报 | {title_date}
