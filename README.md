@@ -71,6 +71,13 @@ Run manually without sending Feishu:
 PARK_INTEL_SKIP_FEISHU=1 PYTHONPATH=. python scripts/publish_finance_daily_newsletter.py --no-generate
 ```
 
+Recover a missed historical Daily archive without changing the current brief or
+sending Feishu:
+
+```bash
+PYTHONPATH=. python scripts/publish_finance_daily_newsletter.py --for-date 2026-08-26
+```
+
 Generate, archive, and send immediately:
 
 ```bash

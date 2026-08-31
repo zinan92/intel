@@ -14,10 +14,14 @@
   Finance Daily Brief #275 passed the existing quality gate, was archived to
   `/Users/wendy/park-io/007_finance daily newsletter/2026-08-31-finance-daily-newsletter.md`,
   and was sent to Feishu (`feishu_sent=True`).
-- Finance Weekly remains fail-closed until its Daily archive window reaches
-  the existing 7/7 coverage contract; it was not fabricated from the 2/7
-  window. The next complete weekly window will use the same quota-only
-  fallback seam for synthesis and repair.
+- Issue #29 recovered the five missing Daily archives for 2026-08-26 through
+  2026-08-30 from their frozen historical windows. Each is an `archived`
+  Codex-generated record, was written to Obsidian, and was not sent to Feishu;
+  the current Daily Brief remained published.
+- The recovered 2026-08-30 Weekly Finance Newsletter passed its 7/7 coverage
+  gate, was archived, and was sent once to Feishu with `provider=codex-cli`.
+  A post-publication scheduled no-op returned successfully, proving the
+  manifest prevents a duplicate send.
 
 ## 现在在哪里
 
@@ -29,6 +33,9 @@
 - The cutover evidence, local-state boundaries, and rollback files are recorded in `docs/finance-newsletter-production-runtime-2026-08-24.md`.
 - Runtime credentials are read from `/Users/wendy/park-hands/_secrets/deepseek-key`; Codex CLI fallback uses local subscription authentication and no API key is written to logs or content.
 - The relevant macOS services are `com.park-intel.agent`, `com.wendy.park-intel-finance-newsletter`, and `com.wendy.park-intel-weekly-finance-newsletter`. Website refresh jobs remain owned by the separate `zinan92/park-ai-intel` repository.
+- Weekly publication sends to Feishu by default. A failed or incomplete Weekly
+  run does not send, and a previously published week returns no-op rather than
+  sending a duplicate.
 
 ## 下一步
 
