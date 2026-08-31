@@ -58,12 +58,11 @@ FEISHU_BOT_WEBHOOK=https://open.feishu.cn/open-apis/bot/v2/hook/...
 PARK_INTEL_SKIP_FEISHU=0
 ```
 
-LLM generation uses DeepSeek first. Only an explicit DeepSeek quota or balance
-failure (HTTP 402) retries the same frozen prompt through the local Codex CLI
-in an ephemeral read-only process with external tools and live search disabled.
-Other DeepSeek failures remain fail-closed. If both eligible providers fail,
-no previous brief is delivered; the run is recorded as failed and the Feishu
-send is skipped.
+LLM generation uses DeepSeek first. Any DeepSeek failure retries the same
+frozen prompt through the local Codex CLI in an ephemeral read-only process
+with external tools and live search disabled. If both providers fail, no
+previous brief is delivered; the run is recorded as failed and the Feishu send
+is skipped.
 
 Run manually without sending Feishu:
 

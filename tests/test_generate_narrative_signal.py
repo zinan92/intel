@@ -157,7 +157,7 @@ def test_call_llm_reports_both_provider_failure_without_content(monkeypatch, cap
     assert "codex=timeout" in caplog.text
 
 
-def test_call_llm_does_not_fallback_for_non_quota_deepseek_failure(monkeypatch, caplog):
+def test_call_llm_falls_back_for_non_quota_deepseek_failure(monkeypatch):
     from scripts import generate_narrative_signal as mod
 
     calls = []
@@ -167,11 +167,19 @@ def test_call_llm_does_not_fallback_for_non_quota_deepseek_failure(monkeypatch, 
         return None, None
 
     monkeypatch.setattr(mod, "_call_deepseek", fail_deepseek)
-    monkeypatch.setattr(mod, "_call_codex", lambda _prompt: calls.append(True) or ("unexpected", "codex-cli"))
+    monkeypatch.setattr(mod, "_call_codex", lambda _prompt: calls.append(True) or ("codex brief", "codex-cli"))
 
-    assert mod._call_llm("write a brief") == (None, None)
-    assert calls == []
-    assert "Codex fallback is not allowed (transport_error)" in caplog.text
+    assert mod._call_llm("write a brief") == ("codex brief", "codex-cli")
+    assert calls == [True]
+
+
+def test_call_llm_does_not_invoke_codex_after_deepseek_success(monkeypatch):
+    from scripts import generate_narrative_signal as mod
+
+    monkeypatch.setattr(mod, "_call_deepseek", lambda _prompt: ("deepseek brief", "deepseek-v4-flash"))
+    monkeypatch.setattr(mod, "_call_codex", lambda _prompt: (_ for _ in ()).throw(AssertionError("must not call Codex")))
+
+    assert mod._call_llm("write a brief") == ("deepseek brief", "deepseek:deepseek-v4-flash")
 
 
 def test_call_deepseek_records_http_402(monkeypatch):
