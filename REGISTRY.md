@@ -1,5 +1,24 @@
 # Runtime Registry
 
+## 2026-08-31 · DeepSeek → Codex CLI fallback restored scheduled newsletters
+
+- DeepSeek returned HTTP 402 from 2026-08-26 through 2026-08-31. Finance
+  Daily previously stopped before delivery, and Finance Weekly stopped because
+  its required Daily archive coverage fell to 2/7.
+- Issue #25 / PR (current branch): `_call_llm` now tries DeepSeek first and
+  invokes an explicit, read-only, ephemeral Codex CLI fallback after any
+  DeepSeek failure. The same frozen prompt is passed; no tools, browser, apps,
+  unified execution or live search are enabled. If both providers fail, the
+  run returns no content and delivery skips rather than sending stale prose.
+- Real acceptance on 2026-08-31: DeepSeek `http_402` → Codex CLI success;
+  Finance Daily Brief #275 passed the existing quality gate, was archived to
+  `/Users/wendy/park-io/007_finance daily newsletter/2026-08-31-finance-daily-newsletter.md`,
+  and was sent to Feishu (`feishu_sent=True`).
+- Finance Weekly remains fail-closed until its Daily archive window reaches
+  the existing 7/7 coverage contract; it was not fabricated from the 2/7
+  window. The next complete weekly window will use the same fallback seam for
+  synthesis and repair.
+
 ## 现在在哪里
 
 - Automated article scoring, event narratives, and narrative-signal briefs use the DeepSeek Chat Completions API.
@@ -8,7 +27,7 @@
 - Finance Daily, Finance Weekly, and the upstream Park Intel service now run from the clean production checkout `/Users/wendy/work/trading-co/park-intel-production`, created from `origin/main`.
 - Daily runs at 08:00 Asia/Shanghai; Weekly runs Sunday 08:30 with Monday catch-up; the upstream service is KeepAlive-managed.
 - The cutover evidence, local-state boundaries, and rollback files are recorded in `docs/finance-newsletter-production-runtime-2026-08-24.md`.
-- Runtime credentials are read from `/Users/wendy/park-hands/_secrets/deepseek-key`; no Claude Code CLI subprocess is used by park-intel.
+- Runtime credentials are read from `/Users/wendy/park-hands/_secrets/deepseek-key`; Codex CLI fallback uses local subscription authentication and no API key is written to logs or content.
 - The relevant macOS services are `com.park-intel.agent`, `com.wendy.park-intel-finance-newsletter`, and `com.wendy.park-intel-weekly-finance-newsletter`. Website refresh jobs remain owned by the separate `zinan92/park-ai-intel` repository.
 
 ## 下一步

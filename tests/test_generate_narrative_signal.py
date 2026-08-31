@@ -116,6 +116,39 @@ def test_call_deepseek_rejects_malformed_response(monkeypatch):
         assert mod._call_deepseek("write a brief") == (None, None)
 
 
+def test_call_llm_falls_back_to_codex_after_deepseek_failure(monkeypatch):
+    from scripts import generate_narrative_signal as mod
+
+    def fail_deepseek(_prompt):
+        mod._last_deepseek_failure = "http_402"
+        return None, None
+
+    monkeypatch.setattr(mod, "_call_deepseek", fail_deepseek)
+    monkeypatch.setattr(mod, "_call_codex", lambda _prompt: ("codex brief", "codex-cli"))
+
+    assert mod._call_llm("write a brief") == ("codex brief", "codex-cli")
+
+
+def test_call_llm_reports_both_provider_failure_without_content(monkeypatch, caplog):
+    from scripts import generate_narrative_signal as mod
+
+    def fail_deepseek(_prompt):
+        mod._last_deepseek_failure = "http_402"
+        return None, None
+
+    def fail_codex(_prompt):
+        mod._last_codex_failure = "timeout"
+        return None, None
+
+    monkeypatch.setattr(mod, "_call_deepseek", fail_deepseek)
+    monkeypatch.setattr(mod, "_call_codex", fail_codex)
+
+    assert mod._call_llm("write a brief") == (None, None)
+    assert "Both DeepSeek and Codex CLI failed" in caplog.text
+    assert "deepseek=http_402" in caplog.text
+    assert "codex=timeout" in caplog.text
+
+
 def test_select_publishable_articles_filters_stale_noise_and_dedups():
     from scripts.generate_narrative_signal import _select_publishable_articles
 

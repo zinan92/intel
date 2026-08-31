@@ -1,8 +1,12 @@
 """Generate Narrative Signal briefs with the DeepSeek Chat Completions API."""
+import json
 import logging
 import os
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -25,6 +29,11 @@ DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions"
 # DeepSeek documents this alias as the current V4-Flash release (V4-Flash-0731).
 DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash"
 DEFAULT_DEEPSEEK_API_KEY_FILE = Path("/Users/wendy/park-hands/_secrets/deepseek-key")
+CODEX_TIMEOUT_SECONDS = 300
+CODEX_FALLBACK_PREFIX = """你是 Finance Newsletter 的备用叙事生成器。
+只使用下方任务中已经提供的冻结文章、事件和来源文本；不得调用工具、读取文件、访问网络、重新获取数据、读取旧日报或补造事实。
+严格遵守原任务的输出格式，只返回可供原质量门验证的正文或 JSON。
+"""
 SOURCE_LABELS = {
     "rss": "财经媒体",
     "google_news": "新闻聚合",
@@ -42,6 +51,9 @@ _NOISE_TITLE_PATTERNS = [
     re.compile(r"^\s*(ai|trading|crypto|finance)\s*-\s*no description available\s*$", re.I),
     re.compile(r"\blive\s+gold\s+trading\b", re.I),
 ]
+
+_last_deepseek_failure = "not_attempted"
+_last_codex_failure = "not_attempted"
 
 
 def current_brief_window(now: datetime | None = None) -> tuple[datetime, datetime, str]:
@@ -169,9 +181,117 @@ def _deepseek_api_key() -> str | None:
     return match.group(1)
 
 
+def _resolve_codex_executable() -> str:
+    """Resolve Codex under both an interactive shell and launchd's PATH."""
+
+    candidates = [
+        os.getenv("PARK_CODEX_CLI", "").strip(),
+        shutil.which("codex") or "",
+        "/opt/homebrew/bin/codex",
+        "/usr/local/bin/codex",
+    ]
+    for candidate in candidates:
+        if candidate and Path(candidate).is_file():
+            return str(Path(candidate).resolve())
+    return "codex"
+
+
+def _codex_text_from_stdout(stdout: str) -> str | None:
+    """Extract a final assistant text if the output file was not written."""
+
+    for line in reversed((stdout or "").splitlines()):
+        candidate = line.strip()
+        if not candidate:
+            continue
+        try:
+            event = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(event, dict):
+            continue
+        for key in ("text", "content", "output", "message"):
+            value = event.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+            if isinstance(value, dict):
+                nested = value.get("content") or value.get("text")
+                if isinstance(nested, str) and nested.strip():
+                    return nested.strip()
+    return None
+
+
+def _call_codex(prompt: str) -> tuple[str | None, str | None]:
+    """Run one isolated, read-only Codex fallback attempt."""
+
+    global _last_codex_failure
+    _last_codex_failure = "not_attempted"
+    executable = _resolve_codex_executable()
+    with tempfile.TemporaryDirectory(prefix="park-intel-codex-") as directory:
+        root = Path(directory)
+        output_path = root / "codex-output.txt"
+        command = [
+            executable,
+            "exec",
+            "--ephemeral",
+            "--sandbox",
+            "read-only",
+            "--skip-git-repo-check",
+            "--disable",
+            "shell_tool",
+            "--disable",
+            "browser_use",
+            "--disable",
+            "browser_use_external",
+            "--disable",
+            "computer_use",
+            "--disable",
+            "apps",
+            "--disable",
+            "unified_exec",
+            "--json",
+            "--output-last-message",
+            str(output_path),
+            "-C",
+            str(root),
+            f"{CODEX_FALLBACK_PREFIX}\n原任务如下：\n{prompt}",
+        ]
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=str(root),
+                capture_output=True,
+                text=True,
+                timeout=CODEX_TIMEOUT_SECONDS,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            _last_codex_failure = "timeout"
+            logger.exception("Codex CLI fallback timed out")
+            return None, None
+        except OSError as exc:
+            _last_codex_failure = "executable_unavailable"
+            logger.error("Codex CLI fallback could not start: %s", type(exc).__name__)
+            return None, None
+
+        if completed.returncode != 0:
+            _last_codex_failure = f"exit_{completed.returncode}"
+            logger.error("Codex CLI fallback exited with code %s", completed.returncode)
+            return None, None
+        content = output_path.read_text(encoding="utf-8").strip() if output_path.is_file() else _codex_text_from_stdout(completed.stdout)
+        if not content:
+            _last_codex_failure = "empty_response"
+            logger.error("Codex CLI fallback returned no content")
+            return None, None
+        _last_codex_failure = "ok"
+        return content, "codex-cli"
+
+
 def _call_deepseek(prompt: str) -> tuple[str | None, str | None]:
+    global _last_deepseek_failure
+    _last_deepseek_failure = "not_attempted"
     key = _deepseek_api_key()
     if not key:
+        _last_deepseek_failure = "key_missing"
         return None, None
 
     requested_model = os.getenv("DEEPSEEK_MODEL", DEFAULT_DEEPSEEK_MODEL).strip()
@@ -192,20 +312,49 @@ def _call_deepseek(prompt: str) -> tuple[str | None, str | None]:
         data = response.json()
         content = _clean_model_output(data["choices"][0]["message"]["content"])
         if not content:
+            _last_deepseek_failure = "empty_response"
             logger.error("DeepSeek API returned an empty response")
             return None, None
+        _last_deepseek_failure = "ok"
         return content, str(data.get("model") or requested_model)
-    except (requests.RequestException, KeyError, IndexError, TypeError, ValueError):
+    except requests.HTTPError as exc:
+        status = exc.response.status_code if exc.response is not None else None
+        _last_deepseek_failure = f"http_{status}" if status else "http_error"
+        logger.error("DeepSeek API request failed: %s", _last_deepseek_failure)
+        return None, None
+    except requests.Timeout:
+        _last_deepseek_failure = "timeout"
+        logger.exception("DeepSeek API request timed out")
+        return None, None
+    except requests.RequestException:
+        _last_deepseek_failure = "transport_error"
+        logger.exception("DeepSeek API request failed")
+        return None, None
+    except (KeyError, IndexError, TypeError, ValueError):
+        _last_deepseek_failure = "invalid_response"
         logger.exception("DeepSeek API request failed")
         return None, None
 
 
 def _call_llm(prompt: str) -> tuple[str | None, str | None]:
-    """Generate with DeepSeek only; an unavailable provider fails closed."""
+    """Generate with DeepSeek first, then one audited Codex CLI fallback."""
+
+    global _last_codex_failure
+    _last_codex_failure = "not_attempted"
     content, model = _call_deepseek(prompt)
     if content:
         logger.info("Brief generated with DeepSeek model %s", model)
         return content, f"deepseek:{model}"
+    deepseek_failure = _last_deepseek_failure
+    content, provider = _call_codex(prompt)
+    if content:
+        logger.info("Brief generated with Codex CLI fallback after DeepSeek failure (%s)", deepseek_failure)
+        return content, provider
+    logger.error(
+        "Both DeepSeek and Codex CLI failed; delivery must be skipped (deepseek=%s, codex=%s)",
+        deepseek_failure,
+        _last_codex_failure,
+    )
     return None, None
 
 
