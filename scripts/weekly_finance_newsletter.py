@@ -10,7 +10,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from scripts.generate_narrative_signal import _call_deepseek
+from scripts.generate_narrative_signal import _call_llm
 
 
 DEFAULT_ARCHIVE_DIR = Path("/Users/wendy/park-io/007_finance daily newsletter")
@@ -524,7 +524,7 @@ def generate_weekly_dry_run(
                 ),
             )
     prompt = _prompt(bundle, calendar_bundle)
-    content, provider = _call_deepseek(prompt)
+    content, provider = _call_llm(prompt)
     if not content:
         raise WeeklyGenerationError("weekly synthesis returned no content")
     source_text = {archive.input_id: archive.content for archive in bundle.archives}
@@ -557,7 +557,7 @@ def generate_weekly_dry_run(
             )
         if attempt == 1:
             raise WeeklyGenerationError("weekly quality gate failed: " + "; ".join(validation.issues))
-        content, repair_provider = _call_deepseek(
+        content, repair_provider = _call_llm(
             _repair_prompt(prompt, draft, validation.issues, source_text)
         )
         if not content:

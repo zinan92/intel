@@ -69,7 +69,7 @@ def test_weekly_dry_run_renders_from_seven_archives_without_side_effects(tmp_pat
     from scripts import weekly_finance_newsletter as mod
 
     _seed_week(tmp_path)
-    monkeypatch.setattr(mod, "_call_deepseek", lambda prompt: (_valid_model_response(), "deepseek-v4-flash"))
+    monkeypatch.setattr(mod, "_call_llm", lambda prompt: (_valid_model_response(), "deepseek-v4-flash"))
 
     result = mod.generate_weekly_dry_run(date(2026, 8, 23), tmp_path)
 
@@ -152,7 +152,7 @@ def test_weekly_dry_run_repairs_a_bad_model_draft_once(tmp_path, monkeypatch):
         calls.append(prompt)
         return responses.pop(0), "deepseek-v4-flash"
 
-    monkeypatch.setattr(mod, "_call_deepseek", fake_call)
+    monkeypatch.setattr(mod, "_call_llm", fake_call)
 
     result = mod.generate_weekly_dry_run(date(2026, 8, 23), tmp_path)
 
@@ -174,7 +174,7 @@ def test_weekly_dry_run_repairs_an_oversized_model_draft_once(tmp_path, monkeypa
         calls.append(prompt)
         return responses.pop(0), "deepseek-v4-flash"
 
-    monkeypatch.setattr(mod, "_call_deepseek", fake_call)
+    monkeypatch.setattr(mod, "_call_llm", fake_call)
 
     result = mod.generate_weekly_dry_run(date(2026, 8, 23), tmp_path)
 
@@ -240,7 +240,7 @@ def test_weekly_dry_run_renders_verified_and_discovery_watchlists(tmp_path, monk
             "source_refs": [earnings.event_id],
         }
     ]
-    monkeypatch.setattr(mod, "_call_deepseek", lambda prompt: (json.dumps(draft), "deepseek-v4-flash"))
+    monkeypatch.setattr(mod, "_call_llm", lambda prompt: (json.dumps(draft), "deepseek-v4-flash"))
 
     result = mod.generate_weekly_dry_run(date(2026, 8, 23), tmp_path, calendar_bundle=bundle)
 
