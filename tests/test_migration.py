@@ -35,13 +35,28 @@ def test_migration_adds_columns(engine):
         """))
         conn.commit()
 
+        conn.execute(text("DROP TABLE IF EXISTS briefs"))
+        conn.execute(text("""
+            CREATE TABLE briefs (
+                id INTEGER PRIMARY KEY,
+                content TEXT NOT NULL,
+                article_count INTEGER DEFAULT 0,
+                signal_count INTEGER DEFAULT 0,
+                status VARCHAR DEFAULT 'published',
+                created_at DATETIME
+            )
+        """))
+        conn.commit()
+
     assert not _column_exists(engine, "articles", "relevance_score")
     assert not _column_exists(engine, "articles", "narrative_tags")
+    assert not _column_exists(engine, "briefs", "provider")
 
     run_migrations(engine)
 
     assert _column_exists(engine, "articles", "relevance_score")
     assert _column_exists(engine, "articles", "narrative_tags")
+    assert _column_exists(engine, "briefs", "provider")
 
 
 def test_migration_idempotent(engine):

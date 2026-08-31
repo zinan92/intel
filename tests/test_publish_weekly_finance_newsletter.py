@@ -7,10 +7,10 @@ from types import SimpleNamespace
 import pytest
 
 
-def _result(markdown="# Weekly Finance Newsletter | 2026-08-23\n"):
+def _result(markdown="# Weekly Finance Newsletter | 2026-08-23\n", provider="deepseek-v4-flash"):
     return SimpleNamespace(
         markdown=markdown,
-        provider="deepseek-v4-flash",
+        provider=provider,
         source_status={"nasdaq:macro": "ok"},
         snapshot_paths=(),
     )
@@ -30,7 +30,24 @@ def test_weekly_publish_archives_writes_manifest_and_sends(tmp_path, monkeypatch
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
     assert manifest[0]["status"] == "published"
     assert manifest[0]["content_sha256"] == result.content_sha256
+    assert manifest[0]["model"] == "deepseek-v4-flash"
     assert manifest[0]["website_status"] == "not_attempted"
+
+
+def test_weekly_publish_records_codex_fallback_provider(tmp_path, monkeypatch):
+    from scripts import publish_weekly_finance_newsletter as mod
+
+    monkeypatch.setattr(
+        mod,
+        "generate_weekly_dry_run",
+        lambda *args, **kwargs: _result(provider="codex-cli"),
+    )
+    monkeypatch.setattr(mod, "_send_to_feishu", lambda markdown, archive_path: True)
+
+    mod.publish_weekly_finance_newsletter(date(2026, 8, 23), archive_dir=tmp_path)
+
+    manifest = json.loads(next(tmp_path.glob(".delivery-manifests/*.json")).read_text(encoding="utf-8"))
+    assert manifest[0]["model"] == "codex-cli"
 
 
 def test_weekly_publish_same_hash_is_noop(tmp_path, monkeypatch):

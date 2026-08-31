@@ -476,7 +476,7 @@ def render_weekly_markdown(draft: dict[str, Any], bundle: WeeklyArchives, calend
             "- Source status: " + "; ".join(f"{key}={value}" for key, value in sorted(calendar_bundle.source_status.items())) + ".",
         ])
     source_status.extend([
-        "- Synthesis: bounded DeepSeek draft; weekly facts are rendered from validated inputs.",
+        "- Synthesis: bounded DeepSeek draft, with Codex CLI fallback only on DeepSeek quota exhaustion; weekly facts are rendered from validated inputs.",
         "",
         "This is a trading research brief, not investment advice.",
     ])

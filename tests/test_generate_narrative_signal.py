@@ -1,5 +1,7 @@
 """Tests for narrative signal brief generation."""
 from datetime import datetime, timedelta
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from sqlalchemy import create_engine
@@ -149,6 +151,57 @@ def test_call_llm_reports_both_provider_failure_without_content(monkeypatch, cap
     assert "codex=timeout" in caplog.text
 
 
+def test_call_llm_does_not_fallback_for_non_quota_deepseek_failure(monkeypatch, caplog):
+    from scripts import generate_narrative_signal as mod
+
+    calls = []
+
+    def fail_deepseek(_prompt):
+        mod._last_deepseek_failure = "transport_error"
+        return None, None
+
+    monkeypatch.setattr(mod, "_call_deepseek", fail_deepseek)
+    monkeypatch.setattr(mod, "_call_codex", lambda _prompt: calls.append(True) or ("unexpected", "codex-cli"))
+
+    assert mod._call_llm("write a brief") == (None, None)
+    assert calls == []
+    assert "Codex fallback is not allowed (transport_error)" in caplog.text
+
+
+def test_call_deepseek_records_http_402(monkeypatch):
+    from scripts import generate_narrative_signal as mod
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-" + "test-key")
+    response = type("Response", (), {"status_code": 402})()
+    with patch.object(mod.requests, "post") as post:
+        post.return_value.raise_for_status.side_effect = mod.requests.HTTPError(response=response)
+
+        assert mod._call_deepseek("write a brief") == (None, None)
+
+    assert mod._last_deepseek_failure == "http_402"
+
+
+def test_call_codex_uses_isolated_stdin_prompt(monkeypatch):
+    from scripts import generate_narrative_signal as mod
+
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        captured["kwargs"] = kwargs
+        output_path = command[command.index("--output-last-message") + 1]
+        Path(output_path).write_text("codex brief", encoding="utf-8")
+        return SimpleNamespace(returncode=0, stdout="")
+
+    monkeypatch.setattr(mod, "_resolve_codex_executable", lambda: "/opt/homebrew/bin/codex")
+    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+
+    assert mod._call_codex("frozen prompt") == ("codex brief", "codex-cli")
+    assert captured["command"][-1] == "-"
+    assert "--ignore-user-config" in captured["command"]
+    assert "frozen prompt" in captured["kwargs"]["input"]
+
+
 def test_select_publishable_articles_filters_stale_noise_and_dedups():
     from scripts.generate_narrative_signal import _select_publishable_articles
 
@@ -261,3 +314,4 @@ def test_generate_brief_publishes_only_after_quality_passes():
     assert brief_id is not None
     rows = session.query(Brief).order_by(Brief.id).all()
     assert [row.status for row in rows] == ["archived", "published"]
+    assert rows[1].provider == "test"

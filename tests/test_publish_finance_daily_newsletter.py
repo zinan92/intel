@@ -26,6 +26,7 @@ def test_save_to_obsidian_writes_markdown(tmp_path, monkeypatch):
         article_count=100,
         signal_count=3,
         status="published",
+        provider="codex-cli",
         created_at=datetime(2026, 6, 27, 10, 0, 0),
     )
 
@@ -34,6 +35,7 @@ def test_save_to_obsidian_writes_markdown(tmp_path, monkeypatch):
     assert path.exists()
     content = path.read_text(encoding="utf-8")
     assert "brief_id: 12" in content
+    assert "provider: codex-cli" in content
     assert "## Source Status" in content
     assert "RSS/媒体源" in content
     assert "今日交易地图" in content
