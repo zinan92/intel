@@ -5,11 +5,11 @@
 - DeepSeek returned HTTP 402 from 2026-08-26 through 2026-08-31. Finance
   Daily previously stopped before delivery, and Finance Weekly stopped because
   its required Daily archive coverage fell to 2/7.
-- Issue #25 / PR #27 introduced the fallback; Issue #26 narrows its trigger
-  to explicit DeepSeek quota exhaustion (`http_402`). The same frozen prompt
-  is passed to an isolated, read-only, ephemeral Codex CLI process; no tools,
-  browser, apps, unified execution or live search are enabled. Other DeepSeek
-  failures remain fail-closed.
+- Issue #25 / PR #27 introduced the fallback. Issue #31 supersedes the
+  quota-only restriction from #26: every DeepSeek synthesis failure now passes
+  the same frozen prompt to an isolated, read-only, ephemeral Codex CLI
+  process. No tools, browser, apps, unified execution, or live search are
+  enabled; only a subsequent Codex failure remains fail-closed.
 - Real acceptance on 2026-08-31: DeepSeek `http_402` → Codex CLI success;
   Finance Daily Brief #275 passed the existing quality gate, was archived to
   `/Users/wendy/park-io/007_finance daily newsletter/2026-08-31-finance-daily-newsletter.md`,

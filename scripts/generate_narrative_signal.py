@@ -348,7 +348,7 @@ def _call_deepseek(prompt: str) -> tuple[str | None, str | None]:
 
 
 def _call_llm(prompt: str) -> tuple[str | None, str | None]:
-    """Generate with DeepSeek, using Codex only for explicit quota exhaustion."""
+    """Generate with DeepSeek first, then one audited Codex CLI fallback."""
 
     global _last_codex_failure
     _last_codex_failure = "not_attempted"
@@ -357,12 +357,6 @@ def _call_llm(prompt: str) -> tuple[str | None, str | None]:
         logger.info("Brief generated with DeepSeek model %s", model)
         return content, f"deepseek:{model}"
     deepseek_failure = _last_deepseek_failure
-    if deepseek_failure != "http_402":
-        logger.error(
-            "DeepSeek failed without a quota signal; Codex fallback is not allowed (%s)",
-            deepseek_failure,
-        )
-        return None, None
     content, provider = _call_codex(prompt)
     if content:
         logger.info("Brief generated with Codex CLI fallback after DeepSeek failure (%s)", deepseek_failure)
