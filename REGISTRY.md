@@ -3,7 +3,8 @@
 ## 2026-09-01 · Realtime News Lane implemented and reviewed
 
 - PRs #37, #38, and #39 add CLS Telegraph, Eastmoney 7x24, lane provenance,
-  second-level scheduling, and a sanitized dual-run receipt.
+  second-level scheduling, and a sanitized dual-run receipt; #40–#42 close
+  the Sonnet review, two-axis review, and final scheduler delivery gaps.
 - The post-review fix keeps the trial explicit: `REALTIME_LANE_ENABLED=1` is
   required, provider blocks pause only that source type, and realtime items do
   not enter the existing hourly digest, LLM tagging, event aggregation, or
@@ -11,6 +12,9 @@
 - `python scripts/measure_dual_run.py --hours 1 --live-smoke` reports persisted
   lane metrics plus read-only provider smoke status. It never enables
   `canonical_realtime`; the current convergence state remains `not_ready`.
+- On an existing database, the explicit activation path is
+  `REALTIME_LANE_ENABLED=1 python scripts/activate_realtime_lane.py`; the
+  normal service stays disabled until that operator action is taken.
 
 ## 2026-08-31 · DeepSeek → Codex CLI fallback restored scheduled newsletters
 
