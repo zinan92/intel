@@ -92,6 +92,8 @@ def _record_collector_run(
     saved_count: int,
     duplicate_count: int = 0,
     failed_count: int = 0,
+    missing_timestamp_count: int = 0,
+    invalid_timestamp_count: int = 0,
 ) -> None:
     """Write a CollectorRun row to the database (RELY-07)."""
     from db.database import get_session
@@ -107,6 +109,8 @@ def _record_collector_run(
             articles_saved=saved_count,
             articles_duplicate=duplicate_count,
             articles_failed=failed_count,
+            articles_missing_timestamp=missing_timestamp_count,
+            articles_invalid_timestamp=invalid_timestamp_count,
             duration_ms=result.duration_ms,
             error_message=result.error_message,
             error_category=result.error_category,
@@ -157,11 +161,21 @@ def reset_realtime_block(source_type: str | None = None) -> None:
         _realtime_blocked_until.pop(source_type, None)
 
 
-def _persist_realtime_cursor(source_key: str, source_type: str, articles: list[dict[str, Any]]) -> None:
+def _persist_realtime_cursor(
+    source_key: str,
+    source_type: str,
+    articles: list[dict[str, Any]],
+) -> None:
     """Persist the newest provider cursor only after a clean save attempt."""
-    if source_type not in {"cls_telegraph", "eastmoney_global_news"}:
+    from config import REALTIME_SOURCE_TYPES
+
+    if source_type not in REALTIME_SOURCE_TYPES:
         return
-    values = [str(article.get("_provider_cursor")) for article in articles if article.get("_provider_cursor")]
+    values = [
+        str(article.get("_provider_cursor"))
+        for article in articles
+        if article.get("_provider_cursor")
+    ]
     if not values:
         return
 
@@ -177,11 +191,13 @@ def _persist_realtime_cursor(source_key: str, source_type: str, articles: list[d
                 return
             config = json.loads(source.config_json or "{}")
             current = str(config.get(cursor_key) or "")
-            def _cursor_order(value: str) -> tuple[int, float | str]:
+            def _cursor_order(value: str) -> tuple[int, int | float | str]:
+                if value.isdigit():
+                    return (0, int(value))
                 try:
-                    return (0, float(value))
+                    return (1, float(value))
                 except ValueError:
-                    return (1, value)
+                    return (2, value)
 
             newest = max(values, key=_cursor_order)
             if current and _cursor_order(newest) <= _cursor_order(current):
@@ -261,9 +277,15 @@ def _run_source_type(source_type: str) -> None:
         logger.warning("[%s] No active instances in registry — skipping", source_type)
         return
 
+    from config import REALTIME_SOURCE_TYPES
+
     if any(getattr(instance, "lane", "hourly") == "realtime" for instance in instances):
         if not _realtime_lane_enabled():
-            logger.warning("[%s] realtime lane disabled; set REALTIME_LANE_ENABLED=1 after operator review", source_type)
+            logger.warning(
+                "[%s] realtime lane disabled; set REALTIME_LANE_ENABLED=1 "
+                "after operator review",
+                source_type,
+            )
             return
         if _is_realtime_blocked(source_type):
             logger.warning("[%s] realtime lane remains paused after provider block", source_type)
@@ -294,23 +316,33 @@ def _run_source_type(source_type: str) -> None:
                 total_saved += saved
                 save_stats = saver.last_save_stats
             else:
-                save_stats = {"duplicates": 0, "errors": 0}
+                save_stats = {
+                    "duplicates": 0,
+                    "errors": 0,
+                    "missing_timestamps": 0,
+                    "invalid_timestamps": 0,
+                }
             if save_stats["errors"] == 0:
                 _persist_realtime_cursor(instance.source_key, source_type, articles)
             if adapter_result.status != "ok":
                 errors.append(
-                    f"{instance.source_key}: {adapter_result.error_message or adapter_result.status}"
+                    f"{instance.source_key}: "
+                    f"{adapter_result.error_message or adapter_result.status}"
                 )
             if save_stats["errors"]:
-                errors.append(f"{instance.source_key}: {save_stats['errors']} article save errors")
+                errors.append(
+                    f"{instance.source_key}: {save_stats['errors']} article save errors"
+                )
             # Record to DB (RELY-07)
             _record_collector_run(
                 adapter_result,
                 saved_count=saved,
                 duplicate_count=save_stats["duplicates"],
                 failed_count=save_stats["errors"],
+                missing_timestamp_count=save_stats["missing_timestamps"],
+                invalid_timestamp_count=save_stats["invalid_timestamps"],
             )
-            if adapter_result.error_category == "auth" and source_type in {"cls_telegraph", "eastmoney_global_news"}:
+            if adapter_result.error_category == "auth" and source_type in REALTIME_SOURCE_TYPES:
                 if "provider blocked" in (adapter_result.error_message or ""):
                     _mark_realtime_blocked(source_type)
             elif adapter_result.status == "ok":
@@ -366,7 +398,12 @@ class _ArticleSaver:
         from db.database import init_db
         init_db()
         self._source_type = source_type
-        self.last_save_stats: dict[str, int] = {"duplicates": 0, "errors": 0}
+        self.last_save_stats: dict[str, int] = {
+            "duplicates": 0,
+            "errors": 0,
+            "missing_timestamps": 0,
+            "invalid_timestamps": 0,
+        }
 
     def save(self, articles: list[dict[str, Any]]) -> int:
         from collectors.base import BaseCollector
@@ -382,6 +419,8 @@ class _ArticleSaver:
         self.last_save_stats = {
             "duplicates": saver.last_save_stats.get("duplicates", 0),
             "errors": saver.last_save_stats.get("errors", 0),
+            "missing_timestamps": saver.last_save_stats.get("missing_timestamps", 0),
+            "invalid_timestamps": saver.last_save_stats.get("invalid_timestamps", 0),
         }
         return saved
 
@@ -454,7 +493,11 @@ class CollectorScheduler:
                     logger.info("Source active: %s (%s)", src.display_name, src.source_type)
                     active_count += 1
                 else:
-                    logger.warning("Source skipped: %s (%s) — inactive", src.display_name, src.source_type)
+                    logger.warning(
+                        "Source skipped: %s (%s) — inactive",
+                        src.display_name,
+                        src.source_type,
+                    )
                     skipped_count += 1
 
             time_str = datetime.now(timezone.utc).isoformat()
@@ -485,7 +528,9 @@ class CollectorScheduler:
         if clawfeed_path:
             logger.info("clawfeed CLI found at %s — social_kol collector enabled", clawfeed_path)
         else:
-            logger.warning("clawfeed CLI not found — social_kol collector will return empty results")
+            logger.warning(
+                "clawfeed CLI not found — social_kol collector will return empty results"
+            )
 
     def _register_jobs(self) -> None:
         """Register collector jobs from the source registry + llm_tagger.
@@ -512,13 +557,17 @@ class CollectorScheduler:
             if lane == "realtime":
                 if not _realtime_lane_enabled():
                     logger.info(
-                        "Realtime source %s is registered but disabled; set REALTIME_LANE_ENABLED=1 to start it",
+                        "Realtime source %s is registered but disabled; set "
+                        "REALTIME_LANE_ENABLED=1 to start it",
                         src.source_type,
                     )
                     continue
                 seconds = getattr(src, "schedule_seconds", None)
                 if seconds is not None and seconds > 0:
-                    if src.source_type not in realtime_intervals or seconds < realtime_intervals[src.source_type]:
+                    if (
+                        src.source_type not in realtime_intervals
+                        or seconds < realtime_intervals[src.source_type]
+                    ):
                         realtime_intervals[src.source_type] = seconds
                 continue
             hours = getattr(src, "schedule_hours", None)
