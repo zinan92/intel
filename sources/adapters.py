@@ -13,7 +13,13 @@ import logging
 import time
 from typing import Any, Callable
 
-from tenacity import Retrying, retry_if_exception, stop_after_attempt, wait_exponential_jitter
+from tenacity import (
+    Retrying,
+    RetryCallState,
+    retry_if_exception,
+    stop_after_attempt,
+    wait_exponential_jitter,
+)
 
 from sources.errors import CollectorResult, ErrorCategory, categorize_error, is_retryable
 
@@ -75,7 +81,12 @@ def _adapt_github_release(record: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _adapt_website_monitor(record: dict[str, Any]) -> list[dict[str, Any]]:
     """Run one webpage monitor target using registry config."""
-    from collectors.webpage_monitor import WebpageMonitorCollector, _load_state, _save_state, _STATE_FILE
+    from collectors.webpage_monitor import (
+        WebpageMonitorCollector,
+        _STATE_FILE,
+        _load_state,
+        _save_state,
+    )
 
     cfg = _parse_config(record)
     monitor = {
@@ -233,7 +244,7 @@ def _call_adapter_with_retry(
     attempt_counter: list[int] | None = None,
 ) -> list[dict[str, Any]]:
     """Call adapter with automatic retry for transient errors."""
-    def _before(retry_state) -> None:
+    def _before(retry_state: RetryCallState) -> None:
         if attempt_counter is not None:
             attempt_counter[0] += 1
 

@@ -42,6 +42,8 @@ The realtime News Lane is an explicit trial. Keep it disabled while reviewing
 source terms and enable it only with `REALTIME_LANE_ENABLED=1`; its News Items
 remain readable in the feed but are excluded from the existing digest, LLM
 tagger, event aggregation, and trading-signal inputs until convergence.
+On an existing database, activate the seeded rows as a separate explicit step:
+`REALTIME_LANE_ENABLED=1 python scripts/activate_realtime_lane.py`.
 
 **Run as background service (macOS):**
 

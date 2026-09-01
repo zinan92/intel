@@ -9,6 +9,7 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import config
 from collectors.social_kol import SocialKolCollector
 from collectors.github_release import GitHubReleaseCollector
 from collectors.github_trending import GitHubTrendingCollector
@@ -20,6 +21,8 @@ from collectors.webpage_monitor import WebpageMonitorCollector
 from collectors.xueqiu import XueqiuCollector
 from collectors.yahoo_finance import YahooFinanceCollector
 from collectors.realtime_news import CLSRealtimeCollector, EastmoneyRealtimeCollector
+
+REALTIME_COLLECTOR_SOURCES = config.REALTIME_SOURCE_TYPES
 
 COLLECTORS: dict[str, type] = {
     "hackernews": HackerNewsCollector,
@@ -58,6 +61,14 @@ def main() -> None:
     )
 
     sources = [args.source] if args.source else list(COLLECTORS.keys())
+
+    if not config.realtime_lane_enabled():
+        sources = [source for source in sources if source not in REALTIME_COLLECTOR_SOURCES]
+        if args.source in REALTIME_COLLECTOR_SOURCES:
+            logging.warning(
+                "Realtime source %s is disabled; set REALTIME_LANE_ENABLED=1 after operator review",
+                args.source,
+            )
 
     total_saved = 0
     for source in sources:

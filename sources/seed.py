@@ -15,7 +15,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 import config as cfg
-from sources.registry import get_source_by_key, list_all_sources, upsert_source
+from sources.registry import get_source_by_key, upsert_source
 
 logger = logging.getLogger(__name__)
 
@@ -251,19 +251,6 @@ def seed_source_registry(session: Session) -> int:
             is_active=1 if cfg.realtime_lane_enabled() else 0,
         ):
             inserted += 1
-
-    # An explicit environment opt-in is also the activation action for rows
-    # created while the flag was off. Preserve a manually retired source.
-    if cfg.realtime_lane_enabled():
-        realtime_types = {entry["source"] for entry in cfg.REALTIME_SOURCE_BOOTSTRAP}
-        for source in list_all_sources(session):
-            if (
-                source.source_type in realtime_types
-                and source.is_active == 0
-                and source.retired_at is None
-            ):
-                source.is_active = 1
-                session.commit()
 
     if inserted > 0:
         logger.info("Source registry: inserted %d new instances", inserted)

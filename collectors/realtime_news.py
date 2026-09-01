@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import random
 import time
 import uuid
 from datetime import datetime, timezone
@@ -61,8 +62,23 @@ def _wait_for_request(last_request_at: float | None, minimum_gap: float) -> floa
     if last_request_at is not None:
         remaining = minimum_gap - (now - last_request_at)
         if remaining > 0:
-            time.sleep(remaining)
+            time.sleep(remaining + random.uniform(0.05, 0.20))
     return time.monotonic()
+
+
+def _fallback_source_id(
+    source: str,
+    url: str | None,
+    title: str,
+    published_at: datetime | None,
+) -> str:
+    """Create a stable dedupe key when a provider omits its item id."""
+    normalized_title = " ".join(title.lower().split())
+    normalized_url = (url or "").strip().lower()
+    published = published_at.isoformat() if published_at else ""
+    material = "|".join((source, normalized_url, normalized_title, published))
+    digest = hashlib.sha256(material.encode()).hexdigest()[:24]
+    return f"{source}:sha256:{digest}"
 
 
 def fetch_cls_telegraph(*, page_size: int = 50, last_time: str = "") -> list[dict[str, Any]]:
@@ -81,7 +97,8 @@ def fetch_cls_telegraph(*, page_size: int = 50, last_time: str = "") -> list[dic
         "refresh_type": 1,
         "rn": page_size,
     }
-    url = f"{CLS_ROLL_URL}?{'&'.join(f'{key}={params[key]}' for key in params)}&sign={_cls_sign(params)}"
+    query = "&".join(f"{key}={params[key]}" for key in params)
+    url = f"{CLS_ROLL_URL}?{query}&sign={_cls_sign(params)}"
     global _LAST_CLS_REQUEST_AT
     with _CLS_REQUEST_LOCK:
         _LAST_CLS_REQUEST_AT = _wait_for_request(
@@ -105,24 +122,37 @@ def fetch_cls_telegraph(*, page_size: int = 50, last_time: str = "") -> list[dic
         if not isinstance(row, dict) or row.get("is_ad"):
             continue
 
-        item_id = row.get("id")
         title = str(row.get("title") or row.get("brief") or row.get("content") or "").strip()
         content = str(row.get("content") or row.get("brief") or title).strip()
-        if item_id in (None, "") or not title:
+        if not title:
             continue
+
+        raw_ctime = row.get("ctime")
+        published_at = _utc_naive_from_unix(raw_ctime)
+        timestamp_status = (
+            "missing" if raw_ctime in (None, "") else "valid" if published_at else "invalid"
+        )
+        item_id = str(row.get("id") or "").strip()
+        story_url = str(row.get("shareurl") or "").strip() or None
+        source_id = (
+            f"cls_telegraph:{item_id}"
+            if item_id
+            else _fallback_source_id("cls_telegraph", story_url, title, published_at)
+        )
 
         normalized.append({
             "source": "cls_telegraph",
-            "source_id": f"cls_telegraph:{item_id}",
+            "source_id": source_id,
             "author": str(row.get("author") or "").strip(),
             "title": title,
             "content": content[:4000],
-            "url": str(row.get("shareurl") or f"https://www.cls.cn/detail/{item_id}"),
+            "url": story_url or (f"https://www.cls.cn/detail/{item_id}" if item_id else None),
             "tags": ["market-news"],
             "score": 0,
-            "published_at": _utc_naive_from_unix(row.get("ctime")),
+            "published_at": published_at,
             "collection_lane": "realtime",
-            "_provider_cursor": str(row.get("ctime")) if row.get("ctime") else None,
+            "_timestamp_status": timestamp_status,
+            "_provider_cursor": str(raw_ctime) if raw_ctime not in (None, "") else item_id or None,
         })
     return normalized
 
@@ -188,20 +218,23 @@ def fetch_eastmoney_global_news(*, page_size: int = 50, sort_end: str = "") -> l
     for row in rows:
         if not isinstance(row, dict):
             continue
-        item_id = str(row.get("code") or "").strip()
         title = str(row.get("title") or "").strip()
-        if not item_id or not title:
+        if not title:
             continue
 
+        item_id = str(row.get("code") or "").strip()
         published_at: datetime | None = None
         show_time = row.get("showTime")
+        timestamp_status = "missing"
         if show_time:
             try:
                 localized = datetime.strptime(str(show_time), "%Y-%m-%d %H:%M:%S")
                 published_at = localized.replace(tzinfo=ZoneInfo("Asia/Shanghai")).astimezone(
                     ZoneInfo("UTC")
                 ).replace(tzinfo=None)
+                timestamp_status = "valid"
             except (TypeError, ValueError):
+                timestamp_status = "invalid"
                 logger.warning("Eastmoney row %s has invalid showTime %r", item_id, show_time)
 
         tickers = []
@@ -210,19 +243,26 @@ def fetch_eastmoney_global_news(*, page_size: int = 50, sort_end: str = "") -> l
             if ticker and ticker not in tickers:
                 tickers.append(ticker)
 
+        story_url = _eastmoney_article_url(row)
+        source_id = (
+            f"eastmoney_global_news:{item_id}"
+            if item_id
+            else _fallback_source_id("eastmoney_global_news", story_url, title, published_at)
+        )
         normalized.append({
             "source": "eastmoney_global_news",
-            "source_id": f"eastmoney_global_news:{item_id}",
+            "source_id": source_id,
             "author": "",
             "title": title,
             "content": str(row.get("summary") or title).strip()[:4000],
-            "url": _eastmoney_article_url(row),
+            "url": story_url,
             "tags": ["cn-market-news"],
             "tickers": tickers,
             "score": 0,
             "published_at": published_at,
             "collection_lane": "realtime",
-            "_provider_cursor": str(row.get("realSort") or item_id),
+            "_timestamp_status": timestamp_status,
+            "_provider_cursor": str(row.get("realSort") or item_id) or None,
         })
     return normalized
 
@@ -232,6 +272,7 @@ class CLSRealtimeCollector(BaseCollector):
     source = "cls_telegraph"
 
     def collect(self) -> list[dict[str, Any]]:
+        """Fetch one normalized CLS realtime batch for the manual CLI."""
         return fetch_cls_telegraph()
 
 
@@ -240,4 +281,5 @@ class EastmoneyRealtimeCollector(BaseCollector):
     source = "eastmoney_global_news"
 
     def collect(self) -> list[dict[str, Any]]:
+        """Fetch one normalized Eastmoney realtime batch for the manual CLI."""
         return fetch_eastmoney_global_news()
