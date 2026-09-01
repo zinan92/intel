@@ -182,6 +182,14 @@ def _adapt_github_trending(record: dict[str, Any]) -> list[dict[str, Any]]:
     return collector.collect()
 
 
+def _adapt_cls_telegraph(record: dict[str, Any]) -> list[dict[str, Any]]:
+    """Collect CLS rolling market news for the realtime lane."""
+    from collectors.realtime_news import fetch_cls_telegraph
+
+    cfg = _parse_config(record)
+    return fetch_cls_telegraph(page_size=int(cfg.get("page_size", 50)))
+
+
 # --- Adapter registry ---
 
 _ADAPTERS: dict[str, AdapterFn] = {
@@ -195,6 +203,7 @@ _ADAPTERS: dict[str, AdapterFn] = {
     "yahoo_finance": _adapt_yahoo_finance,
     "google_news": _adapt_google_news,
     "github_trending": _adapt_github_trending,
+    "cls_telegraph": _adapt_cls_telegraph,
 }
 
 

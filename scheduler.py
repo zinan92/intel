@@ -380,14 +380,23 @@ class CollectorScheduler:
         finally:
             session.close()
 
-        # Group by source_type, take the minimum schedule_hours per type
+        # Keep realtime sources out of the legacy hourly grouping. During the
+        # migration both lanes write to the same Article table, but only the
+        # realtime jobs use second-level cadence.
         type_intervals: dict[str, int] = {}
+        realtime_intervals: dict[str, int] = {}
         for src in active:
-            hours = src.schedule_hours
-            if hours is None:
+            lane = getattr(src, "lane", "hourly")
+            if lane == "realtime":
+                seconds = getattr(src, "schedule_seconds", None)
+                if seconds is not None and seconds > 0:
+                    if src.source_type not in realtime_intervals or seconds < realtime_intervals[src.source_type]:
+                        realtime_intervals[src.source_type] = seconds
                 continue
-            if src.source_type not in type_intervals or hours < type_intervals[src.source_type]:
-                type_intervals[src.source_type] = hours
+            hours = getattr(src, "schedule_hours", None)
+            if hours is not None and hours > 0:
+                if src.source_type not in type_intervals or hours < type_intervals[src.source_type]:
+                    type_intervals[src.source_type] = hours
 
         jobs: list[tuple[str, int]] = []
         for source_type, hours in sorted(type_intervals.items()):
@@ -408,8 +417,26 @@ class CollectorScheduler:
             logger.info("Registered collector job: %s (every %dh, first run at +%ds)",
                          source_type, hours, 30 * idx)
 
+        realtime_start = base_time + timedelta(seconds=30 * len(jobs))
+        for idx, (source_type, seconds) in enumerate(sorted(realtime_intervals.items())):
+            staggered_start = realtime_start + timedelta(seconds=30 * idx)
+            self._scheduler.add_job(
+                _run_source_type,
+                args=[source_type],
+                trigger=IntervalTrigger(seconds=seconds),
+                id=f"realtime-{source_type}",
+                replace_existing=True,
+                next_run_time=staggered_start,
+            )
+            logger.info(
+                "Registered realtime collector job: %s (every %ds, first run at +%ds)",
+                source_type,
+                seconds,
+                30 * len(jobs) + 30 * idx,
+            )
+
         # LLM tagger
-        tagger_start = base_time + timedelta(seconds=30 * len(jobs))
+        tagger_start = base_time + timedelta(seconds=30 * (len(jobs) + len(realtime_intervals)))
         self._scheduler.add_job(
             _run_llm_tagger,
             trigger=IntervalTrigger(hours=self._config.llm_tagger_interval_hours),
@@ -420,7 +447,9 @@ class CollectorScheduler:
         logger.info("Registered LLM tagger job (every %dh)", self._config.llm_tagger_interval_hours)
 
         # Event aggregation (every 1 hour)
-        aggregation_start = base_time + timedelta(seconds=30 * (len(jobs) + 1))
+        aggregation_start = base_time + timedelta(
+            seconds=30 * (len(jobs) + len(realtime_intervals) + 1)
+        )
         self._scheduler.add_job(
             _run_event_aggregation,
             trigger=IntervalTrigger(hours=1),

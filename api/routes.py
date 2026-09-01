@@ -417,6 +417,7 @@ def _serialize(article: Article) -> dict[str, Any]:
         "score": article.score,
         "relevance_score": article.relevance_score,
         "narrative_tags": narrative_tags,
+        "collection_lane": article.collection_lane,
         "published_at": article.published_at.isoformat() if article.published_at else None,
         "collected_at": article.collected_at.isoformat() if article.collected_at else None,
     }

@@ -26,6 +26,8 @@ class SourceRegistry(Base):
     is_active: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     retired_at: Mapped[datetime | None] = mapped_column(DateTime)
     schedule_hours: Mapped[int | None] = mapped_column(Integer)
+    lane: Mapped[str] = mapped_column(String, nullable=False, default="hourly")
+    schedule_seconds: Mapped[int | None] = mapped_column(Integer)
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
     expected_freshness_hours: Mapped[float | None] = mapped_column(Float)
 
@@ -57,6 +59,7 @@ class Article(Base):
     tickers: Mapped[str | None] = mapped_column(String, nullable=True)  # JSON array
     published_at: Mapped[datetime | None] = mapped_column(DateTime)
     collected_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    collection_lane: Mapped[str] = mapped_column(String, nullable=False, default="hourly")
 
     __table_args__ = (
         Index("idx_source", "source"),

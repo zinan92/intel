@@ -161,6 +161,10 @@ def _seed_single_instance(
     category: str | None,
     schedule_hours: int | None,
     instance_config: dict[str, Any],
+    *,
+    lane: str = "hourly",
+    schedule_seconds: int | None = None,
+    expected_freshness_hours: float | None = None,
 ) -> bool:
     """Seed a single-instance source (hackernews, xueqiu, etc.).
 
@@ -174,6 +178,9 @@ def _seed_single_instance(
         "category": category,
         "config": instance_config,
         "schedule_hours": schedule_hours,
+        "lane": lane,
+        "schedule_seconds": schedule_seconds,
+        "expected_freshness_hours": expected_freshness_hours,
     })
 
 
@@ -220,6 +227,22 @@ def seed_source_registry(session: Session) -> int:
             category=cat,
             schedule_hours=_interval_for_type(src_type),
             instance_config=cfg_data,
+        ):
+            inserted += 1
+
+    # Realtime migration lane. These rows deliberately use seconds rather
+    # than schedule_hours so the legacy hourly grouping cannot pick them up.
+    for entry in cfg.REALTIME_SOURCE_BOOTSTRAP:
+        if _seed_single_instance(
+            session,
+            entry["source"],
+            entry.get("display_name", entry["source"]),
+            category=entry.get("category"),
+            schedule_hours=None,
+            instance_config=entry.get("config", {}),
+            lane="realtime",
+            schedule_seconds=entry["interval_seconds"],
+            expected_freshness_hours=entry.get("expected_freshness_hours"),
         ):
             inserted += 1
 
