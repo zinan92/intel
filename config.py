@@ -21,7 +21,13 @@ CORS_ORIGINS: list[str] = [
     o.strip()
     for o in os.getenv(
         "CORS_ORIGINS",
-        "http://localhost:5174,http://localhost:8001,http://127.0.0.1:8001",
+        ",".join([
+            "http://localhost:5174",
+            "http://localhost:8001",
+            "http://127.0.0.1:8001",
+            "http://localhost:8777",
+            "http://127.0.0.1:8777",
+        ]),
     ).split(",")
     if o.strip()
 ]

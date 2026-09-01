@@ -45,6 +45,10 @@ tagger, event aggregation, and trading-signal inputs until convergence.
 On an existing database, activate the seeded rows as a separate explicit step:
 `REALTIME_LANE_ENABLED=1 python scripts/activate_realtime_lane.py`.
 
+The realtime UI read model is available at `GET /api/ui/realtime`. It returns
+rolling News Items, persisted AI triage (`high_impact`, `watch`, `noise`, or
+`unknown`), affected assets, conditional scenarios, and source health.
+
 **Run as background service (macOS):**
 
 ```bash
@@ -179,6 +183,7 @@ Logs go to the `logs/` directory with automatic rotation.
 | Endpoint | Description |
 |----------|-------------|
 | `GET /api/ui/feed` | Priority-scored feed `?user=myname&window=24h` |
+| `GET /api/ui/realtime` | Realtime rolling feed with AI triage buckets |
 | `GET /api/ui/items/{id}` | Article detail with related items |
 | `GET /api/ui/topics` | Topic list |
 | `GET /api/ui/sources` | Active source list |

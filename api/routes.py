@@ -29,6 +29,16 @@ def _parse_tags(raw: str | None) -> list[str]:
     return []
 
 
+def _parse_json_list(raw: str | None) -> list[Any]:
+    if not raw:
+        return []
+    try:
+        value = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return []
+    return value if isinstance(value, list) else []
+
+
 @router.get("/health")
 def health() -> dict[str, Any]:
     """Healthcheck endpoint for active sources (driven by source registry)."""
@@ -432,6 +442,19 @@ def _serialize(article: Article) -> dict[str, Any]:
         "relevance_score": article.relevance_score,
         "narrative_tags": narrative_tags,
         "collection_lane": article.collection_lane,
+        "triage": {
+            "status": article.triage_status,
+            "bucket": article.triage_bucket,
+            "direction": article.triage_direction,
+            "rationale": article.triage_rationale,
+            "affected_assets": _parse_json_list(article.triage_assets),
+            "watch_for": _parse_json_list(article.triage_watch_for),
+            "scenario_bull": article.triage_scenario_bull,
+            "scenario_bear": article.triage_scenario_bear,
+            "model": article.triage_model,
+            "error": article.triage_error,
+            "triaged_at": article.triaged_at.isoformat() if article.triaged_at else None,
+        },
         "published_at": article.published_at.isoformat() if article.published_at else None,
         "collected_at": article.collected_at.isoformat() if article.collected_at else None,
     }

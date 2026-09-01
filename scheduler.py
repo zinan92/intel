@@ -436,6 +436,91 @@ def _run_llm_tagger() -> None:
         logger.exception("LLM tagger failed: %s", e)
 
 
+def _run_realtime_triage() -> None:
+    """Classify pending realtime items without entering hourly consumers."""
+    if not _realtime_lane_enabled():
+        return
+
+    import json
+    from db.database import get_session
+    from db.models import Article
+    from triage.realtime import RealtimeTriage
+    from sqlalchemy import or_
+
+    session = get_session()
+    try:
+        candidates = (
+            session.query(Article)
+            .filter(
+                Article.collection_lane == "realtime",
+                or_(
+                    Article.triage_status.is_(None),
+                    Article.triage_status.in_(["failed", "processing"]),
+                ),
+                Article.triage_attempts < 3,
+            )
+            .order_by(Article.collected_at.asc())
+            .limit(10)
+            .all()
+        )
+        if not candidates:
+            return
+
+        for article in candidates:
+            article.triage_status = "processing"
+            article.triage_attempts = (article.triage_attempts or 0) + 1
+        session.commit()
+
+        triage = RealtimeTriage(batch_size=len(candidates))
+        results = triage.triage_batch([
+            {
+                "id": article.id,
+                "source": article.source,
+                "title": article.title,
+                "content": article.content,
+            }
+            for article in candidates
+        ])
+        by_id = {result["id"]: result for result in results}
+        if len(by_id) != len(candidates):
+            raise ValueError("triage result count does not match candidate count")
+
+        now = datetime.utcnow()
+        for article in candidates:
+            result = by_id[article.id]
+            article.triage_bucket = result["bucket"]
+            article.triage_status = "complete"
+            article.triage_direction = result["direction"]
+            article.triage_rationale = result["rationale"]
+            article.triage_assets = json.dumps(result["affected_assets"], ensure_ascii=False)
+            article.triage_watch_for = json.dumps(result["watch_for"], ensure_ascii=False)
+            article.triage_scenario_bull = result["scenario_bull"]
+            article.triage_scenario_bear = result["scenario_bear"]
+            article.triage_model = triage.model_name
+            article.triage_error = None
+            article.triaged_at = now
+        session.commit()
+        logger.info(
+            "[realtime-triage] completed=%d model=%s",
+            len(candidates),
+            triage.model_name,
+        )
+    except Exception as exc:
+        session.rollback()
+        now = datetime.utcnow()
+        for article in candidates if "candidates" in locals() else []:
+            article.triage_bucket = "unknown"
+            article.triage_status = "failed"
+            article.triage_direction = "unclear"
+            article.triage_error = type(exc).__name__
+            article.triaged_at = now
+        if "candidates" in locals() and candidates:
+            session.commit()
+        logger.warning("[realtime-triage] failed (%s)", type(exc).__name__)
+    finally:
+        session.close()
+
+
 def _run_event_aggregation() -> None:
     """Run event aggregation on recent articles."""
     from db.database import get_session
@@ -614,6 +699,19 @@ class CollectorScheduler:
                 seconds,
                 30 * len(jobs) + 30 * idx,
             )
+
+        if realtime_intervals:
+            self._scheduler.add_job(
+                _run_realtime_triage,
+                trigger=IntervalTrigger(seconds=30),
+                id="realtime-triage",
+                replace_existing=True,
+                coalesce=True,
+                max_instances=1,
+                misfire_grace_time=30,
+                next_run_time=base_time + timedelta(seconds=15),
+            )
+            logger.info("Registered realtime triage job (every 30s)")
 
         # LLM tagger
         tagger_start = base_time + timedelta(seconds=30 * (len(jobs) + len(realtime_intervals)))
