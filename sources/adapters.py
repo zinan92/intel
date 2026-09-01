@@ -194,24 +194,34 @@ def _adapt_github_trending(record: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _adapt_cls_telegraph(record: dict[str, Any]) -> list[dict[str, Any]]:
-    """Collect CLS rolling market news for the realtime lane."""
+    """Collect the latest CLS rolling-news window for the realtime lane.
+
+    The provider's ``last_time`` parameter pages backwards from a timestamp;
+    carrying it between realtime polls would therefore hide newer stories.
+    Local Article persistence already deduplicates the latest window safely.
+    """
     from collectors.realtime_news import fetch_cls_telegraph
 
     cfg = _parse_config(record)
     return fetch_cls_telegraph(
         page_size=int(cfg.get("page_size", 50)),
-        last_time=str(cfg.get("last_time", "")),
+        last_time="",
     )
 
 
 def _adapt_eastmoney_global_news(record: dict[str, Any]) -> list[dict[str, Any]]:
-    """Collect Eastmoney 7x24 fast news for the realtime lane."""
+    """Collect the latest Eastmoney 7x24 window for the realtime lane.
+
+    ``sortEnd`` is a backwards-pagination cursor, not a watermark for
+    forward polling. Read the latest window each time and rely on local
+    source-id deduplication to avoid duplicate rows.
+    """
     from collectors.realtime_news import fetch_eastmoney_global_news
 
     cfg = _parse_config(record)
     return fetch_eastmoney_global_news(
         page_size=int(cfg.get("page_size", 50)),
-        sort_end=str(cfg.get("sort_end", "")),
+        sort_end="",
     )
 
 

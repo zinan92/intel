@@ -161,56 +161,6 @@ def reset_realtime_block(source_type: str | None = None) -> None:
         _realtime_blocked_until.pop(source_type, None)
 
 
-def _persist_realtime_cursor(
-    source_key: str,
-    source_type: str,
-    articles: list[dict[str, Any]],
-) -> None:
-    """Persist the newest provider cursor only after a clean save attempt."""
-    from config import REALTIME_SOURCE_TYPES
-
-    if source_type not in REALTIME_SOURCE_TYPES:
-        return
-    values = [
-        str(article.get("_provider_cursor"))
-        for article in articles
-        if article.get("_provider_cursor")
-    ]
-    if not values:
-        return
-
-    cursor_key = "last_time" if source_type == "cls_telegraph" else "sort_end"
-    try:
-        from db.database import get_session
-        from sources.registry import get_source_by_key
-
-        session = get_session()
-        try:
-            source = get_source_by_key(session, source_key)
-            if source is None:
-                return
-            config = json.loads(source.config_json or "{}")
-            current = str(config.get(cursor_key) or "")
-            def _cursor_order(value: str) -> tuple[int, int | float | str]:
-                if value.isdigit():
-                    return (0, int(value))
-                try:
-                    return (1, float(value))
-                except ValueError:
-                    return (2, value)
-
-            newest = max(values, key=_cursor_order)
-            if current and _cursor_order(newest) <= _cursor_order(current):
-                return
-            config[cursor_key] = newest
-            source.config_json = json.dumps(config, ensure_ascii=False)
-            session.commit()
-        finally:
-            session.close()
-    except Exception:
-        logger.exception("Failed to persist %s cursor for %s", cursor_key, source_key)
-
-
 def _cleanup_old_runs() -> None:
     """Delete collector_runs older than 30 days (D-14)."""
     from db.database import get_session
@@ -322,8 +272,6 @@ def _run_source_type(source_type: str) -> None:
                     "missing_timestamps": 0,
                     "invalid_timestamps": 0,
                 }
-            if save_stats["errors"] == 0:
-                _persist_realtime_cursor(instance.source_key, source_type, articles)
             if adapter_result.status != "ok":
                 errors.append(
                     f"{instance.source_key}: "

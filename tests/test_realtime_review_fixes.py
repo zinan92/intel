@@ -281,33 +281,26 @@ def test_cls_and_eastmoney_receive_persisted_cursors():
     assert get.call_args_list[1].kwargs["params"]["sortEnd"] == "1788252000000000"
 
 
-def test_scheduler_persists_only_newer_realtime_cursor():
-    from scheduler import _persist_realtime_cursor
+def test_realtime_adapters_always_read_latest_provider_window():
+    """A stale pagination cursor must not hide newer realtime stories."""
+    from sources.adapters import _adapt_cls_telegraph, _adapt_eastmoney_global_news
 
-    engine = create_engine("sqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    session = Session(engine)
-    session.add(SourceRegistry(
-        source_key="cls_telegraph:main",
-        source_type="cls_telegraph",
-        display_name="CLS",
-        config_json=json.dumps({"last_time": "10"}),
-        lane="realtime",
-        is_active=1,
-    ))
-    session.commit()
+    with patch(
+        "collectors.realtime_news.fetch_cls_telegraph",
+        return_value=[],
+    ) as fetch_cls, patch(
+        "collectors.realtime_news.fetch_eastmoney_global_news",
+        return_value=[],
+    ) as fetch_eastmoney:
+        _adapt_cls_telegraph({
+            "config_json": json.dumps({"page_size": 50, "last_time": "stale"}),
+        })
+        _adapt_eastmoney_global_news({
+            "config_json": json.dumps({"page_size": 50, "sort_end": "stale"}),
+        })
 
-    with patch("db.database.get_session", return_value=session):
-        _persist_realtime_cursor(
-            "cls_telegraph:main",
-            "cls_telegraph",
-            [{"_provider_cursor": "9"}, {"_provider_cursor": "11"}],
-        )
-
-    session.expire_all()
-    source = session.query(SourceRegistry).filter_by(source_key="cls_telegraph:main").one()
-    assert json.loads(source.config_json)["last_time"] == "11"
-    session.close()
+    fetch_cls.assert_called_once_with(page_size=50, last_time="")
+    fetch_eastmoney.assert_called_once_with(page_size=50, sort_end="")
 
 
 def test_legacy_database_migration_keeps_lane_columns_non_null():
