@@ -25,6 +25,10 @@ class ErrorCategory(str, Enum):
     CONFIG = "config"
 
 
+class SourceBlockedError(RuntimeError):
+    """A provider explicitly rejected automated polling and should not retry."""
+
+
 _TRANSIENT_HTTP_CODES = frozenset({429, 500, 502, 503})
 _AUTH_HTTP_CODES = frozenset({400, 401, 403})
 
@@ -41,6 +45,12 @@ def categorize_error(exc: Exception) -> ErrorCategory:
     - ImportError, FileNotFoundError -> CONFIG
     - Unknown exceptions -> TRANSIENT (fail-open for retry)
     """
+    # A provider block is an operator-visible failure, not a retryable
+    # transient error. This prevents a 403/429/451 from becoming a tight
+    # unattended retry loop.
+    if isinstance(exc, SourceBlockedError):
+        return ErrorCategory.AUTH
+
     # Network-level errors: always transient
     if isinstance(exc, (requests.ConnectionError, requests.Timeout)):
         return ErrorCategory.TRANSIENT

@@ -15,7 +15,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 import config as cfg
-from sources.registry import get_source_by_key, upsert_source
+from sources.registry import get_source_by_key, list_all_sources, upsert_source
 
 logger = logging.getLogger(__name__)
 
@@ -165,6 +165,7 @@ def _seed_single_instance(
     lane: str = "hourly",
     schedule_seconds: int | None = None,
     expected_freshness_hours: float | None = None,
+    is_active: int = 1,
 ) -> bool:
     """Seed a single-instance source (hackernews, xueqiu, etc.).
 
@@ -181,6 +182,7 @@ def _seed_single_instance(
         "lane": lane,
         "schedule_seconds": schedule_seconds,
         "expected_freshness_hours": expected_freshness_hours,
+        "is_active": is_active,
     })
 
 
@@ -243,8 +245,25 @@ def seed_source_registry(session: Session) -> int:
             lane="realtime",
             schedule_seconds=entry["interval_seconds"],
             expected_freshness_hours=entry.get("expected_freshness_hours"),
+            # The realtime trial is explicit opt-in. Existing DB-side
+            # activation is preserved by the insert-only contract, while the
+            # scheduler also checks this flag as a runtime kill switch.
+            is_active=1 if cfg.realtime_lane_enabled() else 0,
         ):
             inserted += 1
+
+    # An explicit environment opt-in is also the activation action for rows
+    # created while the flag was off. Preserve a manually retired source.
+    if cfg.realtime_lane_enabled():
+        realtime_types = {entry["source"] for entry in cfg.REALTIME_SOURCE_BOOTSTRAP}
+        for source in list_all_sources(session):
+            if (
+                source.source_type in realtime_types
+                and source.is_active == 0
+                and source.retired_at is None
+            ):
+                source.is_active = 1
+                session.commit()
 
     if inserted > 0:
         logger.info("Source registry: inserted %d new instances", inserted)

@@ -166,6 +166,7 @@ def _build_source_details(session) -> list[dict[str, Any]]:
     """
     from sqlalchemy import Date, case, cast, distinct, func
 
+    from config import realtime_lane_enabled
     from db.models import CollectorRun, SourceRegistry
 
     now = datetime.now(timezone.utc)
@@ -232,6 +233,9 @@ def _build_source_details(session) -> list[dict[str, Any]]:
 
         # Disabled check
         disabled_reason = _check_source_disabled(st)
+        lane = getattr(src, "lane", "hourly")
+        if lane == "realtime" and not realtime_lane_enabled():
+            disabled_reason = "Realtime lane is opt-in; set REALTIME_LANE_ENABLED=1 after operator review."
 
         # Latest run info
         latest = latest_runs.get(st)
@@ -254,10 +258,16 @@ def _build_source_details(session) -> list[dict[str, Any]]:
                 age_td = now - completed
                 freshness_age_hours = round(age_td.total_seconds() / 3600, 2)
 
+            # A realtime HTTP 200 with zero normalized rows is an empty
+            # observation, not fresh data. Keep it visible as no_data/stale
+            # instead of using the attempt timestamp as freshness evidence.
+            if lane == "realtime" and latest.status == "ok" and not latest.articles_fetched:
+                freshness_age_hours = None
+
         # Determine status
         if disabled_reason is not None:
             status = "disabled"
-        elif not src.is_active:
+        elif not src.is_active or disabled_reason is not None:
             status = "disabled"
         else:
             status = compute_status(
@@ -283,7 +293,7 @@ def _build_source_details(session) -> list[dict[str, Any]]:
             "is_active": bool(src.is_active),
             "freshness_age_hours": freshness_age_hours,
             "expected_freshness_hours": src.expected_freshness_hours,
-            "lane": getattr(src, "lane", "hourly"),
+            "lane": lane,
             "schedule_hours": getattr(src, "schedule_hours", None),
             "schedule_seconds": getattr(src, "schedule_seconds", None),
             "articles_24h": count_24h,

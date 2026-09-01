@@ -109,8 +109,7 @@ def test_sources_contains_only_active_registry_types(client):
     """Every source returned must be an active source type in the registry."""
     # V2 source types from the registry
     expected_v2_types = {"rss", "reddit", "github_release", "website_monitor", "social_kol",
-                         "hackernews", "xueqiu", "yahoo_finance", "google_news", "github_trending",
-                         "cls_telegraph", "eastmoney_global_news"}
+                         "hackernews", "xueqiu", "yahoo_finance", "google_news", "github_trending"}
     resp = client.get("/api/ui/sources")
     names = {s["name"] for s in resp.json()}
     assert names.issubset(expected_v2_types), f"Unexpected sources: {names - expected_v2_types}"
@@ -119,8 +118,7 @@ def test_sources_contains_only_active_registry_types(client):
 def test_sources_includes_all_active_registry_types(client):
     """All active registry source types are present even with zero DB rows."""
     expected_v2_types = {"rss", "reddit", "github_release", "website_monitor", "social_kol",
-                         "hackernews", "xueqiu", "yahoo_finance", "google_news", "github_trending",
-                         "cls_telegraph", "eastmoney_global_news"}
+                         "hackernews", "xueqiu", "yahoo_finance", "google_news", "github_trending"}
     resp = client.get("/api/ui/sources")
     names = {s["name"] for s in resp.json()}
     assert expected_v2_types == names
@@ -133,8 +131,7 @@ def test_sources_includes_all_active_registry_types(client):
 def test_feed_context_source_health_covers_active_registry_types(client):
     """source_health must list all active registry source types."""
     expected_v2_types = {"rss", "reddit", "github_release", "website_monitor", "social_kol",
-                         "hackernews", "xueqiu", "yahoo_finance", "google_news", "github_trending",
-                         "cls_telegraph", "eastmoney_global_news"}
+                         "hackernews", "xueqiu", "yahoo_finance", "google_news", "github_trending"}
     resp = client.get("/api/ui/feed")
     health = resp.json()["context"]["source_health"]
     health_names = {h["source"] for h in health}

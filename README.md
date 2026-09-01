@@ -15,7 +15,7 @@
 
 ## What It Does
 
-park-intel is a self-hosted market intelligence pipeline. It collects articles from 10+ source types (RSS, Hacker News, Reddit, GitHub, and more), enriches them with keyword tagging and optional LLM-based relevance scoring, clusters related articles into narrative events, publishes a daily finance newsletter, and serves everything through a REST API with a feed-first frontend.
+park-intel is a self-hosted market intelligence pipeline. It collects articles from hourly and opt-in realtime source lanes (RSS, Hacker News, Reddit, GitHub, CLS, Eastmoney, and more), enriches them with keyword tagging and optional LLM-based relevance scoring, clusters related hourly articles into narrative events, publishes a daily finance newsletter, and serves everything through a REST API with a feed-first frontend.
 
 Core sources work out of the box with zero API keys. Optional sources (Xueqiu, LLM tagging) activate when you add their credentials.
 
@@ -37,6 +37,11 @@ python main.py                # open http://localhost:8001
 ```
 
 The built-in scheduler starts collecting automatically. Visit `http://localhost:8001/health` to see source status.
+
+The realtime News Lane is an explicit trial. Keep it disabled while reviewing
+source terms and enable it only with `REALTIME_LANE_ENABLED=1`; its News Items
+remain readable in the feed but are excluded from the existing digest, LLM
+tagger, event aggregation, and trading-signal inputs until convergence.
 
 **Run as background service (macOS):**
 
@@ -97,6 +102,8 @@ PYTHONPATH=. python scripts/publish_finance_daily_newsletter.py
 | Xueqiu (Chinese market) | Yes | `XUEQIU_COOKIE` | Chinese market KOL commentary |
 | Social KOL | Optional | -- | Requires `clawfeed` CLI installed |
 | LLM Tagging | Optional | `ANTHROPIC_API_KEY` | AI relevance scoring + narrative tags |
+| CLS Telegraph | Explicit opt-in | `REALTIME_LANE_ENABLED=1` | Public rolling market-news endpoint; trial only |
+| Eastmoney 7x24 | Explicit opt-in | `REALTIME_LANE_ENABLED=1` | Public fast-news endpoint; trial only |
 
 Without `ANTHROPIC_API_KEY`, articles still collect and get keyword tags -- they just won't have LLM-based relevance scores or narrative tags.
 

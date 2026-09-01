@@ -19,6 +19,7 @@ from collectors.rss import RSSCollector
 from collectors.webpage_monitor import WebpageMonitorCollector
 from collectors.xueqiu import XueqiuCollector
 from collectors.yahoo_finance import YahooFinanceCollector
+from collectors.realtime_news import CLSRealtimeCollector, EastmoneyRealtimeCollector
 
 COLLECTORS: dict[str, type] = {
     "hackernews": HackerNewsCollector,
@@ -31,6 +32,8 @@ COLLECTORS: dict[str, type] = {
     "reddit": RedditCollector,
     "github_release": GitHubReleaseCollector,
     "website_monitor": WebpageMonitorCollector,
+    "cls_telegraph": CLSRealtimeCollector,
+    "eastmoney_global_news": EastmoneyRealtimeCollector,
 }
 
 

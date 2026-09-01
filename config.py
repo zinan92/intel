@@ -106,6 +106,13 @@ SOURCE_BOOTSTRAP: list[dict] = [
 
 # Realtime sources are intentionally separate from SOURCE_BOOTSTRAP. The
 # hourly lane remains unchanged while the migration lane is validated.
+def realtime_lane_enabled() -> bool:
+    """Return whether the explicitly opt-in realtime migration lane may poll."""
+    return os.getenv("REALTIME_LANE_ENABLED", "0").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+
 REALTIME_SOURCE_BOOTSTRAP: list[dict] = [
     {
         "source": "cls_telegraph",

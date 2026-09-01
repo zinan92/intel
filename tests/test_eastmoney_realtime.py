@@ -45,7 +45,7 @@ def test_eastmoney_payload_becomes_realtime_news_item():
     assert row["content"] == "公司控股子公司 SYS6010 被纳入突破性治疗品种名单。"
     assert row["tickers"] == ["300765.SZ", "600000.SH"]
     assert row["published_at"] == datetime(2026, 9, 1, 8, 41, 36)
-    assert row["url"] == "https://kuaixun.eastmoney.com/"
+    assert row["url"] is None
     request.assert_called_once()
     assert request.call_args.kwargs["params"]["fastColumn"] == 102
 

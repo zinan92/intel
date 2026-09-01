@@ -62,6 +62,8 @@ _SOURCE_WEIGHT: dict[str, float] = {
     "website_monitor": 0.1,
     "yahoo_finance": 0.2,
     "google_news": 0.2,
+    "cls_telegraph": 0.3,
+    "eastmoney_global_news": 0.3,
 }
 
 _KIND_WEIGHT: dict[str, float] = {

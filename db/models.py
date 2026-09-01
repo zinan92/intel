@@ -82,6 +82,8 @@ class CollectorRun(Base):
     status: Mapped[str] = mapped_column(String, nullable=False)  # "ok" or "error"
     articles_fetched: Mapped[int] = mapped_column(Integer, default=0)
     articles_saved: Mapped[int] = mapped_column(Integer, default=0)
+    articles_duplicate: Mapped[int] = mapped_column(Integer, default=0)
+    articles_failed: Mapped[int] = mapped_column(Integer, default=0)
     duration_ms: Mapped[int] = mapped_column(Integer, default=0)
     error_message: Mapped[str | None] = mapped_column(Text)
     error_category: Mapped[str | None] = mapped_column(String)  # transient/auth/parse/config

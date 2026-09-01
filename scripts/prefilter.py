@@ -106,6 +106,7 @@ def run_prefilter(hours: int = 12, dry_run: bool = False):
         FROM articles a
         LEFT JOIN prefiltered_articles p ON a.id = p.article_id
         WHERE a.collected_at >= datetime('now', :hours_ago)
+          AND COALESCE(a.collection_lane, 'hourly') = 'hourly'
           AND p.id IS NULL
         ORDER BY a.collected_at DESC
     """), {"hours_ago": f"-{hours} hours"}).fetchall()

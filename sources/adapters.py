@@ -13,7 +13,7 @@ import logging
 import time
 from typing import Any, Callable
 
-from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential_jitter
+from tenacity import Retrying, retry_if_exception, stop_after_attempt, wait_exponential_jitter
 
 from sources.errors import CollectorResult, ErrorCategory, categorize_error, is_retryable
 
@@ -187,7 +187,10 @@ def _adapt_cls_telegraph(record: dict[str, Any]) -> list[dict[str, Any]]:
     from collectors.realtime_news import fetch_cls_telegraph
 
     cfg = _parse_config(record)
-    return fetch_cls_telegraph(page_size=int(cfg.get("page_size", 50)))
+    return fetch_cls_telegraph(
+        page_size=int(cfg.get("page_size", 50)),
+        last_time=str(cfg.get("last_time", "")),
+    )
 
 
 def _adapt_eastmoney_global_news(record: dict[str, Any]) -> list[dict[str, Any]]:
@@ -195,7 +198,10 @@ def _adapt_eastmoney_global_news(record: dict[str, Any]) -> list[dict[str, Any]]
     from collectors.realtime_news import fetch_eastmoney_global_news
 
     cfg = _parse_config(record)
-    return fetch_eastmoney_global_news(page_size=int(cfg.get("page_size", 50)))
+    return fetch_eastmoney_global_news(
+        page_size=int(cfg.get("page_size", 50)),
+        sort_end=str(cfg.get("sort_end", "")),
+    )
 
 
 # --- Adapter registry ---
@@ -221,15 +227,24 @@ def get_adapter(source_type: str) -> AdapterFn | None:
     return _ADAPTERS.get(source_type)
 
 
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential_jitter(initial=2, max=30, jitter=2),
-    retry=retry_if_exception(is_retryable),
-    reraise=True,
-)
-def _call_adapter_with_retry(adapter_fn: AdapterFn, record: dict[str, Any]) -> list[dict[str, Any]]:
+def _call_adapter_with_retry(
+    adapter_fn: AdapterFn,
+    record: dict[str, Any],
+    attempt_counter: list[int] | None = None,
+) -> list[dict[str, Any]]:
     """Call adapter with automatic retry for transient errors."""
-    return adapter_fn(record)
+    def _before(retry_state) -> None:
+        if attempt_counter is not None:
+            attempt_counter[0] += 1
+
+    retrying = Retrying(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential_jitter(initial=2, max=30, jitter=2),
+        retry=retry_if_exception(is_retryable),
+        reraise=True,
+        before=_before,
+    )
+    return retrying(adapter_fn, record)
 
 
 def collect_from_source(record: dict[str, Any]) -> tuple[list[dict[str, Any]], CollectorResult]:
@@ -264,8 +279,9 @@ def collect_from_source(record: dict[str, Any]) -> tuple[list[dict[str, Any]], C
         return ([], result)
 
     try:
-        articles = _call_adapter_with_retry(adapter, record)
-        retry_count = _call_adapter_with_retry.statistics.get("attempt_number", 1) - 1
+        attempts = [0]
+        articles = _call_adapter_with_retry(adapter, record, attempts)
+        retry_count = max(attempts[0] - 1, 0)
         duration_ms = int((time.monotonic() - t0) * 1000)
         result = CollectorResult(
             source_type=source_type,
@@ -280,7 +296,7 @@ def collect_from_source(record: dict[str, Any]) -> tuple[list[dict[str, Any]], C
         )
         return (articles, result)
     except Exception as exc:
-        retry_count = _call_adapter_with_retry.statistics.get("attempt_number", 1) - 1
+        retry_count = max(attempts[0] - 1, 0)
         duration_ms = int((time.monotonic() - t0) * 1000)
         category = categorize_error(exc)
         logger.exception("Adapter failed for %s (type=%s)", source_key, source_type)

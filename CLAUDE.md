@@ -43,8 +43,12 @@ Source Registry (DB) → Adapters → Collectors (fetch) → BaseCollector.save 
 - `bridge/quant.py` — Async price snapshot from quant-data-pipeline (port 8000)
 - Event detail includes price_impacts when tickers available
 
-### Source Types (10)
-`rss`, `reddit`, `hackernews`, `github_release`, `github_trending`, `website_monitor`, `social_kol`, `xueqiu`, `yahoo_finance`, `google_news`
+### Source Types (12)
+`rss`, `reddit`, `hackernews`, `github_release`, `github_trending`, `website_monitor`, `social_kol`, `xueqiu`, `yahoo_finance`, `google_news`, `cls_telegraph`, `eastmoney_global_news`
+
+CLS Telegraph and Eastmoney 7x24 are opt-in realtime migration sources. They
+share the Article table and feed boundary, but remain outside the hourly digest
+and event/signal consumers until an explicit convergence decision.
 
 ## Key Files
 - `main.py` — FastAPI app entry (port 8001)

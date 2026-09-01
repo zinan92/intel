@@ -47,6 +47,12 @@ class SchedulerConfig:
 # Module-level storage for last run results (read by health endpoint)
 _last_results: dict[str, CollectorResult] = {}
 
+# Provider blocks are intentionally process-local and short-lived. The
+# realtime lane is opt-in, and an explicit 403/429/451 pauses only that source
+# type instead of retrying unattended on every minute tick.
+_realtime_blocked_until: dict[str, datetime] = {}
+_REALTIME_BLOCK_COOLDOWN_SECONDS = 15 * 60
+
 # Heartbeat: updated every 5 minutes, checked by health endpoints
 _heartbeat_ts: datetime | None = None
 
@@ -80,7 +86,13 @@ def get_last_results() -> dict[str, CollectorResult]:
     return dict(_last_results)
 
 
-def _record_collector_run(result, *, saved_count: int) -> None:
+def _record_collector_run(
+    result,
+    *,
+    saved_count: int,
+    duplicate_count: int = 0,
+    failed_count: int = 0,
+) -> None:
     """Write a CollectorRun row to the database (RELY-07)."""
     from db.database import get_session
     from db.models import CollectorRun
@@ -93,6 +105,8 @@ def _record_collector_run(result, *, saved_count: int) -> None:
             status=result.status,
             articles_fetched=result.articles_fetched,
             articles_saved=saved_count,
+            articles_duplicate=duplicate_count,
+            articles_failed=failed_count,
             duration_ms=result.duration_ms,
             error_message=result.error_message,
             error_category=result.error_category,
@@ -106,6 +120,79 @@ def _record_collector_run(result, *, saved_count: int) -> None:
         logger.exception("Failed to record CollectorRun for %s", result.source_key)
     finally:
         session.close()
+
+
+def _realtime_lane_enabled() -> bool:
+    from config import realtime_lane_enabled
+
+    return realtime_lane_enabled()
+
+
+def _is_realtime_blocked(source_type: str) -> bool:
+    blocked_until = _realtime_blocked_until.get(source_type)
+    if blocked_until is None:
+        return False
+    if datetime.now(timezone.utc) >= blocked_until:
+        _realtime_blocked_until.pop(source_type, None)
+        return False
+    return True
+
+
+def _mark_realtime_blocked(source_type: str) -> None:
+    _realtime_blocked_until[source_type] = datetime.now(timezone.utc) + timedelta(
+        seconds=_REALTIME_BLOCK_COOLDOWN_SECONDS
+    )
+    logger.error(
+        "[%s] realtime lane paused for %ds after provider block; manual/operator retry required",
+        source_type,
+        _REALTIME_BLOCK_COOLDOWN_SECONDS,
+    )
+
+
+def reset_realtime_block(source_type: str | None = None) -> None:
+    """Clear a process-local realtime provider pause after operator review."""
+    if source_type is None:
+        _realtime_blocked_until.clear()
+    else:
+        _realtime_blocked_until.pop(source_type, None)
+
+
+def _persist_realtime_cursor(source_key: str, source_type: str, articles: list[dict[str, Any]]) -> None:
+    """Persist the newest provider cursor only after a clean save attempt."""
+    if source_type not in {"cls_telegraph", "eastmoney_global_news"}:
+        return
+    values = [str(article.get("_provider_cursor")) for article in articles if article.get("_provider_cursor")]
+    if not values:
+        return
+
+    cursor_key = "last_time" if source_type == "cls_telegraph" else "sort_end"
+    try:
+        from db.database import get_session
+        from sources.registry import get_source_by_key
+
+        session = get_session()
+        try:
+            source = get_source_by_key(session, source_key)
+            if source is None:
+                return
+            config = json.loads(source.config_json or "{}")
+            current = str(config.get(cursor_key) or "")
+            def _cursor_order(value: str) -> tuple[int, float | str]:
+                try:
+                    return (0, float(value))
+                except ValueError:
+                    return (1, value)
+
+            newest = max(values, key=_cursor_order)
+            if current and _cursor_order(newest) <= _cursor_order(current):
+                return
+            config[cursor_key] = newest
+            source.config_json = json.dumps(config, ensure_ascii=False)
+            session.commit()
+        finally:
+            session.close()
+    except Exception:
+        logger.exception("Failed to persist %s cursor for %s", cursor_key, source_key)
 
 
 def _cleanup_old_runs() -> None:
@@ -174,6 +261,14 @@ def _run_source_type(source_type: str) -> None:
         logger.warning("[%s] No active instances in registry — skipping", source_type)
         return
 
+    if any(getattr(instance, "lane", "hourly") == "realtime" for instance in instances):
+        if not _realtime_lane_enabled():
+            logger.warning("[%s] realtime lane disabled; set REALTIME_LANE_ENABLED=1 after operator review", source_type)
+            return
+        if _is_realtime_blocked(source_type):
+            logger.warning("[%s] realtime lane remains paused after provider block", source_type)
+            return
+
     total_fetched = 0
     total_saved = 0
     errors: list[str] = []
@@ -197,8 +292,29 @@ def _run_source_type(source_type: str) -> None:
                 saver = _ArticleSaver(source_type)
                 saved = saver.save(articles)
                 total_saved += saved
+                save_stats = saver.last_save_stats
+            else:
+                save_stats = {"duplicates": 0, "errors": 0}
+            if save_stats["errors"] == 0:
+                _persist_realtime_cursor(instance.source_key, source_type, articles)
+            if adapter_result.status != "ok":
+                errors.append(
+                    f"{instance.source_key}: {adapter_result.error_message or adapter_result.status}"
+                )
+            if save_stats["errors"]:
+                errors.append(f"{instance.source_key}: {save_stats['errors']} article save errors")
             # Record to DB (RELY-07)
-            _record_collector_run(adapter_result, saved_count=saved)
+            _record_collector_run(
+                adapter_result,
+                saved_count=saved,
+                duplicate_count=save_stats["duplicates"],
+                failed_count=save_stats["errors"],
+            )
+            if adapter_result.error_category == "auth" and source_type in {"cls_telegraph", "eastmoney_global_news"}:
+                if "provider blocked" in (adapter_result.error_message or ""):
+                    _mark_realtime_blocked(source_type)
+            elif adapter_result.status == "ok":
+                _realtime_blocked_until.pop(source_type, None)
         except Exception as e:
             logger.exception("[%s] Instance %s failed", source_type, instance.source_key)
             errors.append(f"{instance.source_key}: {e}")
@@ -217,7 +333,7 @@ def _run_source_type(source_type: str) -> None:
                 error_category=category.value,
                 retry_count=0,
             )
-            _record_collector_run(fallback_result, saved_count=0)
+            _record_collector_run(fallback_result, saved_count=0, failed_count=0)
 
     duration = round(time.time() - start, 1)
     error_msg = "; ".join(errors) if errors else None
@@ -250,6 +366,7 @@ class _ArticleSaver:
         from db.database import init_db
         init_db()
         self._source_type = source_type
+        self.last_save_stats: dict[str, int] = {"duplicates": 0, "errors": 0}
 
     def save(self, articles: list[dict[str, Any]]) -> int:
         from collectors.base import BaseCollector
@@ -261,7 +378,12 @@ class _ArticleSaver:
                 return []
 
         saver = _Saver()
-        return saver.save(articles)
+        saved = saver.save(articles)
+        self.last_save_stats = {
+            "duplicates": saver.last_save_stats.get("duplicates", 0),
+            "errors": saver.last_save_stats.get("errors", 0),
+        }
+        return saved
 
 
 def _run_llm_tagger() -> None:
@@ -388,6 +510,12 @@ class CollectorScheduler:
         for src in active:
             lane = getattr(src, "lane", "hourly")
             if lane == "realtime":
+                if not _realtime_lane_enabled():
+                    logger.info(
+                        "Realtime source %s is registered but disabled; set REALTIME_LANE_ENABLED=1 to start it",
+                        src.source_type,
+                    )
+                    continue
                 seconds = getattr(src, "schedule_seconds", None)
                 if seconds is not None and seconds > 0:
                     if src.source_type not in realtime_intervals or seconds < realtime_intervals[src.source_type]:
@@ -426,6 +554,9 @@ class CollectorScheduler:
                 trigger=IntervalTrigger(seconds=seconds),
                 id=f"realtime-{source_type}",
                 replace_existing=True,
+                coalesce=True,
+                max_instances=1,
+                misfire_grace_time=30,
                 next_run_time=staggered_start,
             )
             logger.info(

@@ -72,7 +72,7 @@ def _timestamp_metrics(articles: list[Article], runs: list[CollectorRun]) -> dic
         elif article.collected_at and _utc_naive(article.published_at) > _utc_naive(article.collected_at):
             invalid += 1
 
-    invalid += sum(
+    timestamp_error_runs = sum(
         1
         for run in runs
         if run.error_category == "parse"
@@ -83,6 +83,8 @@ def _timestamp_metrics(articles: list[Article], runs: list[CollectorRun]) -> dic
     return {
         "missing_timestamps": missing,
         "invalid_timestamps": invalid,
+        "timestamp_error_runs": timestamp_error_runs,
+        "timestamped_rows": timestamped,
         "timestamp_completeness": round(completeness, 4) if completeness is not None else None,
     }
 
@@ -112,10 +114,24 @@ def _source_health(
             lane = "realtime"
         run = latest_runs.get(source.source_key) or latest_runs.get(f"type:{source.source_type}")
         article = latest_articles.get(source.source_type)
-        if run is not None and run.status != "ok":
+        evidence_status = "observed"
+        if not source.is_active:
+            status = "disabled"
+            evidence_status = "disabled"
+        elif run is not None and run.status != "ok":
             status = "failed"
+            evidence_status = "failed_attempt"
+        elif run is not None and (run.articles_fetched or 0) == 0:
+            status = "stale"
+            evidence_status = "empty_success"
+        elif run is not None and article is None:
+            status = "failed"
+            evidence_status = "run_without_persisted_item"
+        elif run is None and article is None:
+            status = "stale"
+            evidence_status = "no_evidence"
         else:
-            latest_at = article.collected_at if article is not None else (run.completed_at if run else None)
+            latest_at = article.collected_at if article is not None else None
             age_hours = (
                 (_utc_naive(window_end) - _utc_naive(latest_at)).total_seconds() / 3600
                 if latest_at is not None
@@ -124,6 +140,7 @@ def _source_health(
             expected = source.expected_freshness_hours or (0.1 if lane == "realtime" else 4.0)
             if age_hours is None:
                 status = "stale"
+                evidence_status = "no_persisted_item"
             elif age_hours <= expected:
                 status = "healthy"
             elif age_hours <= expected * 2:
@@ -135,8 +152,10 @@ def _source_health(
             "source_type": source.source_type,
             "lane": lane,
             "status": status,
+            "evidence_status": evidence_status,
             "last_attempt_at": _iso(run.completed_at) if run else None,
             "last_success_at": _iso(run.completed_at) if run and run.status == "ok" else None,
+            "last_item_at": _iso(article.collected_at) if article else None,
         })
     return result
 
@@ -191,12 +210,28 @@ def _lane_metrics(
     if not runs:
         raw_rows = unique_rows
         new_rows = unique_rows
+        duplicate_rows = 0
+        save_failures = 0
+        unclassified_not_saved_rows = 0
+        evidence_status = "no_evidence" if not articles else "article_only"
+    else:
+        duplicate_rows = sum(max(getattr(run, "articles_duplicate", 0) or 0, 0) for run in runs)
+        save_failures = sum(max(getattr(run, "articles_failed", 0) or 0, 0) for run in runs)
+        unclassified_not_saved_rows = max(raw_rows - new_rows - duplicate_rows - save_failures, 0)
+        if raw_rows == 0 and all(run.status == "ok" for run in runs):
+            evidence_status = "empty_success"
+        elif unclassified_not_saved_rows:
+            evidence_status = "partial_unclassified_loss"
+        else:
+            evidence_status = "observed"
     latest_collected = max((article.collected_at for article in articles), default=None)
     latest_success = max(
         (run.completed_at for run in runs if run.status == "ok"),
         default=None,
     )
-    freshness_at = latest_collected or latest_success
+    # A successful run is not data freshness. An empty/blocked response must
+    # remain visible instead of borrowing the run completion timestamp.
+    freshness_at = latest_collected
     freshness_age = (
         max((_utc_naive(window_end) - _utc_naive(freshness_at)).total_seconds(), 0)
         if freshness_at is not None
@@ -204,17 +239,26 @@ def _lane_metrics(
     )
     metrics = {
         "lane": lane,
+        "run_count": len(runs),
+        "evidence_status": evidence_status,
         "source_types": sorted({article.source for article in articles} | {run.source_type for run in runs}),
         "raw_rows": raw_rows,
         "unique_rows": unique_rows,
         "new_rows": new_rows,
-        "duplicate_rows": max(raw_rows - new_rows, 0),
+        "duplicate_rows": duplicate_rows,
+        "save_failures": save_failures,
+        "unclassified_not_saved_rows": unclassified_not_saved_rows,
+        "unique_rows_basis": "distinct persisted source_id values in the observation window",
         "source_failures": sum(1 for run in runs if run.status != "ok"),
         "last_success_at": _iso(latest_success),
         "freshness_age_seconds": round(freshness_age, 3) if freshness_age is not None else None,
         "latency": _latency_summary(articles),
     }
     metrics.update(_timestamp_metrics(articles, runs))
+    metrics["failures"] = metrics["source_failures"]
+    metrics["missing_or_invalid_timestamps"] = (
+        metrics["missing_timestamps"] + metrics["invalid_timestamps"]
+    )
     return metrics
 
 
@@ -230,7 +274,9 @@ def build_dual_run_receipt(
     if end <= start:
         raise ValueError("window_end must be after window_start")
 
-    sources = [source for source in session.query(SourceRegistry).all() if source.is_active]
+    # Include inactive rows so an explicitly disabled realtime source is
+    # visible in the receipt as disabled/no-evidence rather than disappearing.
+    sources = session.query(SourceRegistry).all()
     registry_by_key = {source.source_key: source for source in sources}
     realtime_types = set(REALTIME_SOURCE_TYPES) | {
         source.source_type for source in sources if getattr(source, "lane", "hourly") == "realtime"

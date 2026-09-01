@@ -56,6 +56,9 @@ def run_aggregation(session: Session) -> None:
         .filter(
             Article.collected_at >= cutoff,
             (Article.published_at.is_(None)) | (Article.published_at >= cutoff),
+            # Realtime items remain readable candidates during the migration,
+            # but must not become production events/signals before convergence.
+            Article.collection_lane == "hourly",
             Article.narrative_tags.isnot(None),
             Article.narrative_tags != "",
             Article.narrative_tags != "[]",

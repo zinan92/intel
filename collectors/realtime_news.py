@@ -19,6 +19,9 @@ from zoneinfo import ZoneInfo
 
 import requests
 
+from collectors.base import BaseCollector
+from sources.errors import SourceBlockedError
+
 logger = logging.getLogger(__name__)
 
 CLS_ROLL_URL = "https://www.cls.cn/v1/roll/get_roll_list"
@@ -29,9 +32,12 @@ USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36"
 )
+_CLS_REQUEST_LOCK = Lock()
+_LAST_CLS_REQUEST_AT: float | None = None
 _EASTMONEY_REQUEST_LOCK = Lock()
 _LAST_EASTMONEY_REQUEST_AT: float | None = None
 _EASTMONEY_MIN_INTERVAL_SECONDS = 1.0
+_CLS_MIN_INTERVAL_SECONDS = 1.0
 
 
 def _cls_sign(params: dict[str, Any]) -> str:
@@ -50,7 +56,16 @@ def _utc_naive_from_unix(value: Any) -> datetime | None:
         return None
 
 
-def fetch_cls_telegraph(*, page_size: int = 50) -> list[dict[str, Any]]:
+def _wait_for_request(last_request_at: float | None, minimum_gap: float) -> float:
+    now = time.monotonic()
+    if last_request_at is not None:
+        remaining = minimum_gap - (now - last_request_at)
+        if remaining > 0:
+            time.sleep(remaining)
+    return time.monotonic()
+
+
+def fetch_cls_telegraph(*, page_size: int = 50, last_time: str = "") -> list[dict[str, Any]]:
     """Fetch and normalize CLS Telegraph rolling news.
 
     HTTP, status, JSON, and schema failures are intentionally raised to the
@@ -62,16 +77,23 @@ def fetch_cls_telegraph(*, page_size: int = 50) -> list[dict[str, Any]]:
         "appName": "CailianpressWeb",
         "os": "web",
         "sv": "7.7.5",
-        "last_time": "",
+        "last_time": last_time,
         "refresh_type": 1,
         "rn": page_size,
     }
     url = f"{CLS_ROLL_URL}?{'&'.join(f'{key}={params[key]}' for key in params)}&sign={_cls_sign(params)}"
-    response = requests.get(
-        url,
-        headers={"User-Agent": USER_AGENT, "Referer": CLS_REFERER},
-        timeout=10,
-    )
+    global _LAST_CLS_REQUEST_AT
+    with _CLS_REQUEST_LOCK:
+        _LAST_CLS_REQUEST_AT = _wait_for_request(
+            _LAST_CLS_REQUEST_AT, _CLS_MIN_INTERVAL_SECONDS
+        )
+        response = requests.get(
+            url,
+            headers={"User-Agent": USER_AGENT, "Referer": CLS_REFERER},
+            timeout=10,
+        )
+    if response.status_code in {403, 429, 451}:
+        raise SourceBlockedError(f"cls_telegraph provider blocked HTTP {response.status_code}")
     response.raise_for_status()
     payload = response.json()
     rows = payload["data"]["roll_data"]
@@ -100,6 +122,7 @@ def fetch_cls_telegraph(*, page_size: int = 50) -> list[dict[str, Any]]:
             "score": 0,
             "published_at": _utc_naive_from_unix(row.get("ctime")),
             "collection_lane": "realtime",
+            "_provider_cursor": str(row.get("ctime")) if row.get("ctime") else None,
         })
     return normalized
 
@@ -108,12 +131,10 @@ def _wait_for_eastmoney_request() -> None:
     """Serialize Eastmoney requests and keep a small anti-rate-limit gap."""
     global _LAST_EASTMONEY_REQUEST_AT
     with _EASTMONEY_REQUEST_LOCK:
-        now = time.monotonic()
-        if _LAST_EASTMONEY_REQUEST_AT is not None:
-            remaining = _EASTMONEY_MIN_INTERVAL_SECONDS - (now - _LAST_EASTMONEY_REQUEST_AT)
-            if remaining > 0:
-                time.sleep(remaining)
-        _LAST_EASTMONEY_REQUEST_AT = time.monotonic()
+        _LAST_EASTMONEY_REQUEST_AT = _wait_for_request(
+            _LAST_EASTMONEY_REQUEST_AT,
+            _EASTMONEY_MIN_INTERVAL_SECONDS,
+        )
 
 
 def _eastmoney_ticker(raw: Any) -> str | None:
@@ -124,16 +145,25 @@ def _eastmoney_ticker(raw: Any) -> str | None:
     if not code.isdigit() or not code:
         return None
     exchange = {"0": "SZ", "1": "SH", "2": "SZ", "6": "SH"}.get(market)
-    return f"{code}.{exchange}" if exchange else code
+    return f"{code}.{exchange}" if exchange else None
 
 
-def fetch_eastmoney_global_news(*, page_size: int = 50) -> list[dict[str, Any]]:
+def _eastmoney_article_url(row: dict[str, Any]) -> str | None:
+    """Return a provider-supplied story URL, never a misleading homepage link."""
+    for key in ("url", "shareUrl", "shareurl", "articleUrl", "link"):
+        value = row.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def fetch_eastmoney_global_news(*, page_size: int = 50, sort_end: str = "") -> list[dict[str, Any]]:
     """Fetch and normalize Eastmoney's public 7x24 fast-news stream."""
     params: dict[str, Any] = {
         "client": "web",
         "biz": "web_724",
         "fastColumn": 102,
-        "sortEnd": "",
+        "sortEnd": sort_end,
         "pageSize": page_size,
         "req_trace": str(uuid.uuid4()),
     }
@@ -144,6 +174,10 @@ def fetch_eastmoney_global_news(*, page_size: int = 50) -> list[dict[str, Any]]:
         headers={"User-Agent": USER_AGENT, "Referer": EASTMONEY_REFERER},
         timeout=10,
     )
+    if response.status_code in {403, 429, 451}:
+        raise SourceBlockedError(
+            f"eastmoney_global_news provider blocked HTTP {response.status_code}"
+        )
     response.raise_for_status()
     payload = response.json()
     rows = payload["data"]["fastNewsList"]
@@ -182,11 +216,28 @@ def fetch_eastmoney_global_news(*, page_size: int = 50) -> list[dict[str, Any]]:
             "author": "",
             "title": title,
             "content": str(row.get("summary") or title).strip()[:4000],
-            "url": "https://kuaixun.eastmoney.com/",
+            "url": _eastmoney_article_url(row),
             "tags": ["cn-market-news"],
             "tickers": tickers,
             "score": 0,
             "published_at": published_at,
             "collection_lane": "realtime",
+            "_provider_cursor": str(row.get("realSort") or item_id),
         })
     return normalized
+
+
+class CLSRealtimeCollector(BaseCollector):
+    """Manual-CLI facade; the scheduler uses the registry adapter instead."""
+    source = "cls_telegraph"
+
+    def collect(self) -> list[dict[str, Any]]:
+        return fetch_cls_telegraph()
+
+
+class EastmoneyRealtimeCollector(BaseCollector):
+    """Manual-CLI facade; the scheduler uses the registry adapter instead."""
+    source = "eastmoney_global_news"
+
+    def collect(self) -> list[dict[str, Any]]:
+        return fetch_eastmoney_global_news()
