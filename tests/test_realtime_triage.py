@@ -99,6 +99,43 @@ def test_triage_rejects_invalid_ai_bucket():
         }])
 
 
+def test_triage_uses_codex_fallback_after_deepseek_failure(monkeypatch):
+    from llm.deepseek import DeepSeekError
+    from triage.realtime import RealtimeTriage
+
+    client = MagicMock()
+    client.complete.side_effect = DeepSeekError("quota")
+    monkeypatch.setattr(
+        "scripts.generate_narrative_signal._call_codex",
+        lambda _prompt: (
+            json.dumps({
+                "results": [{
+                    "id": 10,
+                    "bucket": "watch",
+                    "direction": "unclear",
+                    "rationale": "Needs confirmation.",
+                    "affected_assets": [],
+                    "watch_for": ["follow-up filing"],
+                    "scenario_bull": "No repricing.",
+                    "scenario_bear": "Expectation changes.",
+                }]
+            }),
+            "codex-cli",
+        ),
+    )
+
+    triage = RealtimeTriage(client=client)
+    result = triage.triage_batch([{
+        "id": 10,
+        "title": "Company update",
+        "content": "The company publishes an update.",
+        "source": "cls_telegraph",
+    }])
+
+    assert result[0]["bucket"] == "watch"
+    assert triage.model_name == "codex-cli"
+
+
 def test_article_has_persisted_triage_columns():
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
