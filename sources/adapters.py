@@ -190,6 +190,14 @@ def _adapt_cls_telegraph(record: dict[str, Any]) -> list[dict[str, Any]]:
     return fetch_cls_telegraph(page_size=int(cfg.get("page_size", 50)))
 
 
+def _adapt_eastmoney_global_news(record: dict[str, Any]) -> list[dict[str, Any]]:
+    """Collect Eastmoney 7x24 fast news for the realtime lane."""
+    from collectors.realtime_news import fetch_eastmoney_global_news
+
+    cfg = _parse_config(record)
+    return fetch_eastmoney_global_news(page_size=int(cfg.get("page_size", 50)))
+
+
 # --- Adapter registry ---
 
 _ADAPTERS: dict[str, AdapterFn] = {
@@ -204,6 +212,7 @@ _ADAPTERS: dict[str, AdapterFn] = {
     "google_news": _adapt_google_news,
     "github_trending": _adapt_github_trending,
     "cls_telegraph": _adapt_cls_telegraph,
+    "eastmoney_global_news": _adapt_eastmoney_global_news,
 }
 
 

@@ -114,6 +114,13 @@ REALTIME_SOURCE_BOOTSTRAP: list[dict] = [
         "category": "market-news",
         "expected_freshness_hours": 0.1,
     },
+    {
+        "source": "eastmoney_global_news",
+        "display_name": "Eastmoney 7x24",
+        "interval_seconds": 60,
+        "category": "cn-market-news",
+        "expected_freshness_hours": 0.1,
+    },
 ]
 
 # --- Collector: Social KOL ---
