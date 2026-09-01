@@ -140,7 +140,12 @@ class TestSeedAttributes:
         seed_source_registry(session)
         all_sources = list_all_sources(session)
         active_sources = list_active_sources(session)
-        assert len(all_sources) == len(active_sources)
+        assert len(all_sources) > len(active_sources)
+        assert all(
+            source.is_active == 0
+            for source in all_sources
+            if source.lane == "realtime"
+        )
 
     def test_schedule_hours_from_config(self, session: Session):
         """Schedule hours should be derived from SOURCE_BOOTSTRAP intervals."""

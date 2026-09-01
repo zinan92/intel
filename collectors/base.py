@@ -22,6 +22,11 @@ class BaseCollector(ABC):
 
     def __init__(self) -> None:
         init_db()
+        self.last_save_stats: dict[str, int] = {
+            "saved": 0,
+            "duplicates": 0,
+            "errors": 0,
+        }
 
     @abstractmethod
     def collect(self) -> list[dict[str, Any]]:
@@ -31,6 +36,8 @@ class BaseCollector(ABC):
     def save(self, articles: list[dict[str, Any]]) -> int:
         """Save articles to DB with dedup. Returns count of new articles saved."""
         saved = 0
+        duplicates = 0
+        errors = 0
         for data in articles:
             session = get_session()
             try:
@@ -69,16 +76,34 @@ class BaseCollector(ABC):
                 session.add(article)
                 session.commit()
                 saved += 1
-            except IntegrityError:
+            except IntegrityError as exc:
                 session.rollback()
-                logger.debug("Duplicate skipped: %s", data.get("source_id"))
+                if "unique" in str(exc).lower():
+                    duplicates += 1
+                    logger.debug("Duplicate skipped: %s", data.get("source_id"))
+                else:
+                    errors += 1
+                    logger.exception("Integrity error saving article %s for %s", data.get("source_id"), self.source)
             except Exception:
                 session.rollback()
+                errors += 1
                 logger.exception("Error saving article %s for %s", data.get("source_id"), self.source)
             finally:
                 session.close()
 
-        logger.info("[%s] Saved %d new articles (of %d fetched)", self.source, saved, len(articles))
+        self.last_save_stats = {
+            "saved": saved,
+            "duplicates": duplicates,
+            "errors": errors,
+        }
+        logger.info(
+            "[%s] Saved %d new articles (of %d fetched; duplicates=%d, errors=%d)",
+            self.source,
+            saved,
+            len(articles),
+            duplicates,
+            errors,
+        )
         return saved
 
     def run(self) -> int:

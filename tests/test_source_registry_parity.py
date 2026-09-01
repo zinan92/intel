@@ -64,8 +64,10 @@ class TestRegistryCoversPreviousConfig:
 
     def test_registry_keeps_legacy_types_and_adds_realtime_types(self, seeded_session):
         """The original 10 types remain alongside the two realtime sources."""
-        active = list_active_sources(seeded_session)
-        types = {s.source_type for s in active}
+        from sources.registry import list_all_sources
+
+        registered = list_all_sources(seeded_session)
+        types = {s.source_type for s in registered}
         expected = {
             "rss", "reddit", "github_release", "website_monitor", "social_kol",
             "hackernews", "xueqiu", "yahoo_finance", "google_news", "github_trending",

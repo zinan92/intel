@@ -107,6 +107,8 @@ def run_migrations(engine: Engine) -> None:
         ("articles", "collection_lane", "TEXT"),
         ("source_registry", "lane", "TEXT"),
         ("source_registry", "schedule_seconds", "INTEGER"),
+        ("collector_runs", "articles_duplicate", "INTEGER"),
+        ("collector_runs", "articles_failed", "INTEGER"),
         ("events", "narrative_summary", "TEXT"),
         ("events", "prev_signal_score", "REAL"),
         ("events", "trading_play", "TEXT"),
@@ -118,7 +120,14 @@ def run_migrations(engine: Engine) -> None:
         for table, column, col_type in migrations:
             if not _column_exists(engine, table, column):
                 logger.info("Adding column %s.%s (%s)", table, column, col_type)
-                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"))
+                defaulted_columns = {
+                    ("articles", "collection_lane"): "TEXT NOT NULL DEFAULT 'hourly'",
+                    ("source_registry", "lane"): "TEXT NOT NULL DEFAULT 'hourly'",
+                    ("collector_runs", "articles_duplicate"): "INTEGER NOT NULL DEFAULT 0",
+                    ("collector_runs", "articles_failed"): "INTEGER NOT NULL DEFAULT 0",
+                }
+                definition = defaulted_columns.get((table, column), col_type)
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}"))
                 conn.commit()
             else:
                 logger.debug("Column %s.%s already exists, skipping", table, column)
@@ -161,9 +170,9 @@ def run_migrations(engine: Engine) -> None:
             conn.commit()
         logger.info("Seeded expected_freshness_hours defaults for source_registry")
 
-    # New columns are nullable in the SQLite ALTER TABLE path so older
-    # databases can be upgraded in place. Backfill the explicit defaults
-    # expected by the ORM and by the lane-aware scheduler.
+    # Keep the backfill for databases upgraded by an earlier revision that
+    # added the lane columns as nullable. New upgrades use NOT NULL defaults
+    # above, while this remains harmless and idempotent.
     with engine.connect() as conn:
         if _table_exists(engine, "articles") and _column_exists(engine, "articles", "collection_lane"):
             conn.execute(text(

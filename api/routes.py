@@ -33,6 +33,7 @@ def _parse_tags(raw: str | None) -> list[str]:
 def health() -> dict[str, Any]:
     """Healthcheck endpoint for active sources (driven by source registry)."""
     from scheduler import get_last_results
+    from config import realtime_lane_enabled
     from sources.registry import list_active_sources
 
     session = get_session()
@@ -79,6 +80,15 @@ def health() -> dict[str, Any]:
                 "last_collected": last_collected.isoformat() if last_collected else None,
                 "age_hours": age_hours,
             }
+
+            source_lanes = [s for s in active if s.source_type == source_type]
+            if any(getattr(source, "lane", "hourly") == "realtime" for source in source_lanes):
+                sources_info[source_type]["lane"] = "realtime"
+                if not realtime_lane_enabled():
+                    sources_info[source_type]["status"] = "disabled"
+                    sources_info[source_type]["disabled_reason"] = (
+                        "Realtime lane is opt-in; set REALTIME_LANE_ENABLED=1 after operator review."
+                    )
 
             result = last_results.get(source_type)
             if result:
@@ -157,7 +167,7 @@ def get_digest(
         cutoff = datetime.utcnow() - timedelta(hours=hours)
         articles = (
             session.query(Article)
-            .filter(Article.collected_at >= cutoff)
+            .filter(Article.collected_at >= cutoff, Article.collection_lane == "hourly")
             .all()
         )
 
@@ -224,7 +234,10 @@ def get_signals(
         prev_start = current_start - timedelta(hours=compare_hours)
 
         # Query current period articles
-        q = session.query(Article).filter(Article.collected_at >= current_start)
+        q = session.query(Article).filter(
+            Article.collected_at >= current_start,
+            Article.collection_lane == "hourly",
+        )
         if source:
             q = q.filter(Article.source == source)
         current_articles = q.all()
@@ -233,6 +246,7 @@ def get_signals(
         q_prev = session.query(Article).filter(
             Article.collected_at >= prev_start,
             Article.collected_at < current_start,
+            Article.collection_lane == "hourly",
         )
         if source:
             q_prev = q_prev.filter(Article.source == source)

@@ -105,8 +105,7 @@ class TestHealthUsesRegistry:
         # All 10 source types should be present
         expected = {"rss", "reddit", "github_release", "website_monitor", "social_kol",
                     "hackernews", "xueqiu", "yahoo_finance", "google_news", "github_trending"}
-        assert expected.issubset(active_types)
-        assert "cls_telegraph" in active_types
+        assert expected == active_types
 
     def test_source_with_no_articles_shows_no_data(self, session: Session):
         """A source with no articles should have status 'no_data'."""

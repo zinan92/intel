@@ -87,9 +87,10 @@ def test_cls_source_is_seeded_as_realtime_source(session: Session):
     assert source.expected_freshness_hours == pytest.approx(0.1)
 
 
-def test_scheduler_registers_cls_realtime_job_without_hourly_job():
+def test_scheduler_registers_cls_realtime_job_without_hourly_job(monkeypatch):
     from scheduler import CollectorScheduler
 
+    monkeypatch.setenv("REALTIME_LANE_ENABLED", "1")
     fake_session = MagicMock()
     fake_sources = [
         SimpleNamespace(source_type="rss", schedule_hours=1, lane="hourly", schedule_seconds=None),

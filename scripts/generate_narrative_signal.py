@@ -45,6 +45,8 @@ SOURCE_LABELS = {
     "website_monitor": "官网监控",
     "social_kol": "KOL",
     "xueqiu": "A股社交",
+    "cls_telegraph": "财联社快讯",
+    "eastmoney_global_news": "东方财富7x24",
 }
 _NOISE_TITLE_PATTERNS = [
     re.compile(r"\bno description available\b", re.I),
@@ -141,6 +143,7 @@ def _source_health_summary(session, window_start: datetime, window_end: datetime
             session.query(Article.source, func.count(Article.id))
             .filter(Article.collected_at >= window_start)
             .filter(Article.collected_at < window_end)
+            .filter(Article.collection_lane == "hourly")
             .group_by(Article.source)
             .all()
         )
@@ -478,6 +481,7 @@ def generate_brief(
             session.query(Article)
             .filter(Article.collected_at >= window_start)
             .filter(Article.collected_at < window_end)
+            .filter(Article.collection_lane == "hourly")
             .filter((Article.published_at.is_(None)) | (Article.published_at >= window_start))
             .filter((Article.published_at.is_(None)) | (Article.published_at < window_end))
             .order_by(Article.collected_at.desc())
