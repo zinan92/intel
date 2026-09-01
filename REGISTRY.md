@@ -1,5 +1,14 @@
 # Runtime Registry
 
+## 2026-09-01 · Realtime polling cursor fixed
+
+- PR #49 fixes CLS Telegraph and Eastmoney realtime polling: each poll reads
+  the provider's latest window and relies on local source-id deduplication;
+  backwards-pagination cursors are no longer persisted by the scheduler.
+- Live smoke after restart reached current provider timestamps and saved new
+  rows from both sources. A clean throughput measurement window is running;
+  its eventual overnight total must not be recorded until the window ends.
+
 ## 2026-09-01 · Realtime News Lane implemented and reviewed
 
 - PRs #37, #38, and #39 add CLS Telegraph, Eastmoney 7x24, lane provenance,
@@ -55,6 +64,10 @@
 ## 现在在哪里
 
 - Automated article scoring, event narratives, and narrative-signal briefs use the DeepSeek Chat Completions API.
+- The realtime lane polls CLS Telegraph and Eastmoney 7x24 from the latest
+  provider windows every 60 seconds, persists unique News Items, and exposes
+  them through the local News Triage Desk; its throughput measurement remains
+  provisional until a clean observation window completes.
 - The Daily Finance Newsletter archive and delivery contract is available on `main`.
 - Weekly retrospective, calendar verification, Obsidian/Feishu publication, delivery manifests, same-week no-op, and explicit force-resend are available on `main`.
 - Finance Daily, Finance Weekly, and the upstream Park Intel service now run from the clean production checkout `/Users/wendy/work/trading-co/park-intel-production`, created from `origin/main`.
@@ -68,5 +81,8 @@
 
 ## 下一步
 
+- Complete an uninterrupted clean observation window for realtime unique
+  article throughput, then decide whether the lane is ready for broader source
+  coverage or canonical-lane convergence.
 - Keep interactive Claude Desktop and operator-started Claude Code sessions separate from background service accounting.
 - Monitor source-health states and the first post-cutover scheduled Daily/Weekly cycles; detailed cutover evidence is recorded in `docs/finance-newsletter-production-runtime-2026-08-24.md`.
