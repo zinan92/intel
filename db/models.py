@@ -60,6 +60,18 @@ class Article(Base):
     published_at: Mapped[datetime | None] = mapped_column(DateTime)
     collected_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     collection_lane: Mapped[str] = mapped_column(String, nullable=False, default="hourly")
+    triage_bucket: Mapped[str | None] = mapped_column(String)
+    triage_status: Mapped[str | None] = mapped_column(String)
+    triage_direction: Mapped[str | None] = mapped_column(String)
+    triage_rationale: Mapped[str | None] = mapped_column(Text)
+    triage_assets: Mapped[str | None] = mapped_column(Text)
+    triage_watch_for: Mapped[str | None] = mapped_column(Text)
+    triage_scenario_bull: Mapped[str | None] = mapped_column(Text)
+    triage_scenario_bear: Mapped[str | None] = mapped_column(Text)
+    triage_model: Mapped[str | None] = mapped_column(String)
+    triage_error: Mapped[str | None] = mapped_column(Text)
+    triage_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    triaged_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     __table_args__ = (
         Index("idx_source", "source"),

@@ -105,6 +105,18 @@ def run_migrations(engine: Engine) -> None:
         ("articles", "narrative_tags", "TEXT"),
         ("articles", "tickers", "TEXT"),
         ("articles", "collection_lane", "TEXT"),
+        ("articles", "triage_bucket", "TEXT"),
+        ("articles", "triage_status", "TEXT"),
+        ("articles", "triage_direction", "TEXT"),
+        ("articles", "triage_rationale", "TEXT"),
+        ("articles", "triage_assets", "TEXT"),
+        ("articles", "triage_watch_for", "TEXT"),
+        ("articles", "triage_scenario_bull", "TEXT"),
+        ("articles", "triage_scenario_bear", "TEXT"),
+        ("articles", "triage_model", "TEXT"),
+        ("articles", "triage_error", "TEXT"),
+        ("articles", "triage_attempts", "INTEGER"),
+        ("articles", "triaged_at", "DATETIME"),
         ("source_registry", "lane", "TEXT"),
         ("source_registry", "schedule_seconds", "INTEGER"),
         ("collector_runs", "articles_duplicate", "INTEGER"),
@@ -124,6 +136,7 @@ def run_migrations(engine: Engine) -> None:
                 logger.info("Adding column %s.%s (%s)", table, column, col_type)
                 defaulted_columns = {
                     ("articles", "collection_lane"): "TEXT NOT NULL DEFAULT 'hourly'",
+                    ("articles", "triage_attempts"): "INTEGER NOT NULL DEFAULT 0",
                     ("source_registry", "lane"): "TEXT NOT NULL DEFAULT 'hourly'",
                     ("collector_runs", "articles_duplicate"): "INTEGER NOT NULL DEFAULT 0",
                     ("collector_runs", "articles_failed"): "INTEGER NOT NULL DEFAULT 0",
@@ -183,6 +196,11 @@ def run_migrations(engine: Engine) -> None:
                 "UPDATE articles SET collection_lane = 'hourly' "
                 "WHERE collection_lane IS NULL"
             ))
+            if _column_exists(engine, "articles", "triage_attempts"):
+                conn.execute(text(
+                    "UPDATE articles SET triage_attempts = 0 "
+                    "WHERE triage_attempts IS NULL"
+                ))
         if _table_exists(engine, "source_registry") and _column_exists(engine, "source_registry", "lane"):
             conn.execute(text(
                 "UPDATE source_registry SET lane = 'hourly' WHERE lane IS NULL"

@@ -141,6 +141,35 @@ def _parse_tags(raw: str | None) -> list[str]:
     return []
 
 
+def _parse_json_list(raw: str | None) -> list[Any]:
+    if not raw:
+        return []
+    try:
+        value = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return []
+    return value if isinstance(value, list) else []
+
+
+def _triage_payload(article: Article) -> dict[str, Any]:
+    status = article.triage_status
+    if status is None and article.collection_lane == "realtime":
+        status = "pending"
+    return {
+        "status": status,
+        "bucket": article.triage_bucket,
+        "direction": article.triage_direction,
+        "rationale": article.triage_rationale,
+        "affected_assets": _parse_json_list(article.triage_assets),
+        "watch_for": _parse_json_list(article.triage_watch_for),
+        "scenario_bull": article.triage_scenario_bull,
+        "scenario_bear": article.triage_scenario_bear,
+        "model": article.triage_model,
+        "error": article.triage_error,
+        "triaged_at": article.triaged_at.isoformat() if article.triaged_at else None,
+    }
+
+
 def _slug(text: str) -> str:
     """Normalize a topic string to a URL slug."""
     s = text.lower()
@@ -198,6 +227,7 @@ def _feed_item(article: Article, priority: float, now: datetime, event_article_i
         "tags": _parse_tags(article.tags),
         "narrative_tags": _parse_tags(article.narrative_tags),
         "collection_lane": article.collection_lane,
+        "triage": _triage_payload(article),
         "published_at": article.published_at.isoformat() if article.published_at else None,
         "collected_at": article.collected_at.isoformat() if article.collected_at else None,
         "in_event": article.id in event_article_ids,
@@ -454,9 +484,74 @@ def get_feed(
                 "source_health": _build_source_health(session),
                 "top_events": _build_top_events(session),
             },
-            "page": {
-                "next_cursor": next_cursor,
+        "page": {
+            "next_cursor": next_cursor,
+        },
+    }
+    finally:
+        session.close()
+
+
+@ui_router.get("/realtime")
+def get_realtime_feed(
+    window: str = Query(default="24h"),
+    limit: int = Query(default=80, ge=1, le=200),
+) -> dict[str, Any]:
+    """Return realtime items plus their persisted AI triage buckets."""
+    session = get_session()
+    try:
+        now = datetime.utcnow()
+        cutoff = _window_cutoff(window, now)
+        query = (
+            session.query(Article)
+            .filter(
+                Article.collection_lane == "realtime",
+                Article.collected_at >= cutoff,
+            )
+            .order_by(Article.collected_at.desc())
+        )
+        total = query.count()
+        articles = query.limit(limit).all()
+        items = [
+            _feed_item(article, _priority_score(article, now), now)
+            for article in articles
+        ]
+        buckets = {bucket: [] for bucket in ("high_impact", "watch", "noise", "unknown")}
+        for item in items:
+            bucket = item["triage"]["bucket"] or "unknown"
+            if bucket not in buckets:
+                bucket = "unknown"
+            buckets[bucket].append(item)
+
+        triaged_count = sum(
+            1 for article in articles if article.triage_status == "complete"
+        )
+        pending_count = sum(
+            1 for article in articles
+            if article.triage_status in (None, "processing")
+        )
+        failed_count = sum(
+            1 for article in articles if article.triage_status == "failed"
+        )
+        last_collected = articles[0].collected_at if articles else None
+        triaged_times = [article.triaged_at for article in articles if article.triaged_at]
+        return {
+            "items": items,
+            "buckets": buckets,
+            "stats": {
+                "total": total,
+                "returned": len(items),
+                "triaged": triaged_count,
+                "pending": pending_count,
+                "failed": failed_count,
+                "last_collected_at": last_collected.isoformat() if last_collected else None,
+                "last_triaged_at": max(triaged_times).isoformat() if triaged_times else None,
+                "refreshed_at": now.isoformat(),
             },
+            "source_health": [
+                health for health in _build_source_health(session)
+                if health["source"] in {"cls_telegraph", "eastmoney_global_news"}
+            ],
         }
     finally:
         session.close()
@@ -511,6 +606,8 @@ def get_item(item_id: int) -> dict[str, Any]:
             "tags": _parse_tags(article.tags),
             "narrative_tags": _parse_tags(article.narrative_tags),
             "relevance_score": article.relevance_score,
+            "collection_lane": article.collection_lane,
+            "triage": _triage_payload(article),
             "published_at": article.published_at.isoformat() if article.published_at else None,
             "collected_at": article.collected_at.isoformat() if article.collected_at else None,
             "related": [
