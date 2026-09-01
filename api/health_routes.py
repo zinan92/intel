@@ -244,12 +244,16 @@ def _build_source_details(session) -> list[dict[str, Any]]:
         last_error = None
         last_error_category = None
         freshness_age_hours = None
+        missing_timestamp_rows = 0
+        invalid_timestamp_rows = 0
 
         if latest is not None:
             last_run_at = latest.completed_at.isoformat() if latest.completed_at else None
             last_run_status = latest.status
             last_error = latest.error_message
             last_error_category = latest.error_category if latest.status == "error" else None
+            missing_timestamp_rows = getattr(latest, "articles_missing_timestamp", 0) or 0
+            invalid_timestamp_rows = getattr(latest, "articles_invalid_timestamp", 0) or 0
             if latest.completed_at:
                 # SQLite returns naive datetimes; treat as UTC
                 completed = latest.completed_at
@@ -267,8 +271,10 @@ def _build_source_details(session) -> list[dict[str, Any]]:
         # Determine status
         if disabled_reason is not None:
             status = "disabled"
-        elif not src.is_active or disabled_reason is not None:
+        elif not src.is_active:
             status = "disabled"
+        elif lane == "realtime" and (missing_timestamp_rows or invalid_timestamp_rows):
+            status = "degraded"
         else:
             status = compute_status(
                 age_hours=freshness_age_hours,
@@ -303,6 +309,8 @@ def _build_source_details(session) -> list[dict[str, Any]]:
             "last_run_status": last_run_status,
             "last_error": last_error,
             "last_error_category": last_error_category,
+            "missing_timestamp_rows": missing_timestamp_rows,
+            "invalid_timestamp_rows": invalid_timestamp_rows,
             "disabled_reason": disabled_reason,
         })
 

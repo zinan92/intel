@@ -3,15 +3,20 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import re
 import time
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
+from sqlalchemy.orm import Session
+
+from config import REALTIME_SOURCE_TYPES
 from db.models import Article, CollectorRun, SourceRegistry
 
-REALTIME_SOURCE_TYPES = frozenset({"cls_telegraph", "eastmoney_global_news"})
+logger = logging.getLogger(__name__)
+
 _REQUIRED_SMOKE_FIELDS = ("source", "source_id", "title", "url", "published_at")
 
 
@@ -52,7 +57,9 @@ def _latency_summary(articles: list[Article]) -> dict[str, Any]:
     for article in articles:
         if article.published_at is None or article.collected_at is None:
             continue
-        delta = (_utc_naive(article.collected_at) - _utc_naive(article.published_at)).total_seconds()
+        delta = (
+            _utc_naive(article.collected_at) - _utc_naive(article.published_at)
+        ).total_seconds()
         if delta >= 0:
             latencies.append(delta)
     return {
@@ -64,25 +71,41 @@ def _latency_summary(articles: list[Article]) -> dict[str, Any]:
 
 
 def _timestamp_metrics(articles: list[Article], runs: list[CollectorRun]) -> dict[str, Any]:
-    missing = 0
-    invalid = 0
+    persisted_missing = 0
+    persisted_invalid = 0
     for article in articles:
         if article.published_at is None:
-            missing += 1
-        elif article.collected_at and _utc_naive(article.published_at) > _utc_naive(article.collected_at):
-            invalid += 1
+            persisted_missing += 1
+        elif (
+            article.collected_at
+            and _utc_naive(article.published_at) > _utc_naive(article.collected_at)
+        ):
+            persisted_invalid += 1
 
+    observed_missing = sum(
+        max(getattr(run, "articles_missing_timestamp", 0) or 0, 0)
+        for run in runs
+    )
+    observed_invalid = sum(
+        max(getattr(run, "articles_invalid_timestamp", 0) or 0, 0)
+        for run in runs
+    )
     timestamp_error_runs = sum(
         1
         for run in runs
         if run.error_category == "parse"
         and re.search(r"time|date|timestamp", run.error_message or "", re.IGNORECASE)
     )
-    timestamped = max(len(articles) - missing - invalid, 0)
-    completeness = timestamped / len(articles) if articles else None
+    missing = max(observed_missing, persisted_missing)
+    invalid = max(observed_invalid, persisted_invalid)
+    total_observations = sum(max(run.articles_fetched or 0, 0) for run in runs) or len(articles)
+    timestamped = max(total_observations - missing - invalid, 0)
+    completeness = timestamped / total_observations if total_observations else None
     return {
         "missing_timestamps": missing,
         "invalid_timestamps": invalid,
+        "persisted_missing_timestamps": persisted_missing,
+        "persisted_invalid_timestamps": persisted_invalid,
         "timestamp_error_runs": timestamp_error_runs,
         "timestamped_rows": timestamped,
         "timestamp_completeness": round(completeness, 4) if completeness is not None else None,
@@ -104,7 +127,10 @@ def _source_health(
 
     latest_articles: dict[str, Article] = {}
     for article in articles:
-        if article.source not in latest_articles or article.collected_at > latest_articles[article.source].collected_at:
+        if (
+            article.source not in latest_articles
+            or article.collected_at > latest_articles[article.source].collected_at
+        ):
             latest_articles[article.source] = article
 
     result: list[dict[str, Any]] = []
@@ -124,6 +150,12 @@ def _source_health(
         elif run is not None and (run.articles_fetched or 0) == 0:
             status = "stale"
             evidence_status = "empty_success"
+        elif run is not None and (
+            (getattr(run, "articles_missing_timestamp", 0) or 0)
+            + (getattr(run, "articles_invalid_timestamp", 0) or 0)
+        ) > 0:
+            status = "stale"
+            evidence_status = "timestamp_quality_issue"
         elif run is not None and article is None:
             status = "failed"
             evidence_status = "run_without_persisted_item"
@@ -174,22 +206,28 @@ def _comparison(articles: list[Article]) -> dict[str, Any]:
         groups[_fingerprint(article)].append(article)
 
     overlap_items: list[dict[str, Any]] = []
+    cross_source_evidence_items: list[dict[str, Any]] = []
     for fingerprint, group in groups.items():
         lanes = sorted({getattr(article, "collection_lane", "hourly") for article in group})
         sources = sorted({article.source for article in group})
-        if len(lanes) > 1:
-            overlap_items.append({
+        if len(lanes) > 1 or len(sources) > 1:
+            evidence = {
                 "fingerprint": fingerprint,
                 "lanes": lanes,
                 "sources": sources,
                 "observations": len(group),
-            })
+            }
+            if len(lanes) > 1:
+                overlap_items.append(evidence)
+            if len(sources) > 1:
+                cross_source_evidence_items.append(evidence)
 
     return {
         "observed_rows": len(articles),
         "independent_event_count": len(groups),
         "cross_lane_overlap_count": len(overlap_items),
-        "cross_source_evidence_count": sum(1 for item in overlap_items if len(item["sources"]) > 1),
+        "cross_source_evidence_count": len(cross_source_evidence_items),
+        "cross_source_evidence_items": cross_source_evidence_items,
         "overlap_items": overlap_items,
     }
 
@@ -241,7 +279,10 @@ def _lane_metrics(
         "lane": lane,
         "run_count": len(runs),
         "evidence_status": evidence_status,
-        "source_types": sorted({article.source for article in articles} | {run.source_type for run in runs}),
+        "source_types": sorted(
+            {article.source for article in articles}
+            | {run.source_type for run in runs}
+        ),
         "raw_rows": raw_rows,
         "unique_rows": unique_rows,
         "new_rows": new_rows,
@@ -263,7 +304,7 @@ def _lane_metrics(
 
 
 def build_dual_run_receipt(
-    session,
+    session: Session,
     *,
     window_start: datetime,
     window_end: datetime,
@@ -309,7 +350,12 @@ def build_dual_run_receipt(
             "duration_seconds": round((end - start).total_seconds(), 3),
         },
         "lanes": {
-            lane: _lane_metrics(lane, articles_by_lane.get(lane, []), runs_by_lane.get(lane, []), end)
+            lane: _lane_metrics(
+                lane,
+                articles_by_lane.get(lane, []),
+                runs_by_lane.get(lane, []),
+                end,
+            )
             for lane in ("hourly", "realtime")
         },
         "comparison": _comparison(articles),
@@ -317,7 +363,10 @@ def build_dual_run_receipt(
         "convergence": {
             "eligible": False,
             "status": "not_ready",
-            "reason": "This receipt measures dual-run evidence; it never enables canonical-lane switching.",
+            "reason": (
+                "This receipt measures dual-run evidence; it never enables "
+                "canonical-lane switching."
+            ),
             "required_evidence": [
                 "multiple bounded trial windows",
                 "real-time latency and persistence completeness",
@@ -349,6 +398,7 @@ def run_live_smoke(
         started = time.monotonic()
         try:
             rows = fetcher()
+            collected_at = datetime.now(timezone.utc).isoformat()
             if not isinstance(rows, list):
                 raise TypeError("normalized result is not a list")
             if not rows:
@@ -356,6 +406,7 @@ def run_live_smoke(
                     "status": "empty",
                     "rows": 0,
                     "schema_valid": False,
+                    "collected_at": collected_at,
                     "latency_ms": round((time.monotonic() - started) * 1000, 3),
                     "error_type": "EmptyResponse",
                 }
@@ -373,13 +424,17 @@ def run_live_smoke(
                 "timestamped_rows": timestamped,
                 "timestamp_completeness": round(timestamped / len(rows), 4) if rows else None,
                 "schema_valid": True,
+                "collected_at": collected_at,
                 "latency_ms": round((time.monotonic() - started) * 1000, 3),
             }
         except Exception as exc:
+            collected_at = datetime.now(timezone.utc).isoformat()
+            logger.warning("Live smoke failed for %s (%s)", source_type, type(exc).__name__)
             results[source_type] = {
                 "status": "failed",
                 "rows": 0,
                 "schema_valid": False,
+                "collected_at": collected_at,
                 "latency_ms": round((time.monotonic() - started) * 1000, 3),
                 "error_type": type(exc).__name__,
             }

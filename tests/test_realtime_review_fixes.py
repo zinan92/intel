@@ -26,9 +26,12 @@ def test_realtime_seed_is_inactive_without_explicit_opt_in(monkeypatch):
         assert eastmoney is not None and eastmoney.is_active == 0
 
         monkeypatch.setenv("REALTIME_LANE_ENABLED", "1")
-        seed_source_registry(session)
-        assert get_source_by_key(session, "cls_telegraph:main").is_active == 1
-        assert get_source_by_key(session, "eastmoney_global_news:main").is_active == 1
+        enabled_engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(enabled_engine)
+        with Session(enabled_engine) as enabled_session:
+            seed_source_registry(enabled_session)
+            assert get_source_by_key(enabled_session, "cls_telegraph:main").is_active == 1
+            assert get_source_by_key(enabled_session, "eastmoney_global_news:main").is_active == 1
 
 
 def test_scheduler_does_not_register_realtime_job_when_opt_in_is_off(monkeypatch):
@@ -95,6 +98,41 @@ def test_empty_success_has_no_freshness_and_is_not_healthy():
     assert source["evidence_status"] == "empty_success"
 
 
+def test_timestamp_quality_issue_is_visible_in_health(monkeypatch):
+    from api.health_routes import _build_source_details
+
+    monkeypatch.setenv("REALTIME_LANE_ENABLED", "1")
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    now = datetime.utcnow()
+    with Session(engine) as session:
+        session.add(SourceRegistry(
+            source_key="cls_telegraph:main",
+            source_type="cls_telegraph",
+            display_name="CLS",
+            config_json="{}",
+            is_active=1,
+            lane="realtime",
+            schedule_seconds=60,
+            expected_freshness_hours=0.1,
+        ))
+        session.add(CollectorRun(
+            source_type="cls_telegraph",
+            source_key="cls_telegraph:main",
+            status="ok",
+            articles_fetched=1,
+            articles_saved=1,
+            articles_missing_timestamp=1,
+            completed_at=now,
+        ))
+        session.commit()
+
+        source = _build_source_details(session)[0]
+
+    assert source["status"] == "degraded"
+    assert source["missing_timestamp_rows"] == 1
+
+
 def test_save_stats_separate_duplicates_from_save_errors():
     from collectors.base import BaseCollector
 
@@ -139,7 +177,13 @@ def test_save_stats_separate_duplicates_from_save_errors():
         ])
 
     assert saved == 0
-    assert collector.last_save_stats == {"saved": 0, "duplicates": 1, "errors": 1}
+    assert collector.last_save_stats == {
+        "saved": 0,
+        "duplicates": 1,
+        "errors": 1,
+        "missing_timestamps": 2,
+        "invalid_timestamps": 0,
+    }
 
 
 def test_realtime_event_aggregation_is_contained():
@@ -169,6 +213,29 @@ def test_unknown_eastmoney_market_code_is_not_emitted():
 
     assert _eastmoney_ticker("116.00700") is None
     assert _eastmoney_ticker("0.300765") == "300765.SZ"
+
+
+def test_missing_provider_id_gets_deterministic_fallback_key():
+    from collectors.realtime_news import fetch_cls_telegraph
+
+    payload = {"data": {"roll_data": [{
+        "ctime": 1788252370,
+        "brief": "A row without provider id",
+        "content": "A row without provider id",
+        "shareurl": "https://example.test/no-id",
+        "is_ad": 0,
+    }]}}
+    with patch(
+        "collectors.realtime_news.requests.get",
+        return_value=MagicMock(
+            status_code=200,
+            json=lambda: payload,
+            raise_for_status=lambda: None,
+        ),
+    ):
+        rows = fetch_cls_telegraph()
+
+    assert rows[0]["source_id"].startswith("cls_telegraph:sha256:")
 
 
 def test_provider_block_is_not_retryable():

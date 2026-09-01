@@ -44,7 +44,9 @@ def run_tagger(
     try:
         if prefiltered:
             from sqlalchemy import text as sa_text
-            lane_filter = "" if include_realtime else " AND (a.collection_lane IS NULL OR a.collection_lane = 'hourly')"
+            lane_filter = "" if include_realtime else (
+                " AND (a.collection_lane IS NULL OR a.collection_lane = 'hourly')"
+            )
             rows = session.execute(sa_text(f"""
                 SELECT a.id FROM articles a
                 JOIN prefiltered_articles p ON a.id = p.article_id
@@ -52,7 +54,14 @@ def run_tagger(
                 ORDER BY a.collected_at DESC
             """)).fetchall()
             article_ids = [r[0] for r in rows]
-            articles = session.query(Article).filter(Article.id.in_(article_ids)).order_by(Article.collected_at.desc()).all() if article_ids else []
+            articles = (
+                session.query(Article)
+                .filter(Article.id.in_(article_ids))
+                .order_by(Article.collected_at.desc())
+                .all()
+                if article_ids
+                else []
+            )
         else:
             query = session.query(Article).filter(Article.relevance_score.is_(None))
             if not include_realtime:
@@ -115,8 +124,17 @@ def run_tagger(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run LLM tagger on unscored articles")
     parser.add_argument("--backfill", action="store_true", help="Process all unscored articles")
-    parser.add_argument("--limit", type=int, default=0, help="Process N most recent unscored articles")
-    parser.add_argument("--prefiltered", action="store_true", help="Only score prefiltered articles")
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=0,
+        help="Process N most recent unscored articles",
+    )
+    parser.add_argument(
+        "--prefiltered",
+        action="store_true",
+        help="Only score prefiltered articles",
+    )
     parser.add_argument("--batch-size", type=int, default=10, help="Articles per LLM call")
     parser.add_argument(
         "--include-realtime",

@@ -65,7 +65,10 @@ def test_eastmoney_malformed_rows_are_skipped():
         "collectors.realtime_news.requests.get",
         return_value=_response(payload),
     ):
-        assert fetch_eastmoney_global_news() == []
+        rows = fetch_eastmoney_global_news()
+
+    assert len(rows) == 1
+    assert rows[0]["source_id"].startswith("eastmoney_global_news:sha256:")
 
 
 def test_eastmoney_source_is_seeded_as_realtime_source():

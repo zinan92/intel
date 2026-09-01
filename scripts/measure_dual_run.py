@@ -22,10 +22,19 @@ def _parse_datetime(value: str) -> datetime:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--hours", type=float, default=1.0, help="Receipt window length (default: 1h)")
+    parser.add_argument(
+        "--hours",
+        type=float,
+        default=1.0,
+        help="Receipt window length (default: 1h)",
+    )
     parser.add_argument("--start", type=_parse_datetime, help="UTC/ISO window start")
     parser.add_argument("--end", type=_parse_datetime, help="UTC/ISO window end (default: now)")
-    parser.add_argument("--live-smoke", action="store_true", help="Call CLS and Eastmoney once without saving responses")
+    parser.add_argument(
+        "--live-smoke",
+        action="store_true",
+        help="Call CLS and Eastmoney once without saving responses",
+    )
     parser.add_argument("--output", type=Path, help="Write JSON receipt to this path")
     args = parser.parse_args()
 

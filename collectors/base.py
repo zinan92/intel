@@ -26,6 +26,8 @@ class BaseCollector(ABC):
             "saved": 0,
             "duplicates": 0,
             "errors": 0,
+            "missing_timestamps": 0,
+            "invalid_timestamps": 0,
         }
 
     @abstractmethod
@@ -38,7 +40,14 @@ class BaseCollector(ABC):
         saved = 0
         duplicates = 0
         errors = 0
+        missing_timestamps = 0
+        invalid_timestamps = 0
         for data in articles:
+            timestamp_status = data.get("_timestamp_status")
+            if timestamp_status == "invalid":
+                invalid_timestamps += 1
+            elif timestamp_status == "missing" or data.get("published_at") is None:
+                missing_timestamps += 1
             session = get_session()
             try:
                 # Merge collector tags with keyword-based tags
@@ -95,6 +104,8 @@ class BaseCollector(ABC):
             "saved": saved,
             "duplicates": duplicates,
             "errors": errors,
+            "missing_timestamps": missing_timestamps,
+            "invalid_timestamps": invalid_timestamps,
         }
         logger.info(
             "[%s] Saved %d new articles (of %d fetched; duplicates=%d, errors=%d)",

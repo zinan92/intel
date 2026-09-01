@@ -109,6 +109,8 @@ def run_migrations(engine: Engine) -> None:
         ("source_registry", "schedule_seconds", "INTEGER"),
         ("collector_runs", "articles_duplicate", "INTEGER"),
         ("collector_runs", "articles_failed", "INTEGER"),
+        ("collector_runs", "articles_missing_timestamp", "INTEGER"),
+        ("collector_runs", "articles_invalid_timestamp", "INTEGER"),
         ("events", "narrative_summary", "TEXT"),
         ("events", "prev_signal_score", "REAL"),
         ("events", "trading_play", "TEXT"),
@@ -125,6 +127,8 @@ def run_migrations(engine: Engine) -> None:
                     ("source_registry", "lane"): "TEXT NOT NULL DEFAULT 'hourly'",
                     ("collector_runs", "articles_duplicate"): "INTEGER NOT NULL DEFAULT 0",
                     ("collector_runs", "articles_failed"): "INTEGER NOT NULL DEFAULT 0",
+                    ("collector_runs", "articles_missing_timestamp"): "INTEGER NOT NULL DEFAULT 0",
+                    ("collector_runs", "articles_invalid_timestamp"): "INTEGER NOT NULL DEFAULT 0",
                 }
                 definition = defaulted_columns.get((table, column), col_type)
                 conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}"))

@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
@@ -141,7 +142,7 @@ def test_receipt_reports_each_lane_and_does_not_claim_convergence():
     assert realtime["duplicate_rows"] == 1
     assert realtime["source_failures"] == 1
     assert realtime["missing_timestamps"] == 1
-    assert realtime["timestamp_completeness"] == 0.5
+    assert realtime["timestamp_completeness"] == pytest.approx(0.6667)
     assert realtime["latency"]["count"] == 1
 
     comparison = receipt["comparison"]
@@ -179,6 +180,7 @@ def test_live_smoke_is_failure_isolated_and_sanitized():
     assert smoke["status"] == "partial_failure"
     assert smoke["sources"]["cls_telegraph"]["status"] == "ok"
     assert smoke["sources"]["cls_telegraph"]["rows"] == 1
+    assert smoke["sources"]["cls_telegraph"]["collected_at"]
     assert smoke["sources"]["eastmoney_global_news"]["status"] == "failed"
     assert smoke["sources"]["eastmoney_global_news"]["error_type"] == "TimeoutError"
     assert "provider timed out" not in str(smoke)
@@ -192,3 +194,29 @@ def test_live_smoke_does_not_treat_empty_provider_response_as_success():
     assert smoke["status"] == "failed"
     assert smoke["sources"]["cls_telegraph"]["status"] == "empty"
     assert smoke["sources"]["cls_telegraph"]["error_type"] == "EmptyResponse"
+
+
+def test_same_lane_cross_source_evidence_is_retained():
+    from dual_run.receipt import _comparison
+
+    published = datetime(2026, 9, 1, 8, 0, 0)
+    comparison = _comparison([
+        Article(
+            source="cls_telegraph",
+            source_id="cls:1",
+            title="Same market event",
+            published_at=published,
+            collection_lane="realtime",
+        ),
+        Article(
+            source="eastmoney_global_news",
+            source_id="east:1",
+            title="Same market event",
+            published_at=published,
+            collection_lane="realtime",
+        ),
+    ])
+
+    assert comparison["cross_lane_overlap_count"] == 0
+    assert comparison["cross_source_evidence_count"] == 1
+    assert comparison["cross_source_evidence_items"][0]["lanes"] == ["realtime"]
