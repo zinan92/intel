@@ -94,6 +94,7 @@ class CollectorRun(Base):
 
     __table_args__ = (
         Index("idx_collector_runs_type_time", "source_type", "completed_at"),
+        Index("idx_collector_runs_completed_at", "completed_at"),
     )
 
     def __repr__(self) -> str:

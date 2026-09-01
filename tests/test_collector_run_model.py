@@ -116,6 +116,16 @@ class TestMigrationIdempotency:
             row = result.fetchone()
             assert row is not None, "Index idx_collector_runs_type_time not found"
 
+    def test_completed_at_index_exists(self, engine) -> None:
+        with engine.connect() as connection:
+            result = connection.execute(
+                text(
+                    "SELECT name FROM sqlite_master "
+                    "WHERE type='index' AND name='idx_collector_runs_completed_at'"
+                )
+            )
+            assert result.fetchone() is not None
+
 
 # ---------------------------------------------------------------------------
 # busy_timeout verification

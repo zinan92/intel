@@ -195,4 +195,8 @@ def run_migrations(engine: Engine) -> None:
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_events_tag_active "
             "ON events (narrative_tag) WHERE status = 'active'"
         ))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_collector_runs_completed_at "
+            "ON collector_runs (completed_at)"
+        ))
         conn.commit()
