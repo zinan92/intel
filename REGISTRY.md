@@ -16,6 +16,19 @@
   `REALTIME_LANE_ENABLED=1 python scripts/activate_realtime_lane.py`; the
   normal service stays disabled until that operator action is taken.
 
+## 2026-09-01 · Realtime AI triage connected to the prototype
+
+- PR #46 adds persisted AI triage for realtime News Items and
+  `/api/ui/realtime`; the local News Triage Desk now reads real CLS/Eastmoney
+  items and renders High Impact, Watch, Noise, and explicit Unknown states.
+- DeepSeek remains the first provider. When it returns quota/transport failure,
+  the existing isolated Codex CLI fallback is used; if both fail, the item is
+  retained as `unknown` with an error state.
+- The live page is served locally at
+  `http://127.0.0.1:8777/research-newsliquid/prototype-news-triage-v1-simple.html`.
+  K-line, broker, order execution, and canonical-lane convergence remain out
+  of scope.
+
 ## 2026-08-31 · DeepSeek → Codex CLI fallback restored scheduled newsletters
 
 - DeepSeek returned HTTP 402 from 2026-08-26 through 2026-08-31. Finance

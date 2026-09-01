@@ -6,7 +6,7 @@ import json
 import re
 from typing import Any
 
-from llm.deepseek import DeepSeekClient
+from llm.deepseek import DeepSeekClient, DeepSeekError
 
 BUCKETS = frozenset({"high_impact", "watch", "noise", "unknown"})
 DIRECTIONS = frozenset({"bullish", "bearish", "mixed", "unclear"})
@@ -85,10 +85,35 @@ class RealtimeTriage:
     def __init__(self, *, client: Any | None = None, batch_size: int = 10) -> None:
         self.client = client or DeepSeekClient()
         self.batch_size = batch_size
+        self._provider = "deepseek"
 
     @property
     def model_name(self) -> str:
+        if self._provider == "codex-cli":
+            return "codex-cli"
         return str(getattr(self.client, "model", "deepseek"))
+
+    def _complete(self, prompt: str) -> str:
+        """Use DeepSeek first, then the existing isolated Codex fallback."""
+        try:
+            self._provider = "deepseek"
+            return self.client.complete(
+                prompt,
+                system_prompt=SYSTEM_PROMPT,
+                json_mode=True,
+                timeout=120,
+                max_tokens=max(4096, self.batch_size * 500),
+            )
+        except DeepSeekError:
+            from scripts.generate_narrative_signal import _call_codex
+
+            fallback, provider = _call_codex(
+                f"{SYSTEM_PROMPT}\n\n{prompt}"
+            )
+            if not fallback or provider != "codex-cli":
+                raise
+            self._provider = provider
+            return fallback
 
     def triage_batch(self, articles: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Return one validated triage result for every supplied article."""
@@ -101,12 +126,9 @@ class RealtimeTriage:
                 f"Title: {article.get('title') or '(no title)'}\n"
                 f"Content: {(article.get('content') or '')[:1800]}"
             )
-        response = self.client.complete(
-            "请分析以下实时新闻，返回 JSON only：\n\n" + "\n---\n".join(prompt_parts),
-            system_prompt=SYSTEM_PROMPT,
-            json_mode=True,
-            timeout=120,
-            max_tokens=max(4096, len(articles) * 500),
+        response = self._complete(
+            "请分析以下实时新闻，返回 JSON only：\n\n"
+            + "\n---\n".join(prompt_parts)
         )
         raw_results = _extract_results(response)
         by_id = {item.get("id"): item for item in raw_results}
