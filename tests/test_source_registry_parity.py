@@ -62,11 +62,16 @@ class TestRegistryCoversPreviousConfig:
             assert v2 in active_types, f"Missing V2 type {v2} (was {legacy})"
             assert legacy not in active_types, f"Legacy name {legacy} still in registry"
 
-    def test_registry_has_10_source_types(self, seeded_session):
-        """Should have exactly 10 active source types."""
+    def test_registry_keeps_legacy_types_and_adds_realtime_types(self, seeded_session):
+        """The original 10 types remain alongside the two realtime sources."""
         active = list_active_sources(seeded_session)
         types = {s.source_type for s in active}
-        assert len(types) == 10
+        expected = {
+            "rss", "reddit", "github_release", "website_monitor", "social_kol",
+            "hackernews", "xueqiu", "yahoo_finance", "google_news", "github_trending",
+            "cls_telegraph", "eastmoney_global_news",
+        }
+        assert types == expected
 
     def test_all_per_instance_sources_seeded(self, seeded_session):
         """RSS feeds, subreddits, etc. should all be present."""
