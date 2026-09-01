@@ -56,10 +56,13 @@ class TestSchedulerUsesRegistry:
         assert "rss:simon-willison" not in keys
 
     def test_schedule_hours_available_per_source(self, session: Session):
-        """Every active source has schedule_hours for job registration."""
+        """Hourly sources use hours; realtime sources use seconds."""
         active = list_active_sources(session)
         for src in active:
-            assert src.schedule_hours is not None, f"{src.source_key} missing schedule_hours"
+            if src.lane == "realtime":
+                assert src.schedule_seconds is not None, f"{src.source_key} missing schedule_seconds"
+            else:
+                assert src.schedule_hours is not None, f"{src.source_key} missing schedule_hours"
 
     def test_adapter_exists_for_all_active_types(self, session: Session):
         """Every active source type has a registered adapter."""
@@ -102,7 +105,8 @@ class TestHealthUsesRegistry:
         # All 10 source types should be present
         expected = {"rss", "reddit", "github_release", "website_monitor", "social_kol",
                     "hackernews", "xueqiu", "yahoo_finance", "google_news", "github_trending"}
-        assert expected == active_types
+        assert expected.issubset(active_types)
+        assert "cls_telegraph" in active_types
 
     def test_source_with_no_articles_shows_no_data(self, session: Session):
         """A source with no articles should have status 'no_data'."""

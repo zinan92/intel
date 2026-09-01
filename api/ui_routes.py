@@ -39,6 +39,8 @@ _SOURCE_KIND: dict[str, str] = {
     "xueqiu": "post",
     "yahoo_finance": "news",
     "google_news": "news",
+    "cls_telegraph": "news",
+    "eastmoney_global_news": "news",
 }
 
 
@@ -193,6 +195,7 @@ def _feed_item(article: Article, priority: float, now: datetime, event_article_i
         "momentum_label": _momentum_label(article, now),
         "tags": _parse_tags(article.tags),
         "narrative_tags": _parse_tags(article.narrative_tags),
+        "collection_lane": article.collection_lane,
         "published_at": article.published_at.isoformat() if article.published_at else None,
         "collected_at": article.collected_at.isoformat() if article.collected_at else None,
         "in_event": article.id in event_article_ids,

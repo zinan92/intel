@@ -104,6 +104,18 @@ SOURCE_BOOTSTRAP: list[dict] = [
     {"source": "website_monitor",  "interval_hours": 1,  "category": "mixed"},
 ]
 
+# Realtime sources are intentionally separate from SOURCE_BOOTSTRAP. The
+# hourly lane remains unchanged while the migration lane is validated.
+REALTIME_SOURCE_BOOTSTRAP: list[dict] = [
+    {
+        "source": "cls_telegraph",
+        "display_name": "CLS Telegraph",
+        "interval_seconds": 60,
+        "category": "market-news",
+        "expected_freshness_hours": 0.1,
+    },
+]
+
 # --- Collector: Social KOL ---
 SOCIAL_KOL_HANDLES: list[dict] = [
     {"handle": "sama",            "category": "llm"},

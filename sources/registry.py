@@ -56,7 +56,8 @@ def upsert_source(session: Session, payload: dict[str, Any]) -> SourceRegistry:
       - source_type (required for insert)
       - display_name (required for insert)
       - config (any JSON-serializable value, serialized to config_json)
-      - category, owner_type, visibility, is_active, schedule_hours, priority (optional)
+      - category, owner_type, visibility, is_active, schedule_hours, lane,
+        schedule_seconds, expected_freshness_hours, priority (optional)
 
     On update, only keys present in the payload are modified.
     Reactivating a source (is_active=1) clears retired_at.
@@ -70,8 +71,16 @@ def upsert_source(session: Session, payload: dict[str, Any]) -> SourceRegistry:
         existing.category = payload.get("category", existing.category)
         existing.owner_type = payload.get("owner_type", existing.owner_type)
         existing.visibility = payload.get("visibility", existing.visibility)
-        existing.schedule_hours = payload.get("schedule_hours", existing.schedule_hours)
-        existing.priority = payload.get("priority", existing.priority)
+        if "schedule_hours" in payload:
+            existing.schedule_hours = payload["schedule_hours"]
+        if "lane" in payload:
+            existing.lane = payload["lane"]
+        if "schedule_seconds" in payload:
+            existing.schedule_seconds = payload["schedule_seconds"]
+        if "expected_freshness_hours" in payload:
+            existing.expected_freshness_hours = payload["expected_freshness_hours"]
+        if "priority" in payload:
+            existing.priority = payload["priority"]
 
         # Only update config_json if config is explicitly provided
         config_raw = payload.get("config", _SENTINEL)
@@ -99,7 +108,10 @@ def upsert_source(session: Session, payload: dict[str, Any]) -> SourceRegistry:
         visibility=payload.get("visibility", "internal"),
         is_active=payload.get("is_active", 1),
         schedule_hours=payload.get("schedule_hours"),
+        lane=payload.get("lane", "hourly"),
+        schedule_seconds=payload.get("schedule_seconds"),
         priority=payload.get("priority", 100),
+        expected_freshness_hours=payload.get("expected_freshness_hours"),
     )
     session.add(record)
     session.commit()

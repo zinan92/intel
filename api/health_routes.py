@@ -35,6 +35,8 @@ _FRESHNESS_DEFAULTS: dict[str, float] = {
     "social_kol": 4.0,
     "xueqiu": 4.0,
     "website_monitor": 4.0,
+    "cls_telegraph": 0.1,
+    "eastmoney_global_news": 0.1,
 }
 
 _DEFAULT_FRESHNESS_HOURS = 4.0
@@ -281,6 +283,9 @@ def _build_source_details(session) -> list[dict[str, Any]]:
             "is_active": bool(src.is_active),
             "freshness_age_hours": freshness_age_hours,
             "expected_freshness_hours": src.expected_freshness_hours,
+            "lane": getattr(src, "lane", "hourly"),
+            "schedule_hours": getattr(src, "schedule_hours", None),
+            "schedule_seconds": getattr(src, "schedule_seconds", None),
             "articles_24h": count_24h,
             "articles_7d_avg": round(avg_7d, 1),
             "volume_anomaly": volume_anomaly,

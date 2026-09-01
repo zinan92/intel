@@ -104,6 +104,9 @@ def run_migrations(engine: Engine) -> None:
         ("articles", "relevance_score", "INTEGER"),
         ("articles", "narrative_tags", "TEXT"),
         ("articles", "tickers", "TEXT"),
+        ("articles", "collection_lane", "TEXT"),
+        ("source_registry", "lane", "TEXT"),
+        ("source_registry", "schedule_seconds", "INTEGER"),
         ("events", "narrative_summary", "TEXT"),
         ("events", "prev_signal_score", "REAL"),
         ("events", "trading_play", "TEXT"),
@@ -157,6 +160,21 @@ def run_migrations(engine: Engine) -> None:
             )
             conn.commit()
         logger.info("Seeded expected_freshness_hours defaults for source_registry")
+
+    # New columns are nullable in the SQLite ALTER TABLE path so older
+    # databases can be upgraded in place. Backfill the explicit defaults
+    # expected by the ORM and by the lane-aware scheduler.
+    with engine.connect() as conn:
+        if _table_exists(engine, "articles") and _column_exists(engine, "articles", "collection_lane"):
+            conn.execute(text(
+                "UPDATE articles SET collection_lane = 'hourly' "
+                "WHERE collection_lane IS NULL"
+            ))
+        if _table_exists(engine, "source_registry") and _column_exists(engine, "source_registry", "lane"):
+            conn.execute(text(
+                "UPDATE source_registry SET lane = 'hourly' WHERE lane IS NULL"
+            ))
+        conn.commit()
 
     # Partial unique index: prevent duplicate active events for same tag
     with engine.connect() as conn:

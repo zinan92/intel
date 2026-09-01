@@ -64,6 +64,7 @@ class BaseCollector(ABC):
                     score=data.get("score", 0),
                     published_at=data.get("published_at"),
                     collected_at=datetime.utcnow(),
+                    collection_lane=data.get("collection_lane", "hourly"),
                 )
                 session.add(article)
                 session.commit()
