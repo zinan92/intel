@@ -167,8 +167,6 @@ def _triage_payload(article: Article) -> dict[str, Any]:
         "rationale": article.triage_rationale,
         "affected_assets": _parse_json_list(article.triage_assets),
         "watch_for": _parse_json_list(article.triage_watch_for),
-        "scenario_bull": article.triage_scenario_bull,
-        "scenario_bear": article.triage_scenario_bear,
         "model": article.triage_model,
         "error": article.triage_error,
         "triaged_at": article.triaged_at.isoformat() if article.triaged_at else None,
