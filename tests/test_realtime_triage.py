@@ -141,6 +141,36 @@ def test_generic_central_bank_meeting_is_not_forced_high_impact():
     assert client.complete.call_count == 1
 
 
+def test_scheduled_high_impact_can_be_unclear_with_assets_and_watch_conditions():
+    from triage.realtime import RealtimeTriage
+
+    client = MagicMock()
+    client.complete.return_value = json.dumps({"results": [{
+        "id": 402,
+        "bucket": "high_impact",
+        "direction": "unclear",
+        "rationale": "The release is a major catalyst but the result is not known yet.",
+        "affected_assets": [
+            {"symbol": "SPX", "name": "S&P 500", "impact": "unclear"},
+            {"symbol": "DXY", "name": "US Dollar Index", "impact": "unclear"},
+        ],
+        "watch_for": ["actual payrolls versus 48K consensus", "wage growth surprise"],
+    }]})
+
+    result = RealtimeTriage(client=client).triage_batch([{
+        "id": 402,
+        "title": "预告：美国小非农数据今夜公布，预期新增4.8万人",
+        "content": "数据将在今晚公布。",
+        "source": "blockbeats_newsflash",
+    }])
+
+    assert result[0]["bucket"] == "high_impact"
+    assert result[0]["direction"] == "unclear"
+    assert len(result[0]["affected_assets"]) == 2
+    assert result[0]["watch_for"]
+    assert client.complete.call_count == 1
+
+
 def test_triage_batch_normalizes_ai_contract():
     from triage.realtime import RealtimeTriage
 
