@@ -1,5 +1,13 @@
 # Runtime Registry
 
+## 2026-09-02 · Scheduled High Impact keeps magnitude separate from direction
+
+- Issue #79 permits `unclear` only for explicit pre-release/scheduled High
+  Impact catalysts, and only when affected assets plus concrete watch
+  conditions are present. Scheduled assets use `impact=unclear` honestly.
+- Released/observed High Impact events still require bullish/bearish direction
+  and per-asset up/down impact. `mixed` remains forbidden everywhere.
+
 ## 2026-09-02 · High Impact floor narrowed to actual policy events
 
 - Issue #77 keeps FOMC, rate decisions, emergency hikes/cuts, CPI/PCE/NFP and

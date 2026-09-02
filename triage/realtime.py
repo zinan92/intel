@@ -10,12 +10,18 @@ from llm.deepseek import DeepSeekClient, DeepSeekError
 
 BUCKETS = frozenset({"high_impact", "watch", "noise", "unknown"})
 DIRECTIONS = frozenset({"bullish", "bearish", "unclear"})
-ASSET_IMPACTS = frozenset({"up", "down"})
+ASSET_IMPACTS = frozenset({"up", "down", "unclear"})
 _HIGH_IMPACT_RE = re.compile(
     r"\b(?:fomc|cpi|pce|nfp|nonfarm payroll|jackson hole|fed decision|rate decision|"
     r"emergency rate|(?:fed|ecb|boj|central bank) (?:rate )?decision)\b|"
     r"非农|消费者价格|通胀数据|利率决议|杰克逊霍尔|紧急降息|紧急加息|"
     r"(?:美联储|欧洲央行|日本央行|央行).{0,20}(?:加息|降息|利率决定|利率决议)",
+    re.IGNORECASE,
+)
+_SCHEDULED_CATALYST_RE = re.compile(
+    r"预告|重点关注(?:财经事件|经济数据)?|今(?:夜|晚).{0,12}公布|"
+    r"即将.{0,12}(?:公布|发布)|将于.{0,20}(?:公布|发布|举行)|"
+    r"\b(?:preview|scheduled|due (?:today|tonight)|will be released|ahead of)\b",
     re.IGNORECASE,
 )
 
@@ -28,12 +34,14 @@ SYSTEM_PROMPT = """你是面向活跃交易者的实时市场新闻 triage analy
 - unknown：信息不足，或无法可靠判断；不要把不确定性伪装成 noise。
 
 direction 只能是 bullish、bearish、unclear，不允许 mixed。direction 表示主要交易方向；不同资产可在 affected_assets 中分别标 up/down。
-- high_impact 必须选择 bullish 或 bearish，并至少给出一个受影响资产；不要捏造证券 ticker，可使用真实指数、利率、外汇、商品或加密资产符号/名称。
+- 已公布/已发生的 high_impact 必须选择 bullish 或 bearish，并至少给出一个受影响资产。
+- 明确写着“预告/今夜公布/重点关注/scheduled/due”的事件前瞻仍可为 high_impact + unclear，但 affected_assets 和 watch_for 必须非空，资产 impact 写 unclear。
+- 不要捏造证券 ticker，可使用真实指数、利率、外汇、商品或加密资产符号/名称。
 - watch 若方向 unclear，watch_for 必须给出具体、可观察的确认条件。
 - noise/unknown 不得伪造方向或资产。
 - 只给一个明确判断及传导理由，不要输出 bull/bear 两套 if 情景。
 
-只返回 JSON object：{"results":[{"id":整数,"bucket":"...","direction":"...","rationale":"...","affected_assets":[{"symbol":"...","name":"...","impact":"up/down"}],"watch_for":["..."]}]}。不要输出 Markdown 或额外解释。"""
+只返回 JSON object：{"results":[{"id":整数,"bucket":"...","direction":"...","rationale":"...","affected_assets":[{"symbol":"...","name":"...","impact":"up/down/unclear"}],"watch_for":["..."]}]}。不要输出 Markdown 或额外解释。"""
 
 
 def _extract_results(text: str) -> list[dict[str, Any]]:
@@ -85,6 +93,11 @@ def _has_high_impact_floor(article: dict[str, Any]) -> bool:
     return bool(_HIGH_IMPACT_RE.search(text))
 
 
+def _is_scheduled_catalyst(article: dict[str, Any]) -> bool:
+    text = f"{article.get('title') or ''} {article.get('content') or ''}"
+    return bool(_SCHEDULED_CATALYST_RE.search(text))
+
+
 def _article_prompt(article: dict[str, Any]) -> str:
     tickers = article.get("tickers")
     ticker_text = ", ".join(str(value) for value in tickers) if tickers else "none"
@@ -118,12 +131,22 @@ def _normalize_result(
     watch_for = _normalize_watch_for(result.get("watch_for"))
 
     if bucket == "high_impact":
-        if direction not in {"bullish", "bearish"}:
+        scheduled = _is_scheduled_catalyst(article)
+        if direction not in {"bullish", "bearish"} and not (
+            direction == "unclear" and scheduled
+        ):
             raise ValueError("high_impact direction must be bullish or bearish")
         if not assets:
             raise ValueError("high_impact affected_assets must be non-empty")
         if any(asset.get("impact") not in ASSET_IMPACTS for asset in assets):
-            raise ValueError("high_impact asset impact must be up or down")
+            raise ValueError("high_impact asset impact must be up, down or unclear")
+        if direction == "unclear":
+            if not watch_for:
+                raise ValueError("scheduled high_impact requires non-empty watch_for")
+            if any(asset.get("impact") != "unclear" for asset in assets):
+                raise ValueError("scheduled unclear high_impact asset impact must be unclear")
+        elif any(asset.get("impact") not in {"up", "down"} for asset in assets):
+            raise ValueError("directional high_impact asset impact must be up or down")
     if bucket == "watch" and direction == "unclear" and not watch_for:
         raise ValueError("unclear watch result requires non-empty watch_for")
 
@@ -217,7 +240,8 @@ class RealtimeTriage:
         if invalid:
             repair_prompt = (
                 "修复以下不符合 decision contract 的结果。必须逐条返回；"
-                "High Impact 必须 bullish/bearish 且 affected_assets 非空，"
+                "已发生的 High Impact 必须 bullish/bearish 且 affected_assets 非空；"
+                "预告型 High Impact 可 unclear，但 assets impact 必须 unclear 且 watch_for 非空；"
                 "Watch+unclear 必须有具体 watch_for；不得输出 mixed 或双情景。\n\n"
                 + "\n---\n".join(
                     f"Validation error: {error}\n{_article_prompt(article)}"
