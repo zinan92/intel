@@ -184,6 +184,8 @@ def run_migrations(engine: Engine) -> None:
         ("articles", "provider_channel_id", "TEXT"),
         ("articles", "provider_message_id", "TEXT"),
         ("articles", "provider_edit_at", "DATETIME"),
+        ("articles", "is_backfill", "INTEGER"),
+        ("articles", "backfill_reason", "TEXT"),
         ("source_registry", "lane", "TEXT"),
         ("source_registry", "schedule_seconds", "INTEGER"),
         ("collector_runs", "articles_duplicate", "INTEGER"),
@@ -204,6 +206,7 @@ def run_migrations(engine: Engine) -> None:
                 defaulted_columns = {
                     ("articles", "collection_lane"): "TEXT NOT NULL DEFAULT 'hourly'",
                     ("articles", "triage_attempts"): "INTEGER NOT NULL DEFAULT 0",
+                    ("articles", "is_backfill"): "INTEGER NOT NULL DEFAULT 0",
                     ("source_registry", "lane"): "TEXT NOT NULL DEFAULT 'hourly'",
                     ("collector_runs", "articles_duplicate"): "INTEGER NOT NULL DEFAULT 0",
                     ("collector_runs", "articles_failed"): "INTEGER NOT NULL DEFAULT 0",
@@ -285,5 +288,9 @@ def run_migrations(engine: Engine) -> None:
         conn.execute(text(
             "CREATE INDEX IF NOT EXISTS idx_collector_runs_completed_at "
             "ON collector_runs (completed_at)"
+        ))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_articles_realtime_backfill_collected "
+            "ON articles (collection_lane, is_backfill, collected_at)"
         ))
         conn.commit()

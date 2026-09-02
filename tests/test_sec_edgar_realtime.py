@@ -72,8 +72,10 @@ def test_sec_adapter_resolves_ticker_and_normalizes_approved_filing(monkeypatch)
         "collection_lane": "realtime",
         "source_authority": "official",
         "corroboration_state": "primary_source",
-        "pin_eligibility": "eligible_if_high_impact",
-        "_timestamp_status": "valid",
+            "pin_eligibility": "eligible_if_high_impact",
+            "is_backfill": False,
+            "backfill_reason": None,
+            "_timestamp_status": "valid",
     }
     assert request.call_count == 2
     assert all(
@@ -105,6 +107,7 @@ def test_sec_source_seeds_exact_approved_watchlist_and_forms(monkeypatch):
         "JPM", "COIN", "MSTR", "XOM", "NEM",
     ]
     assert config["forms"] == ["8-K", "10-Q", "10-K", "6-K", "20-F"]
+    assert config["lookback_hours"] == 72
     assert set(config["cik_map"]) == set(config["tickers"])
     assert config["cik_map"]["SNDK"] == 2023554
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from threading import Lock
 from typing import Any
 
@@ -129,6 +129,8 @@ def _normalize_filing(
     ticker: str,
     cik: int,
     company: str,
+    backfill_cutoff: datetime,
+    lookback_hours: int,
 ) -> dict[str, Any] | None:
     form = str(row.get("form") or "").strip().upper()
     accession = str(row.get("accessionNumber") or "").strip()
@@ -144,6 +146,7 @@ def _normalize_filing(
     content = f"{company} filed {form} for {report_date}."
     if items:
         content += f" Items: {items}."
+    is_backfill = published_at is not None and published_at < backfill_cutoff
     return {
         "source": "sec_edgar",
         "source_id": f"sec_edgar:{accession}",
@@ -163,6 +166,12 @@ def _normalize_filing(
         "source_authority": "official",
         "corroboration_state": "primary_source",
         "pin_eligibility": "eligible_if_high_impact",
+        "is_backfill": is_backfill,
+        "backfill_reason": (
+            f"outside_realtime_lookback_{lookback_hours}h"
+            if is_backfill
+            else None
+        ),
         "_timestamp_status": "valid" if published_at else "missing",
     }
 
@@ -172,10 +181,18 @@ def fetch_sec_edgar_filings(
     tickers: list[str],
     forms: list[str],
     cik_map: dict[str, int] | None = None,
+    lookback_hours: int = 72,
+    now: datetime | None = None,
 ) -> list[dict[str, Any]]:
     """Resolve the watchlist through SEC metadata and return approved filings."""
     if not isinstance(cik_map, dict) or not cik_map:
         raise SourceConfigurationError("SEC CIK pin contract is required")
+    if lookback_hours < 1:
+        raise SourceConfigurationError("SEC lookback_hours must be positive")
+    observed_at = now or datetime.now(timezone.utc).replace(tzinfo=None)
+    if observed_at.tzinfo is not None:
+        observed_at = observed_at.astimezone(timezone.utc).replace(tzinfo=None)
+    backfill_cutoff = observed_at - timedelta(hours=lookback_hours)
     company_index = _company_index()
     approved_forms = {form.strip().upper() for form in forms if form.strip()}
     normalized: list[dict[str, Any]] = []
@@ -199,6 +216,8 @@ def fetch_sec_edgar_filings(
                 ticker=ticker,
                 cik=cik,
                 company=company,
+                backfill_cutoff=backfill_cutoff,
+                lookback_hours=lookback_hours,
             )
             if filing is not None:
                 normalized.append(filing)

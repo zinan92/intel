@@ -234,6 +234,7 @@ def _adapt_sec_edgar(record: dict[str, Any]) -> list[dict[str, Any]]:
         tickers=[str(value) for value in cfg.get("tickers", [])],
         forms=[str(value) for value in cfg.get("forms", [])],
         cik_map=cfg.get("cik_map"),
+        lookback_hours=int(cfg.get("lookback_hours", 72)),
     )
 
 

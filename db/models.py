@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, Index, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, Index, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -79,6 +79,8 @@ class Article(Base):
     provider_channel_id: Mapped[str | None] = mapped_column(String)
     provider_message_id: Mapped[str | None] = mapped_column(String)
     provider_edit_at: Mapped[datetime | None] = mapped_column(DateTime)
+    is_backfill: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    backfill_reason: Mapped[str | None] = mapped_column(String)
 
     __table_args__ = (
         Index("idx_source", "source"),
