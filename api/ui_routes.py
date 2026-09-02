@@ -10,10 +10,13 @@ GET /api/ui/search          — keyword search across title/content
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
+import unicodedata
 from collections import Counter
 from datetime import datetime, timedelta, timezone
+from difflib import SequenceMatcher
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
@@ -48,6 +51,103 @@ _SOURCE_KIND: dict[str, str] = {
 
 def _source_kind(source: str) -> str:
     return _SOURCE_KIND.get(source, "post")
+
+
+_EVENT_WINDOW = timedelta(minutes=45)
+_BUCKET_RANK = {"unknown": 0, "noise": 1, "watch": 2, "high_impact": 3}
+
+
+def _normalized_headline(value: Any) -> str:
+    text = unicodedata.normalize("NFKC", str(value or "")).lower().strip()
+    text = re.sub(r"^【[^】]{1,20}】", "", text)
+    text = re.sub(r"^财联社\d{1,2}月\d{1,2}日电[，,:：\s]*", "", text)
+    return re.sub(r"[\W_]+", "", text, flags=re.UNICODE)
+
+
+def _event_time(item: dict[str, Any]) -> datetime | None:
+    value = item.get("published_at") or item.get("collected_at")
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).replace(
+            tzinfo=None,
+        )
+    except ValueError:
+        return None
+
+
+def _same_event(
+    item: dict[str, Any],
+    normalized: str,
+    group: dict[str, Any],
+) -> bool:
+    if not normalized or item.get("source") in group["sources"]:
+        return False
+    item_time = _event_time(item)
+    if item_time is None:
+        return False
+    for member, member_normalized in zip(group["items"], group["normalized"]):
+        member_time = _event_time(member)
+        if member_time is None or abs(item_time - member_time) > _EVENT_WINDOW:
+            continue
+        if normalized == member_normalized:
+            return True
+        if SequenceMatcher(None, normalized, member_normalized).ratio() >= 0.90:
+            return True
+        shorter, longer = sorted((normalized, member_normalized), key=len)
+        if shorter in longer and len(shorter) / max(len(longer), 1) >= 0.80:
+            return True
+    return False
+
+
+def _group_realtime_events(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    groups: list[dict[str, Any]] = []
+    for item in items:
+        normalized = _normalized_headline(item.get("title"))
+        group = next(
+            (candidate for candidate in groups if _same_event(item, normalized, candidate)),
+            None,
+        )
+        if group is None:
+            groups.append({
+                "items": [item],
+                "normalized": [normalized],
+                "sources": {item.get("source")},
+            })
+        else:
+            group["items"].append(item)
+            group["normalized"].append(normalized)
+            group["sources"].add(item.get("source"))
+
+    events: list[dict[str, Any]] = []
+    for group in groups:
+        primary = max(
+            group["items"],
+            key=lambda item: (
+                _BUCKET_RANK.get(item.get("triage", {}).get("bucket") or "unknown", 0),
+                item.get("published_at") or item.get("collected_at") or "",
+            ),
+        )
+        event_item = dict(primary)
+        article_ids = sorted(int(item["id"]) for item in group["items"])
+        event_key_material = "|".join(sorted(set(group["normalized"])))
+        event_item["event"] = {
+            "event_id": f"realtime-event:{article_ids[0]}",
+            "event_key": hashlib.sha256(event_key_material.encode()).hexdigest()[:20],
+            "primary_article_id": primary["id"],
+            "evidence_count": len(group["items"]),
+            "evidence": [
+                {
+                    "article_id": item["id"],
+                    "source": item.get("source"),
+                    "url": item.get("url"),
+                    "published_at": item.get("published_at"),
+                }
+                for item in sorted(group["items"], key=lambda value: int(value["id"]))
+            ],
+        }
+        events.append(event_item)
+    return events
 
 
 # ---------------------------------------------------------------------------
@@ -603,8 +703,9 @@ def get_realtime_feed(
             _feed_item(article, _priority_score(article, now), now)
             for article in articles
         ]
+        events = _group_realtime_events(items)
         buckets = {bucket: [] for bucket in ("high_impact", "watch", "noise", "unknown")}
-        for item in items:
+        for item in events:
             bucket = item["triage"]["bucket"] or "unknown"
             if bucket not in buckets:
                 bucket = "unknown"
@@ -628,6 +729,8 @@ def get_realtime_feed(
             "stats": {
                 "total": total,
                 "returned": len(items),
+                "displayed_events": len(events),
+                "duplicate_reports_collapsed": len(items) - len(events),
                 "triaged": triaged_count,
                 "pending": pending_count,
                 "failed": failed_count,

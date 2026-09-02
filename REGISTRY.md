@@ -1,5 +1,16 @@
 # Runtime Registry
 
+## 2026-09-02 · Realtime decision buckets collapse duplicate source reports
+
+- Issue #72 keeps `/api/ui/realtime.items` as the immutable raw Article stream
+  while grouping cross-source near-duplicate headlines into one bucket card
+  inside a 45-minute evidence window.
+- Each displayed event retains source, Article ID, link, timestamp, primary
+  Article and deterministic read-model IDs. Same-source updates, distinct
+  headlines and matching headlines outside the window remain separate.
+- Bucket counts now represent displayed events; raw-returned count and collapsed
+  duplicate count remain explicit. No source evidence is deleted or rewritten.
+
 ## 2026-09-02 · Realtime AI decision contract hardened
 
 - Issue #71 removes the two-sided bull/bear scenario fields from the active
@@ -195,8 +206,8 @@
 
 ## 下一步
 
-- Merge duplicate source reports in the decision buckets under issue #72, then
-  decide the long-term Unknown presentation under issue #73.
+- Decide the long-term Unknown presentation under issue #73 and measure the
+  24-hour BlockBeats increment/overlap under issue #65.
 - Measure BlockBeats versus CLS/Eastmoney/SEC over a clean 24-hour window under
   issue #65, then decide which incremental event categories justify retention.
 - Add quota-aware temporary 60-second BlockBeats event windows under issue #68
