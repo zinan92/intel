@@ -1,5 +1,21 @@
 # Runtime Registry
 
+## 2026-09-02 · Rolling News public surface deployed
+
+- PR #85 (closing issue #84) packages the real-time News Triage Desk at
+  [`rollingnews/index.html`](rollingnews/index.html); it is a read-only view of
+  the persisted realtime lane, not a mockup or a second data store.
+- The public entry point is
+  [`https://news.park-ai-intel.com/`](https://news.park-ai-intel.com/). A
+  dedicated Cloudflare tunnel routes only `GET /api/ui/realtime` to the
+  existing Park Intel API on port 8001 and serves the static page from port
+  8787. Existing homepage, desk, goldbot, and research routes are independent.
+- `com.park-intel.rollingnews-static` and
+  `com.park-intel.rollingnews-tunnel` are KeepAlive launchd services. The
+  self-hosted public surface depends on this Mac remaining online.
+- The page exposes source health and explicit Unknown/pending/failed states;
+  it does not expose mutation, admin, database, log, or credential routes.
+
 ## 2026-09-02 · Unknown moved outside the decision buckets
 
 - Issue #73 keeps Unknown as an explicit operational truth state but removes
@@ -230,6 +246,10 @@
 - The Daily Finance Newsletter archive and delivery contract is available on `main`.
 - Weekly retrospective, calendar verification, Obsidian/Feishu publication, delivery manifests, same-week no-op, and explicit force-resend are available on `main`.
 - Finance Daily, Finance Weekly, and the upstream Park Intel service now run from the clean production checkout `/Users/wendy/work/trading-co/park-intel-production`, created from `origin/main`.
+- The real-time News Triage Desk is public at
+  `https://news.park-ai-intel.com/`, backed by the same checkout's realtime
+  API. Its tracked deployment contract and repair commands are in
+  [`docs/rollingnews-deployment.md`](docs/rollingnews-deployment.md).
 - Daily runs at 08:00 Asia/Shanghai; Weekly runs Sunday 08:30 with Monday catch-up; the upstream service is KeepAlive-managed.
 - The cutover evidence, local-state boundaries, and rollback files are recorded in `docs/finance-newsletter-production-runtime-2026-08-24.md`.
 - Runtime credentials are read from `/Users/wendy/park-hands/_secrets/deepseek-key`; Codex CLI fallback uses local subscription authentication and no API key is written to logs or content.
