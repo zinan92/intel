@@ -392,6 +392,7 @@ def _run_realtime_triage() -> None:
     from db.database import get_session
     from db.models import Article
     from triage.realtime import RealtimeTriage
+    from triage.revisit import related_evidence_map
     from sqlalchemy import or_
 
     def _tickers(raw: str | None) -> list[str]:
@@ -429,6 +430,17 @@ def _run_realtime_triage() -> None:
         session.commit()
 
         triage = RealtimeTriage(batch_size=len(candidates))
+        rescan_baselines = {
+            article.id: article.triage_rescan_after
+            for article in candidates
+            if (article.triage_rescan_count or 0) > 0
+            and article.triage_rescan_after is not None
+        }
+        evidence_by_id = related_evidence_map(
+            session,
+            candidates,
+            later_than_by_id=rescan_baselines or None,
+        )
         results = triage.triage_batch([
             {
                 "id": article.id,
@@ -436,6 +448,7 @@ def _run_realtime_triage() -> None:
                 "title": article.title,
                 "content": article.content,
                 "tickers": _tickers(article.tickers),
+                "related_evidence": evidence_by_id.get(article.id, []),
             }
             for article in candidates
         ])
@@ -483,6 +496,25 @@ def _run_realtime_triage() -> None:
         if "candidates" in locals() and candidates:
             session.commit()
         logger.warning("[realtime-triage] failed (%s)", type(exc).__name__)
+    finally:
+        session.close()
+
+
+def _run_unknown_rescan() -> None:
+    """Requeue completed Unknown items once when later evidence arrives."""
+    if not _realtime_lane_enabled():
+        return
+    from db.database import get_session
+    from triage.revisit import requeue_unknown_with_new_evidence
+
+    session = get_session()
+    try:
+        requeued = requeue_unknown_with_new_evidence(session)
+        if requeued:
+            logger.info("[unknown-rescan] requeued=%d", len(requeued))
+    except Exception:
+        session.rollback()
+        logger.exception("[unknown-rescan] failed")
     finally:
         session.close()
 
@@ -685,6 +717,17 @@ class CollectorScheduler:
                 next_run_time=base_time + timedelta(seconds=15),
             )
             logger.info("Registered realtime triage job (every 30s)")
+            self._scheduler.add_job(
+                _run_unknown_rescan,
+                trigger=IntervalTrigger(seconds=300),
+                id="realtime-unknown-rescan",
+                replace_existing=True,
+                coalesce=True,
+                max_instances=1,
+                misfire_grace_time=60,
+                next_run_time=base_time + timedelta(seconds=45),
+            )
+            logger.info("Registered Unknown evidence rescan job (every 300s)")
 
         # LLM tagger
         tagger_start = base_time + timedelta(seconds=30 * (len(jobs) + len(realtime_intervals)))

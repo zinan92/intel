@@ -101,12 +101,25 @@ def _is_scheduled_catalyst(article: dict[str, Any]) -> bool:
 def _article_prompt(article: dict[str, Any]) -> str:
     tickers = article.get("tickers")
     ticker_text = ", ".join(str(value) for value in tickers) if tickers else "none"
-    return (
+    prompt = (
         f"[id={article['id']} source={article.get('source', 'unknown')}]\n"
         f"Title: {article.get('title') or '(no title)'}\n"
         f"Content: {(article.get('content') or '')[:1800]}\n"
         f"Verified source tickers: {ticker_text}"
     )
+    related = article.get("related_evidence")
+    if isinstance(related, list) and related:
+        lines = ["Supplemental evidence from related cross-source reports:"]
+        for evidence in related[:3]:
+            if not isinstance(evidence, dict):
+                continue
+            lines.append(
+                f"- source={evidence.get('source', 'unknown')} "
+                f"title={_as_text(evidence.get('title'), limit=300)} "
+                f"content={_as_text(evidence.get('content'), limit=800)}"
+            )
+        prompt += "\n" + "\n".join(lines)
+    return prompt
 
 
 def _normalize_result(

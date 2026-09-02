@@ -1,5 +1,15 @@
 # Runtime Registry
 
+## 2026-09-02 · Unknown moved outside the decision buckets
+
+- Issue #73 keeps Unknown as an explicit operational truth state but removes
+  it from the visually weighted High Impact / Watch / Noise decision surface.
+- `/api/ui/realtime.operational` reports full-window completed Unknown count,
+  rate and a `>=10%` alert, plus pending and failed counts separately.
+- A shared cross-source event matcher drives both display deduplication and a
+  five-minute Unknown revisit. Later related evidence requeues an Unknown once,
+  supplies bounded supplemental context to AI, and cannot create retry loops.
+
 ## 2026-09-02 · Watch decisions require explicit asset exposure
 
 - Issue #81 requires every Watch result to name at least one affected asset or
