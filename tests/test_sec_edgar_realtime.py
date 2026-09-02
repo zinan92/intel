@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from db.models import Base, SourceRegistry
+from db.models import Base, CollectorRun, SourceRegistry
 
 
 def _response(payload, status_code=200):
@@ -334,5 +334,50 @@ def test_sec_ui_health_uses_successful_poll_when_filings_are_duplicates(monkeypa
         "last_seen_at": None,
         "last_attempt_at": run.timestamp,
         "status": "ok",
+    }]
+    session.close()
+
+
+def test_sec_ui_health_falls_back_to_persisted_provider_failure(monkeypatch):
+    import api.ui_routes as ui
+    import scheduler
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session = Session(engine)
+    attempted_at = datetime(2026, 9, 2, 4, 33, 5)
+    session.add(SourceRegistry(
+        source_key="sec_edgar:watchlist",
+        source_type="sec_edgar",
+        display_name="SEC EDGAR Watchlist",
+        config_json="{}",
+        is_active=1,
+        lane="realtime",
+        schedule_seconds=60,
+    ))
+    session.add(CollectorRun(
+        source_type="sec_edgar",
+        source_key="sec_edgar:watchlist",
+        status="error",
+        articles_fetched=0,
+        articles_saved=0,
+        duration_ms=500,
+        error_message="sec_edgar provider blocked HTTP 403",
+        error_category="auth",
+        retry_count=0,
+        completed_at=attempted_at,
+    ))
+    session.commit()
+    monkeypatch.setattr(scheduler, "get_last_results", lambda: {})
+    monkeypatch.setattr(ui, "get_session", lambda: session)
+
+    response = ui.get_realtime_feed(window="24h", limit=20)
+
+    assert response["source_health"] == [{
+        "source": "sec_edgar",
+        "count": 0,
+        "last_seen_at": None,
+        "last_attempt_at": attempted_at.isoformat(),
+        "status": "degraded",
     }]
     session.close()

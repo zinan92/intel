@@ -30,6 +30,9 @@
 - Issue #57 adds the idempotent upgrade path for SEC rows created before CIK
   pinning: it fills only a missing map and preserves operator ticker, form,
   activation, schedule, and any existing non-empty pin edits.
+- Issue #59 makes the realtime UI health read model fall back to the latest
+  persisted collector run, so a provider failure remains visible after restart
+  or an out-of-process smoke run instead of regressing to `no_data`.
 - The code and full local suite pass, but this host currently receives HTTP 403
   from the official SEC JSON and archive hosts. The adapter reports that as a
   provider block rather than empty success. Issue #53 remains open until a real

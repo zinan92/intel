@@ -20,7 +20,7 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import func
 
 from db.database import get_session
-from db.models import Article
+from db.models import Article, CollectorRun
 
 ui_router = APIRouter(prefix="/api/ui")
 
@@ -307,6 +307,25 @@ def _build_source_health(session: Any) -> list[dict[str, Any]]:
         .all()
     )
     db_map = {row[0]: (row[1], row[2]) for row in db_rows}
+    latest_run_subquery = (
+        session.query(
+            CollectorRun.source_type,
+            func.max(CollectorRun.completed_at).label("max_completed_at"),
+        )
+        .filter(CollectorRun.source_type.in_(active_types))
+        .group_by(CollectorRun.source_type)
+        .subquery()
+    )
+    persisted_runs = (
+        session.query(CollectorRun)
+        .join(
+            latest_run_subquery,
+            (CollectorRun.source_type == latest_run_subquery.c.source_type)
+            & (CollectorRun.completed_at == latest_run_subquery.c.max_completed_at),
+        )
+        .all()
+    )
+    persisted_by_source = {run.source_type: run for run in persisted_runs}
 
     result = []
     for source_type in active_types:
@@ -324,13 +343,35 @@ def _build_source_health(session: Any) -> list[dict[str, Any]]:
         else:
             status = "stale"
 
-        run = last_results.get(source_type)
-        last_attempt_at = run.timestamp if run else None
-        if run and run.error:
+        memory_run = last_results.get(source_type)
+        persisted_run = persisted_by_source.get(source_type)
+        if memory_run is not None:
+            run_error = memory_run.error
+            run_fetched = memory_run.articles_fetched
+            last_attempt_at = memory_run.timestamp
+        elif persisted_run is not None:
+            run_error = (
+                persisted_run.error_message
+                if persisted_run.status != "ok"
+                else None
+            )
+            run_fetched = persisted_run.articles_fetched
+            last_attempt_at = (
+                persisted_run.completed_at.isoformat()
+                if persisted_run.completed_at
+                else None
+            )
+        else:
+            run_error = None
+            run_fetched = 0
+            last_attempt_at = None
+        if run_error:
             status = "degraded"
-        elif run and run.articles_fetched > 0:
+        elif run_fetched > 0 and last_attempt_at:
             try:
-                run_at = datetime.fromisoformat(run.timestamp.replace("Z", "+00:00"))
+                run_at = datetime.fromisoformat(
+                    last_attempt_at.replace("Z", "+00:00")
+                )
                 if run_at.tzinfo is not None:
                     run_at = run_at.astimezone(timezone.utc).replace(tzinfo=None)
                 run_age_hours = (now - run_at).total_seconds() / 3600
