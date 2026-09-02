@@ -97,7 +97,11 @@ def test_watch_with_unclear_direction_requires_concrete_watch_condition():
         301,
         bucket="watch",
         direction="unclear",
-        affected_assets=[],
+        affected_assets=[{
+            "symbol": "",
+            "name": "Company shares",
+            "impact": "unclear",
+        }],
         watch_for=[],
     )
     client.complete.side_effect = [
@@ -116,6 +120,46 @@ def test_watch_with_unclear_direction_requires_concrete_watch_condition():
     assert "watch_for" in result[0]["validation_error"]
 
 
+def test_watch_with_empty_assets_gets_repaired_to_explicit_exposure():
+    from triage.realtime import RealtimeTriage
+
+    client = MagicMock()
+    client.complete.side_effect = [
+        json.dumps({"results": [{
+            "id": 302,
+            "bucket": "watch",
+            "direction": "unclear",
+            "rationale": "The transmission path is possible but unconfirmed.",
+            "affected_assets": [],
+            "watch_for": ["official implementation details"],
+        }]}),
+        json.dumps({"results": [{
+            "id": 302,
+            "bucket": "watch",
+            "direction": "unclear",
+            "rationale": "The transmission path is possible but unconfirmed.",
+            "affected_assets": [{
+                "symbol": "",
+                "name": "European power producers",
+                "impact": "unclear",
+            }],
+            "watch_for": ["official implementation details"],
+        }]}),
+    ]
+
+    result = RealtimeTriage(client=client).triage_batch([{
+        "id": 302,
+        "title": "EU discusses a possible capacity mechanism",
+        "content": "Implementation details are not final.",
+        "source": "cls_telegraph",
+    }])
+
+    assert result[0]["bucket"] == "watch"
+    assert result[0]["affected_assets"][0]["name"] == "European power producers"
+    assert result[0]["affected_assets"][0]["impact"] == "unclear"
+    assert client.complete.call_count == 2
+
+
 def test_generic_central_bank_meeting_is_not_forced_high_impact():
     from triage.realtime import RealtimeTriage
 
@@ -125,7 +169,11 @@ def test_generic_central_bank_meeting_is_not_forced_high_impact():
         "bucket": "watch",
         "direction": "unclear",
         "rationale": "The meeting contains no policy decision or directional signal.",
-        "affected_assets": [],
+        "affected_assets": [{
+            "symbol": "",
+            "name": "Foreign-exchange markets",
+            "impact": "unclear",
+        }],
         "watch_for": ["a formal policy announcement"],
     }]})
 
@@ -274,7 +322,11 @@ def test_triage_uses_codex_fallback_after_deepseek_failure(monkeypatch):
                     "bucket": "watch",
                     "direction": "unclear",
                     "rationale": "Needs confirmation.",
-                    "affected_assets": [],
+                    "affected_assets": [{
+                        "symbol": "",
+                        "name": "Company shares",
+                        "impact": "unclear",
+                    }],
                     "watch_for": ["follow-up filing"],
                     "scenario_bull": "No repricing.",
                     "scenario_bear": "Expectation changes.",

@@ -1,5 +1,13 @@
 # Runtime Registry
 
+## 2026-09-02 · Watch decisions require explicit asset exposure
+
+- Issue #81 requires every Watch result to name at least one affected asset or
+  asset class. If no defensible exposure exists, the result must be repaired,
+  isolated as Unknown/failed, or classified Noise rather than accepted empty.
+- Unclear Watch assets use `impact=unclear` plus concrete watch conditions;
+  directional Watch assets require per-asset up/down impact.
+
 ## 2026-09-02 · Scheduled High Impact keeps magnitude separate from direction
 
 - Issue #79 permits `unclear` only for explicit pre-release/scheduled High

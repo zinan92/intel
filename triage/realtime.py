@@ -37,7 +37,7 @@ direction 只能是 bullish、bearish、unclear，不允许 mixed。direction �
 - 已公布/已发生的 high_impact 必须选择 bullish 或 bearish，并至少给出一个受影响资产。
 - 明确写着“预告/今夜公布/重点关注/scheduled/due”的事件前瞻仍可为 high_impact + unclear，但 affected_assets 和 watch_for 必须非空，资产 impact 写 unclear。
 - 不要捏造证券 ticker，可使用真实指数、利率、外汇、商品或加密资产符号/名称。
-- watch 若方向 unclear，watch_for 必须给出具体、可观察的确认条件。
+- watch 必须给出受影响资产；若方向 unclear，watch_for 必须给出具体、可观察的确认条件，资产 impact 写 unclear。
 - noise/unknown 不得伪造方向或资产。
 - 只给一个明确判断及传导理由，不要输出 bull/bear 两套 if 情景。
 
@@ -147,8 +147,16 @@ def _normalize_result(
                 raise ValueError("scheduled unclear high_impact asset impact must be unclear")
         elif any(asset.get("impact") not in {"up", "down"} for asset in assets):
             raise ValueError("directional high_impact asset impact must be up or down")
-    if bucket == "watch" and direction == "unclear" and not watch_for:
-        raise ValueError("unclear watch result requires non-empty watch_for")
+    if bucket == "watch":
+        if not assets:
+            raise ValueError("watch affected_assets must be non-empty")
+        if direction == "unclear":
+            if not watch_for:
+                raise ValueError("unclear watch result requires non-empty watch_for")
+            if any(asset.get("impact") != "unclear" for asset in assets):
+                raise ValueError("unclear watch asset impact must be unclear")
+        elif any(asset.get("impact") not in {"up", "down"} for asset in assets):
+            raise ValueError("directional watch asset impact must be up or down")
 
     return {
         "id": article["id"],
@@ -242,7 +250,8 @@ class RealtimeTriage:
                 "修复以下不符合 decision contract 的结果。必须逐条返回；"
                 "已发生的 High Impact 必须 bullish/bearish 且 affected_assets 非空；"
                 "预告型 High Impact 可 unclear，但 assets impact 必须 unclear 且 watch_for 非空；"
-                "Watch+unclear 必须有具体 watch_for；不得输出 mixed 或双情景。\n\n"
+                "Watch 必须有 affected_assets，Watch+unclear 的 assets impact 必须 unclear 且 watch_for 非空；"
+                "不得输出 mixed 或双情景。\n\n"
                 + "\n---\n".join(
                     f"Validation error: {error}\n{_article_prompt(article)}"
                     for article, error in invalid
