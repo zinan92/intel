@@ -4,6 +4,7 @@ SQLite doesn't support full ALTER TABLE, but does support ADD COLUMN
 for nullable columns. Each migration checks if the column exists first.
 """
 
+import json
 import logging
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
@@ -27,6 +28,65 @@ def _table_exists(engine: Engine, table: str) -> bool:
             {"name": table},
         )
         return result.fetchone() is not None
+
+
+def _migrate_sec_cik_map(engine: Engine) -> bool:
+    """Fill the required SEC CIK pin only when an old row has none."""
+    if not _table_exists(engine, "source_registry"):
+        return False
+    with engine.begin() as conn:
+        row = conn.execute(
+            text(
+                "SELECT config_json FROM source_registry "
+                "WHERE source_key = :source_key"
+            ),
+            {"source_key": "sec_edgar:watchlist"},
+        ).fetchone()
+        if row is None:
+            return False
+        config_json = json.loads(row[0] or "{}")
+        if config_json.get("cik_map"):
+            return False
+
+        from config import REALTIME_SOURCE_BOOTSTRAP
+
+        bootstrap = next(
+            entry["config"]
+            for entry in REALTIME_SOURCE_BOOTSTRAP
+            if entry["source"] == "sec_edgar"
+        )
+        official_map = bootstrap["cik_map"]
+        configured_tickers = [
+            str(ticker).strip().upper()
+            for ticker in config_json.get("tickers", [])
+        ]
+        pinned = {
+            ticker: official_map[ticker]
+            for ticker in configured_tickers
+            if ticker in official_map
+        }
+        if len(pinned) != len(configured_tickers):
+            logger.warning(
+                "SEC registry CIK migration skipped: configured ticker is not approved"
+            )
+            return False
+        config_json["cik_map"] = pinned
+        conn.execute(
+            text(
+                "UPDATE source_registry SET config_json = :config_json "
+                "WHERE source_key = :source_key"
+            ),
+            {
+                "config_json": json.dumps(
+                    config_json,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ),
+                "source_key": "sec_edgar:watchlist",
+            },
+        )
+        logger.info("Migrated SEC registry row to pinned CIK contract")
+        return True
 
 
 _LEGACY_TO_CANONICAL: dict[str, str] = {
@@ -193,6 +253,8 @@ def run_migrations(engine: Engine) -> None:
             )
             conn.commit()
         logger.info("Seeded expected_freshness_hours defaults for source_registry")
+
+    _migrate_sec_cik_map(engine)
 
     # Keep the backfill for databases upgraded by an earlier revision that
     # added the lane columns as nullable. New upgrades use NOT NULL defaults

@@ -27,6 +27,9 @@
 - Source authority, corroboration state, and pin eligibility are persisted and
   exposed independently from AI impact classification. An official filing can
   satisfy trusted-source evidence but does not force High Impact or pinning.
+- Issue #57 adds the idempotent upgrade path for SEC rows created before CIK
+  pinning: it fills only a missing map and preserves operator ticker, form,
+  activation, schedule, and any existing non-empty pin edits.
 - The code and full local suite pass, but this host currently receives HTTP 403
   from the official SEC JSON and archive hosts. The adapter reports that as a
   provider block rather than empty success. Issue #53 remains open until a real
