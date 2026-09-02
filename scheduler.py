@@ -394,6 +394,15 @@ def _run_realtime_triage() -> None:
     from triage.realtime import RealtimeTriage
     from sqlalchemy import or_
 
+    def _tickers(raw: str | None) -> list[str]:
+        if not raw:
+            return []
+        try:
+            value = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return []
+        return [str(item) for item in value] if isinstance(value, list) else []
+
     session = get_session()
     try:
         candidates = (
@@ -426,6 +435,7 @@ def _run_realtime_triage() -> None:
                 "source": article.source,
                 "title": article.title,
                 "content": article.content,
+                "tickers": _tickers(article.tickers),
             }
             for article in candidates
         ])
@@ -434,23 +444,31 @@ def _run_realtime_triage() -> None:
             raise ValueError("triage result count does not match candidate count")
 
         now = datetime.utcnow()
+        completed = 0
+        failed = 0
         for article in candidates:
             result = by_id[article.id]
-            article.triage_bucket = result["bucket"]
-            article.triage_status = "complete"
+            validation_error = result.get("validation_error")
+            article.triage_bucket = "unknown" if validation_error else result["bucket"]
+            article.triage_status = "failed" if validation_error else "complete"
             article.triage_direction = result["direction"]
             article.triage_rationale = result["rationale"]
             article.triage_assets = json.dumps(result["affected_assets"], ensure_ascii=False)
             article.triage_watch_for = json.dumps(result["watch_for"], ensure_ascii=False)
-            article.triage_scenario_bull = result["scenario_bull"]
-            article.triage_scenario_bear = result["scenario_bear"]
+            article.triage_scenario_bull = None
+            article.triage_scenario_bear = None
             article.triage_model = triage.model_name
-            article.triage_error = None
+            article.triage_error = validation_error
             article.triaged_at = now
+            if validation_error:
+                failed += 1
+            else:
+                completed += 1
         session.commit()
         logger.info(
-            "[realtime-triage] completed=%d model=%s",
-            len(candidates),
+            "[realtime-triage] completed=%d failed=%d model=%s",
+            completed,
+            failed,
             triage.model_name,
         )
     except Exception as exc:

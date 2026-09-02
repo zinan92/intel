@@ -12,6 +12,110 @@ from sqlalchemy.orm import Session
 from db.models import Article, Base, SourceRegistry
 
 
+def _decision_result(article_id, **overrides):
+    result = {
+        "id": article_id,
+        "bucket": "high_impact",
+        "direction": "bearish",
+        "rationale": "Rates reprice higher and pressure duration-sensitive assets.",
+        "affected_assets": [
+            {"symbol": "GC=F", "name": "Gold", "impact": "down"},
+        ],
+        "watch_for": ["real yields"],
+    }
+    result.update(overrides)
+    return result
+
+
+def test_high_impact_mixed_or_empty_assets_gets_one_bounded_repair():
+    from triage.realtime import RealtimeTriage
+
+    client = MagicMock()
+    client.complete.side_effect = [
+        json.dumps({"results": [_decision_result(
+            101,
+            direction="mixed",
+            affected_assets=[],
+        )]}),
+        json.dumps({"results": [_decision_result(101)]}),
+    ]
+
+    result = RealtimeTriage(client=client).triage_batch([{
+        "id": 101,
+        "title": "FOMC raises its policy rate",
+        "content": "The rate decision is more hawkish than expected.",
+        "source": "cls_telegraph",
+        "tickers": ["GC=F", "BTC-USD"],
+    }])
+
+    assert result == [_decision_result(101)]
+    assert client.complete.call_count == 2
+    assert "mixed" not in client.complete.call_args_list[0].args[0]
+    assert "GC=F" in client.complete.call_args_list[0].args[0]
+
+
+def test_one_unrepairable_item_is_isolated_without_failing_valid_batch_peer():
+    from triage.realtime import RealtimeTriage
+
+    client = MagicMock()
+    client.complete.side_effect = [
+        json.dumps({"results": [
+            _decision_result(201),
+            _decision_result(202, direction="mixed", affected_assets=[]),
+        ]}),
+        json.dumps({"results": [
+            _decision_result(202, direction="unclear", affected_assets=[]),
+        ]}),
+    ]
+
+    results = RealtimeTriage(client=client).triage_batch([
+        {
+            "id": 201,
+            "title": "Central bank raises rates",
+            "content": "Hawkish surprise.",
+            "source": "cls_telegraph",
+        },
+        {
+            "id": 202,
+            "title": "FOMC decision",
+            "content": "Statement released.",
+            "source": "eastmoney_global_news",
+        },
+    ])
+
+    assert results[0] == _decision_result(201)
+    assert results[1]["id"] == 202
+    assert results[1]["bucket"] == "unknown"
+    assert results[1]["validation_error"]
+
+
+def test_watch_with_unclear_direction_requires_concrete_watch_condition():
+    from triage.realtime import RealtimeTriage
+
+    client = MagicMock()
+    invalid = _decision_result(
+        301,
+        bucket="watch",
+        direction="unclear",
+        affected_assets=[],
+        watch_for=[],
+    )
+    client.complete.side_effect = [
+        json.dumps({"results": [invalid]}),
+        json.dumps({"results": [invalid]}),
+    ]
+
+    result = RealtimeTriage(client=client).triage_batch([{
+        "id": 301,
+        "title": "Company explores a possible transaction",
+        "content": "No terms have been disclosed.",
+        "source": "blockbeats_newsflash",
+    }])
+
+    assert result[0]["bucket"] == "unknown"
+    assert "watch_for" in result[0]["validation_error"]
+
+
 def test_triage_batch_normalizes_ai_contract():
     from triage.realtime import RealtimeTriage
 
@@ -47,18 +151,16 @@ def test_triage_batch_normalizes_ai_contract():
             {"symbol": "GC=F", "name": "Gold", "impact": "down"},
         ],
         "watch_for": ["real yields", "dollar index"],
-        "scenario_bull": "If the market fades the surprise, gold stabilizes.",
-        "scenario_bear": "If yields persist higher, gold and beta risk sell off.",
     }]
     prompt = client.complete.call_args.args[0]
     assert "Unexpected policy signal" in prompt
 
 
-def test_fomc_floor_is_high_impact_even_when_direction_is_unclear():
+def test_fomc_floor_repairs_unclear_direction_without_losing_high_impact():
     from triage.realtime import RealtimeTriage
 
     client = MagicMock()
-    client.complete.return_value = json.dumps({
+    client.complete.side_effect = [json.dumps({
         "results": [{
             "id": 8,
             "bucket": "watch",
@@ -69,7 +171,7 @@ def test_fomc_floor_is_high_impact_even_when_direction_is_unclear():
             "scenario_bull": "Risk appetite holds.",
             "scenario_bear": "Rates reprice.",
         }]
-    })
+    }), json.dumps({"results": [_decision_result(8)]})]
 
     result = RealtimeTriage(client=client).triage_batch([{
         "id": 8,
@@ -79,10 +181,11 @@ def test_fomc_floor_is_high_impact_even_when_direction_is_unclear():
     }])
 
     assert result[0]["bucket"] == "high_impact"
-    assert result[0]["direction"] == "unclear"
+    assert result[0]["direction"] == "bearish"
+    assert result[0]["affected_assets"]
 
 
-def test_triage_rejects_invalid_ai_bucket():
+def test_triage_isolates_invalid_ai_bucket_after_repair_attempt():
     from triage.realtime import RealtimeTriage
 
     client = MagicMock()
@@ -90,13 +193,15 @@ def test_triage_rejects_invalid_ai_bucket():
         "results": [{"id": 9, "bucket": "maybe", "direction": "unclear"}]
     })
 
-    with pytest.raises(ValueError, match="bucket"):
-        RealtimeTriage(client=client).triage_batch([{
-            "id": 9,
-            "title": "Unclear item",
-            "content": "Content",
-            "source": "cls_telegraph",
-        }])
+    result = RealtimeTriage(client=client).triage_batch([{
+        "id": 9,
+        "title": "Unclear item",
+        "content": "Content",
+        "source": "cls_telegraph",
+    }])
+
+    assert result[0]["bucket"] == "unknown"
+    assert "bucket" in result[0]["validation_error"]
 
 
 def test_triage_uses_codex_fallback_after_deepseek_failure(monkeypatch):
@@ -208,12 +313,10 @@ def test_triage_scheduler_persists_a_real_result_shape():
             return [{
                 "id": articles[0]["id"],
                 "bucket": "high_impact",
-                "direction": "unclear",
+                "direction": "bearish",
                 "rationale": "FOMC is a macro event.",
-                "affected_assets": [{"symbol": "GC=F", "name": "Gold", "impact": "mixed"}],
+                "affected_assets": [{"symbol": "GC=F", "name": "Gold", "impact": "down"}],
                 "watch_for": ["real yields"],
-                "scenario_bull": "Cuts are priced in.",
-                "scenario_bear": "Yields rise.",
             }]
 
     with patch("db.database.get_session", return_value=session), \
@@ -227,6 +330,71 @@ def test_triage_scheduler_persists_a_real_result_shape():
     assert saved.triage_bucket == "high_impact"
     assert json.loads(saved.triage_assets)[0]["symbol"] == "GC=F"
     assert saved.triage_model == "test-model"
+    session.close()
+
+
+def test_triage_scheduler_isolates_invalid_item_and_passes_source_tickers():
+    from scheduler import _run_realtime_triage
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session = Session(engine)
+    session.add_all([
+        Article(
+            source="cls_telegraph",
+            source_id="triage-valid-peer",
+            title="Rate decision",
+            content="Rates rise.",
+            tickers=json.dumps(["GC=F"]),
+            collection_lane="realtime",
+        ),
+        Article(
+            source="cls_telegraph",
+            source_id="triage-invalid-peer",
+            title="FOMC decision",
+            content="Incomplete model output.",
+            collection_lane="realtime",
+        ),
+    ])
+    session.commit()
+    seen = []
+
+    class FakeTriage:
+        model_name = "test-model"
+
+        def __init__(self, **_kwargs):
+            pass
+
+        def triage_batch(self, articles):
+            seen.extend(articles)
+            return [
+                _decision_result(articles[0]["id"]),
+                {
+                    "id": articles[1]["id"],
+                    "bucket": "unknown",
+                    "direction": "unclear",
+                    "rationale": "Decision contract validation failed.",
+                    "affected_assets": [],
+                    "watch_for": ["retry analysis"],
+                    "validation_error": "high_impact direction must be bullish or bearish",
+                },
+            ]
+
+    with patch("db.database.get_session", return_value=session), \
+         patch("scheduler._realtime_lane_enabled", return_value=True), \
+         patch("triage.realtime.RealtimeTriage", FakeTriage):
+        _run_realtime_triage()
+
+    session.expire_all()
+    valid = session.query(Article).filter_by(source_id="triage-valid-peer").one()
+    invalid = session.query(Article).filter_by(source_id="triage-invalid-peer").one()
+    assert seen[0]["tickers"] == ["GC=F"]
+    assert valid.triage_status == "complete"
+    assert invalid.triage_status == "failed"
+    assert invalid.triage_bucket == "unknown"
+    assert "must be bullish" in invalid.triage_error
+    assert valid.triage_scenario_bull is None
+    assert valid.triage_scenario_bear is None
     session.close()
 
 
@@ -269,4 +437,6 @@ def test_realtime_endpoint_exposes_real_buckets(monkeypatch):
 
     assert response["stats"]["triaged"] == 1
     assert response["buckets"]["high_impact"][0]["triage"]["affected_assets"][0]["symbol"] == "GC=F"
+    assert "scenario_bull" not in response["items"][0]["triage"]
+    assert "scenario_bear" not in response["items"][0]["triage"]
     assert response["items"][0]["collection_lane"] == "realtime"

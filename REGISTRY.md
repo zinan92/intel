@@ -1,5 +1,17 @@
 # Runtime Registry
 
+## 2026-09-02 · Realtime AI decision contract hardened
+
+- Issue #71 removes the two-sided bull/bear scenario fields from the active
+  model and API contract. Historical database columns remain only for
+  non-destructive compatibility; new triage explicitly clears them.
+- `mixed` is no longer accepted. High Impact requires a bullish/bearish call,
+  non-empty affected assets, and per-asset up/down impact; unclear Watch items
+  require concrete confirmation conditions.
+- Source-extracted tickers are supplied to the model. Invalid output receives
+  one bounded repair attempt, then only that Article becomes failed/Unknown for
+  retry instead of poisoning the whole batch or being mislabeled Noise.
+
 ## 2026-09-02 · Core APIs exclude realtime backfill from current activity
 
 - Issue #70 fixes the remaining read-path leak in `api/routes.py`: imported
@@ -183,8 +195,8 @@
 
 ## 下一步
 
-- Improve the decision usability of realtime AI output under issue #71, then
-  merge duplicate source reports in the decision buckets under issue #72.
+- Merge duplicate source reports in the decision buckets under issue #72, then
+  decide the long-term Unknown presentation under issue #73.
 - Measure BlockBeats versus CLS/Eastmoney/SEC over a clean 24-hour window under
   issue #65, then decide which incremental event categories justify retention.
 - Add quota-aware temporary 60-second BlockBeats event windows under issue #68

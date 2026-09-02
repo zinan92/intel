@@ -9,7 +9,8 @@ from typing import Any
 from llm.deepseek import DeepSeekClient, DeepSeekError
 
 BUCKETS = frozenset({"high_impact", "watch", "noise", "unknown"})
-DIRECTIONS = frozenset({"bullish", "bearish", "mixed", "unclear"})
+DIRECTIONS = frozenset({"bullish", "bearish", "unclear"})
+ASSET_IMPACTS = frozenset({"up", "down"})
 _HIGH_IMPACT_RE = re.compile(
     r"\b(?:fomc|cpi|pce|nfp|nonfarm payroll|jackson hole|fed decision|rate decision|"
     r"central bank|emergency rate|ecb|boj)\b|美联储|非农|消费者价格|通胀数据|"
@@ -25,9 +26,13 @@ SYSTEM_PROMPT = """你是面向活跃交易者的实时市场新闻 triage analy
 - noise：没有可信的交易决策影响，例如常规公关稿、重复摘要、低流动性代币动态或无关内容。
 - unknown：信息不足，或无法可靠判断；不要把不确定性伪装成 noise。
 
-direction 只能是 bullish、bearish、mixed、unclear。affected_assets 是可能受影响的资产，保留真实 ticker；不要捏造 ticker。scenario_bull/scenario_bear 是条件推演，不是确定预测。
+direction 只能是 bullish、bearish、unclear，不允许 mixed。direction 表示主要交易方向；不同资产可在 affected_assets 中分别标 up/down。
+- high_impact 必须选择 bullish 或 bearish，并至少给出一个受影响资产；不要捏造证券 ticker，可使用真实指数、利率、外汇、商品或加密资产符号/名称。
+- watch 若方向 unclear，watch_for 必须给出具体、可观察的确认条件。
+- noise/unknown 不得伪造方向或资产。
+- 只给一个明确判断及传导理由，不要输出 bull/bear 两套 if 情景。
 
-只返回 JSON object：{"results":[{"id":整数,"bucket":"...","direction":"...","rationale":"...","affected_assets":[{"symbol":"...","name":"...","impact":"up/down/mixed"}],"watch_for":["..."],"scenario_bull":"...","scenario_bear":"..."}]}。不要输出 Markdown 或额外解释。"""
+只返回 JSON object：{"results":[{"id":整数,"bucket":"...","direction":"...","rationale":"...","affected_assets":[{"symbol":"...","name":"...","impact":"up/down"}],"watch_for":["..."]}]}。不要输出 Markdown 或额外解释。"""
 
 
 def _extract_results(text: str) -> list[dict[str, Any]]:
@@ -79,6 +84,70 @@ def _has_high_impact_floor(article: dict[str, Any]) -> bool:
     return bool(_HIGH_IMPACT_RE.search(text))
 
 
+def _article_prompt(article: dict[str, Any]) -> str:
+    tickers = article.get("tickers")
+    ticker_text = ", ".join(str(value) for value in tickers) if tickers else "none"
+    return (
+        f"[id={article['id']} source={article.get('source', 'unknown')}]\n"
+        f"Title: {article.get('title') or '(no title)'}\n"
+        f"Content: {(article.get('content') or '')[:1800]}\n"
+        f"Verified source tickers: {ticker_text}"
+    )
+
+
+def _normalize_result(
+    article: dict[str, Any],
+    result: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if result is None:
+        raise ValueError("triage response missing article id")
+    bucket = _as_text(result.get("bucket"), limit=30)
+    if bucket not in BUCKETS:
+        raise ValueError(f"invalid triage bucket: {bucket}")
+    if _has_high_impact_floor(article):
+        bucket = "high_impact"
+
+    direction = _as_text(result.get("direction"), limit=20) or "unclear"
+    if direction not in DIRECTIONS:
+        raise ValueError(f"invalid triage direction: {direction}")
+    rationale = _as_text(result.get("rationale"), limit=500)
+    if not rationale:
+        raise ValueError("rationale must be non-empty")
+    assets = _normalize_assets(result.get("affected_assets"))
+    watch_for = _normalize_watch_for(result.get("watch_for"))
+
+    if bucket == "high_impact":
+        if direction not in {"bullish", "bearish"}:
+            raise ValueError("high_impact direction must be bullish or bearish")
+        if not assets:
+            raise ValueError("high_impact affected_assets must be non-empty")
+        if any(asset.get("impact") not in ASSET_IMPACTS for asset in assets):
+            raise ValueError("high_impact asset impact must be up or down")
+    if bucket == "watch" and direction == "unclear" and not watch_for:
+        raise ValueError("unclear watch result requires non-empty watch_for")
+
+    return {
+        "id": article["id"],
+        "bucket": bucket,
+        "direction": direction,
+        "rationale": rationale,
+        "affected_assets": assets,
+        "watch_for": watch_for,
+    }
+
+
+def _isolated_failure(article: dict[str, Any], error: Exception) -> dict[str, Any]:
+    return {
+        "id": article["id"],
+        "bucket": "unknown",
+        "direction": "unclear",
+        "rationale": "AI output failed the decision contract and is queued for retry.",
+        "affected_assets": [],
+        "watch_for": ["retry analysis"],
+        "validation_error": str(error)[:300],
+    }
+
+
 class RealtimeTriage:
     """Batch realtime News Items through the configured DeepSeek client."""
 
@@ -119,40 +188,56 @@ class RealtimeTriage:
         """Return one validated triage result for every supplied article."""
         if not articles:
             return []
-        prompt_parts = []
-        for article in articles:
-            prompt_parts.append(
-                f"[id={article['id']} source={article.get('source', 'unknown')}]\n"
-                f"Title: {article.get('title') or '(no title)'}\n"
-                f"Content: {(article.get('content') or '')[:1800]}"
-            )
+        prompt_parts = [_article_prompt(article) for article in articles]
         response = self._complete(
             "请分析以下实时新闻，返回 JSON only：\n\n"
             + "\n---\n".join(prompt_parts)
         )
-        raw_results = _extract_results(response)
+        initial_parse_error: Exception | None = None
+        try:
+            raw_results = _extract_results(response)
+        except Exception as exc:
+            raw_results = []
+            initial_parse_error = exc
         by_id = {item.get("id"): item for item in raw_results}
-        normalized: list[dict[str, Any]] = []
+        normalized_by_id: dict[Any, dict[str, Any]] = {}
+        invalid: list[tuple[dict[str, Any], Exception]] = []
         for article in articles:
-            result = by_id.get(article["id"])
-            if result is None:
-                raise ValueError(f"triage response missing id {article['id']}")
-            bucket = _as_text(result.get("bucket"), limit=30)
-            if bucket not in BUCKETS:
-                raise ValueError(f"invalid triage bucket: {bucket}")
-            direction = _as_text(result.get("direction"), limit=20) or "unclear"
-            if direction not in DIRECTIONS:
-                raise ValueError(f"invalid triage direction: {direction}")
-            if _has_high_impact_floor(article):
-                bucket = "high_impact"
-            normalized.append({
-                "id": article["id"],
-                "bucket": bucket,
-                "direction": direction,
-                "rationale": _as_text(result.get("rationale"), limit=500),
-                "affected_assets": _normalize_assets(result.get("affected_assets")),
-                "watch_for": _normalize_watch_for(result.get("watch_for")),
-                "scenario_bull": _as_text(result.get("scenario_bull"), limit=600),
-                "scenario_bear": _as_text(result.get("scenario_bear"), limit=600),
-            })
-        return normalized
+            try:
+                if initial_parse_error is not None:
+                    raise initial_parse_error
+                normalized_by_id[article["id"]] = _normalize_result(
+                    article,
+                    by_id.get(article["id"]),
+                )
+            except Exception as exc:
+                invalid.append((article, exc))
+
+        if invalid:
+            repair_prompt = (
+                "修复以下不符合 decision contract 的结果。必须逐条返回；"
+                "High Impact 必须 bullish/bearish 且 affected_assets 非空，"
+                "Watch+unclear 必须有具体 watch_for；不得输出 mixed 或双情景。\n\n"
+                + "\n---\n".join(
+                    f"Validation error: {error}\n{_article_prompt(article)}"
+                    for article, error in invalid
+                )
+            )
+            try:
+                repair_results = _extract_results(self._complete(repair_prompt))
+                repair_by_id = {item.get("id"): item for item in repair_results}
+            except Exception:
+                repair_by_id = {}
+            for article, first_error in invalid:
+                try:
+                    normalized_by_id[article["id"]] = _normalize_result(
+                        article,
+                        repair_by_id.get(article["id"]),
+                    )
+                except Exception as repair_error:
+                    normalized_by_id[article["id"]] = _isolated_failure(
+                        article,
+                        repair_error if repair_by_id else first_error,
+                    )
+
+        return [normalized_by_id[article["id"]] for article in articles]
