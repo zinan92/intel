@@ -1,0 +1,1067 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>News Triage Desk — Rolling News</title>
+  <style>
+    /* IBM Plex family from the source; use local/system fallback to avoid hotlinking. */
+:root {
+    --bg: #0a0d0e;
+    --bg-panel: #12181a;
+    --bg-panel-raised: #171f21;
+    --border: #26312f;
+    --border-soft: #1c2426;
+    --text: #e9efec;
+    --text-dim: #8b9997;
+    --text-faint: #57635f;
+    --accent: #e8a33d;
+    --accent-dim: #a67a34;
+    --high: #e5484d;
+    --high-bg: #2a1416;
+    --watch: #4fb0d9;
+    --watch-bg: #12252c;
+    --noise: #57635f;
+    --noise-bg: #14191a;
+    --mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Consolas, monospace;
+    --sans: 'IBM Plex Sans Condensed', 'Inter', system-ui, sans-serif;
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="light"]) {
+      --bg: #0a0d0e;
+      --bg-panel: #12181a;
+      --bg-panel-raised: #171f21;
+      --border: #26312f;
+      --text: #e9efec;
+      --text-dim: #8b9997;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0a0d0e;
+    --bg-panel: #12181a;
+    --bg-panel-raised: #171f21;
+    --border: #26312f;
+    --text: #e9efec;
+    --text-dim: #8b9997;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    overflow-x: hidden;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    margin: 0;
+    min-height: 100vh;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .app {
+    max-width: 1320px;
+    margin: 0 auto;
+    padding: 20px 24px 40px;
+  }
+
+  /* ---------- Top bar ---------- */
+  .topbar {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+  }
+  .topbar h1 {
+    font-family: var(--mono);
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    margin: 0;
+    color: var(--text);
+  }
+  .topbar h1 span { color: var(--accent); }
+  .topbar-meta {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+  .live-dot {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--accent);
+  }
+  .live-dot::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 0 rgba(232,163,61,0.5);
+    animation: pulse 1.8s ease-out infinite;
+  }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(232,163,61,0.45); }
+    70% { box-shadow: 0 0 0 7px rgba(232,163,61,0); }
+    100% { box-shadow: 0 0 0 0 rgba(232,163,61,0); }
+  }
+
+  /* ---------- Layout ---------- */
+  .board {
+    display: grid;
+    grid-template-columns: minmax(280px, 380px) 1fr;
+    gap: 18px;
+    align-items: start;
+  }
+  @media (max-width: 860px) {
+    .app { padding-left: 16px; padding-right: 16px; }
+    .board { grid-template-columns: 1fr; }
+  }
+
+  .panel {
+    min-width: 0;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border-soft);
+    background: var(--bg-panel-raised);
+  }
+  .panel-head h2 {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    margin: 0;
+    color: var(--text-dim);
+  }
+  .count {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-faint);
+  }
+
+  /* ---------- Ticker column ---------- */
+  .ticker-body {
+    height: 640px;
+    overflow: hidden;
+    position: relative;
+    padding: 6px 0;
+  }
+  .ticker-fade-top, .ticker-fade-bottom {
+    position: absolute;
+    left: 0; right: 0;
+    height: 28px;
+    pointer-events: none;
+    z-index: 2;
+  }
+  .ticker-fade-top { top: 0; background: linear-gradient(var(--bg-panel), transparent); }
+  .ticker-fade-bottom { bottom: 0; background: linear-gradient(transparent, var(--bg-panel)); }
+
+  .ticker-item {
+    min-width: 0;
+    display: flex;
+    gap: 10px;
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--border-soft);
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.5;
+    animation: dropIn 0.35s ease-out;
+    transition: background 0.5s ease, border-color 0.5s ease;
+  }
+  @keyframes dropIn {
+    from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .ticker-item .t-time {
+    color: var(--text-faint);
+    flex-shrink: 0;
+    width: 42px;
+  }
+  .ticker-item .t-src {
+    color: var(--text-faint);
+    flex-shrink: 0;
+    width: 66px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ticker-item .t-headline {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    color: var(--text-dim);
+  }
+  .ticker-item a,
+  .impact-card a,
+  .watch-card a,
+  .unknown-card a {
+    color: inherit;
+    text-decoration: none;
+  }
+  .ticker-item a:hover,
+  .impact-card a:hover,
+  .watch-card a:hover,
+  .unknown-card a:hover { color: var(--accent); }
+  .ticker-item.routed .t-headline { color: var(--text); }
+  .ticker-item.route-high { background: var(--high-bg); border-left: 2px solid var(--high); }
+  .ticker-item.route-watch { background: var(--watch-bg); border-left: 2px solid var(--watch); }
+  .ticker-item.route-noise { border-left: 2px solid var(--border); opacity: 0.55; }
+
+  .tag {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    padding: 1px 5px;
+    border-radius: 2px;
+    flex-shrink: 0;
+    align-self: flex-start;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+  .ticker-item.routed .tag { opacity: 1; }
+  .tag-high { background: rgba(229,72,77,0.18); color: var(--high); }
+  .tag-watch { background: rgba(79,176,217,0.18); color: var(--watch); }
+  .tag-noise { background: rgba(87,99,95,0.25); color: var(--text-faint); }
+  .tag-unknown { background: rgba(166,122,52,0.18); color: var(--accent); }
+  .ticker-item.processing { opacity: 0.78; }
+  .ticker-item.processing .tag { opacity: 1; }
+  .ticker-item.processing .t-headline { color: var(--text-dim); }
+
+  /* ---------- Bucket columns ---------- */
+  .buckets {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .bucket-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .bucket-stripe {
+    width: 3px;
+    align-self: stretch;
+    border-radius: 2px;
+  }
+  .bucket.high .bucket-stripe { background: var(--high); }
+  .bucket.watch .bucket-stripe { background: var(--watch); }
+  .bucket.noise .bucket-stripe { background: var(--noise); }
+
+  .bucket {
+    min-width: 0;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    display: flex;
+    overflow: hidden;
+  }
+  .bucket-main { flex: 1; min-width: 0; }
+  .impact-card, .watch-card, .scenario { min-width: 0; }
+  .bucket .panel-head { padding: 11px 14px; }
+  .bucket.high .panel-head h2 { color: var(--high); }
+  .bucket.watch .panel-head h2 { color: var(--watch); }
+  .bucket.noise .panel-head h2 { color: var(--text-faint); }
+  .bucket.unknown .bucket-stripe { background: var(--accent-dim); }
+  .bucket.unknown .panel-head h2 { color: var(--accent); }
+
+  .bucket-sub {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--text-faint);
+    padding: 0 14px 8px;
+    border-bottom: 1px solid var(--border-soft);
+  }
+
+  .bucket-list {
+    display: flex;
+    flex-direction: column;
+  }
+  .bucket-empty {
+    padding: 22px 14px;
+    color: var(--text-faint);
+    font-size: 12px;
+    font-family: var(--mono);
+  }
+
+  /* High impact card */
+  .impact-card {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border-soft);
+    animation: slideIn 0.5s cubic-bezier(.2,.8,.2,1);
+  }
+  .impact-card:last-child { border-bottom: none; }
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateX(14px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  .impact-headline {
+    font-size: 13.5px;
+    font-weight: 600;
+    line-height: 1.4;
+    margin: 0 0 3px;
+  }
+  .impact-meta {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--text-faint);
+    margin-bottom: 10px;
+    display: flex;
+    gap: 10px;
+  }
+  .scenario-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  @media (max-width: 620px) { .scenario-grid { grid-template-columns: 1fr; } }
+  .scenario {
+    background: var(--bg-panel-raised);
+    border: 1px solid var(--border-soft);
+    border-radius: 3px;
+    padding: 8px 10px;
+  }
+  .scenario .s-label {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  .scenario.bull .s-label { color: #52c793; }
+  .scenario.bear .s-label { color: var(--high); }
+  .scenario p {
+    margin: 0;
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: var(--text-dim);
+  }
+  .exposure-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    font-family: var(--mono);
+    font-size: 10.5px;
+  }
+  .evidence-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    align-items: center;
+    margin-top: 9px;
+    color: var(--text-dim);
+    font: 10px/1.3 var(--mono);
+  }
+  .evidence-row a { color: var(--text-mid); text-decoration: none; }
+  .evidence-row a:hover { color: var(--text); text-decoration: underline; }
+  .exposure-row .e-label { color: var(--text-faint); }
+  .ticker-chip {
+    background: rgba(229,72,77,0.12);
+    border: 1px solid rgba(229,72,77,0.3);
+    color: var(--high);
+    padding: 1.5px 6px;
+    border-radius: 2px;
+    font-weight: 600;
+  }
+
+  /* Watch card */
+  .watch-card {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border-soft);
+    animation: slideIn 0.5s cubic-bezier(.2,.8,.2,1);
+  }
+  .watch-card:last-child { border-bottom: none; }
+  .watch-headline {
+    font-size: 12.5px;
+    font-weight: 500;
+    margin: 0 0 5px;
+    color: var(--text);
+  }
+  .watch-points {
+    margin: 0;
+    padding-left: 14px;
+    font-size: 11.5px;
+    color: var(--text-dim);
+    line-height: 1.55;
+  }
+  .watch-points li { margin-bottom: 2px; }
+
+  /* Noise strip */
+  .noise-body {
+    padding: 14px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .noise-count {
+    font-family: var(--mono);
+    font-size: 26px;
+    font-weight: 600;
+    color: var(--text-faint);
+  }
+  .noise-desc {
+    font-size: 11.5px;
+    color: var(--text-faint);
+    line-height: 1.5;
+  }
+  .noise-recent {
+    padding: 0 14px 12px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--text-faint);
+    opacity: 0.75;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .unknown-card {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border-soft);
+    color: var(--text-dim);
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+  .unknown-card:last-child { border-bottom: none; }
+  .triage-rationale {
+    color: var(--text-dim);
+    font-size: 11.5px;
+    line-height: 1.5;
+    margin: 0 0 9px;
+  }
+  .direction {
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 1px 5px;
+    font-size: 9.5px;
+    text-transform: uppercase;
+  }
+  .direction-bullish { color: #52c793; border-color: rgba(82,199,147,.35); }
+  .direction-bearish { color: var(--high); border-color: rgba(229,72,77,.35); }
+  .direction-mixed, .direction-unclear { color: var(--accent); border-color: rgba(232,163,61,.35); }
+  .triage-error { color: var(--accent); font-size: 11px; margin: 4px 0 0; }
+  .connection-state { color: var(--accent); }
+  .connection-state.ok { color: #52c793; }
+  .connection-state.error { color: var(--high); }
+  .unknown-health { color: var(--text-faint); }
+  .unknown-health.alert { color: var(--high); }
+  .source-health-line {
+    border-top: 1px solid var(--border-soft);
+    margin-top: 12px;
+    padding-top: 10px;
+    color: var(--text-faint);
+  }
+  .source-health-line .healthy { color: #52c793; }
+  .source-health-line .degraded, .source-health-line .stale { color: var(--accent); }
+  .source-health-line .failed, .source-health-line .disabled { color: var(--high); }
+
+  .footnote {
+    margin-top: 18px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--text-faint);
+    line-height: 1.7;
+    border-top: 1px solid var(--border-soft);
+    padding-top: 12px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <h1><span>&#9642;</span> NEWS TRIAGE DESK — ROLLING NEWS</h1>
+    <div class="topbar-meta">
+      <span class="live-dot">LIVE</span>
+      <span id="connectionState" class="connection-state">CONNECTING</span>
+      <span id="unknownHealth" class="unknown-health">UNKNOWN --</span>
+      <span id="pendingHealth" class="unknown-health">PENDING --</span>
+      <span id="failedHealth" class="unknown-health">FAILED --</span>
+      <span id="clock">--:--:--</span>
+      <span id="rate">0 headlines/min</span>
+    </div>
+  </div>
+
+  <div class="board">
+    <!-- LEFT: rolling ticker -->
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Rolling Feed</h2>
+        <span class="count" id="feedCount">0 captured</span>
+      </div>
+      <div class="ticker-body">
+        <div class="ticker-fade-top"></div>
+        <div id="tickerList"></div>
+        <div class="ticker-fade-bottom"></div>
+      </div>
+    </div>
+
+    <!-- RIGHT: three buckets -->
+    <div class="buckets">
+      <div class="bucket high">
+        <div class="bucket-stripe"></div>
+        <div class="bucket-main">
+          <div class="panel-head">
+            <h2>High Impact — directional impact</h2>
+            <span class="count" id="highCount">0</span>
+          </div>
+          <div class="bucket-sub">交易决策相关：FOMC、非农、CPI、财报、地缘冲击</div>
+          <div class="bucket-list" id="highList">
+            <div class="bucket-empty">等待第一条高影响新闻…</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bucket watch">
+        <div class="bucket-stripe"></div>
+        <div class="bucket-main">
+          <div class="panel-head">
+            <h2>Watch — 有一两个观察点</h2>
+            <span class="count" id="watchCount">0</span>
+          </div>
+          <div class="bucket-sub">还不足以推演，但值得留意后续进展</div>
+          <div class="bucket-list" id="watchList">
+            <div class="bucket-empty">暂无待观察项</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bucket noise">
+        <div class="bucket-stripe"></div>
+        <div class="bucket-main">
+          <div class="panel-head">
+            <h2>Noise</h2>
+            <span class="count" id="noiseCount">0</span>
+          </div>
+          <div class="noise-body">
+            <div class="noise-count" id="noiseCountBig">0</div>
+            <div class="noise-desc">已过滤，无需查看。公关稿、常规业绩重申、二线代币动态等。</div>
+          </div>
+          <div class="noise-recent" id="noiseRecent"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="footnote">
+      LIVE DATA：CLS + Eastmoney + SEC EDGAR + BlockBeats → Park Intel realtime lane → AI triage。页面每 15 秒刷新；旧 hourly digest / event / signal lane 保持隔离。AI 未完成时显示 Unknown，不伪造判断。
+    <div id="sourceHealth" class="source-health-line">等待 source health…</div>
+  </div>
+</div>
+
+<script>
+(function () {
+  // The old fixture animation is kept below for historical reference only.
+  // The live renderer after this script is the product surface.
+  return;
+  var MOCK_NEWS = [
+    {
+      src: 'Fed', headline: 'FOMC holds rates at 4.25–4.50%, Powell flags "meeting-by-meeting" stance on Dec cut',
+      bucket: 'high',
+      scenario: {
+        bull: 'If Dec dot plot signals a cut → gold and high-duration tech rally, dollar softens.',
+        bear: 'If Powell leans hawkish on sticky services inflation → real yields rise, gold and risk assets sell off.'
+      },
+      exposure: ['NVDA', 'MU', 'GLD']
+    },
+    {
+      src: 'BLS', headline: 'Nonfarm payrolls +255K vs +180K expected; unemployment rate ticks down to 3.9%',
+      bucket: 'high',
+      scenario: {
+        bull: 'Strong labor data with cooling wage growth → soft-landing narrative intact, broad risk-on.',
+        bear: 'Beat lowers Dec cut odds sharply → high-beta AI names (NVDA, SNDK, MU) face the sharpest drawdown given recent run-up.'
+      },
+      exposure: ['NVDA', 'SNDK', 'MU']
+    },
+    {
+      src: 'BLS', headline: 'Core CPI YoY prints 3.4%, above 3.1% consensus — third straight upside surprise',
+      bucket: 'high',
+      scenario: {
+        bull: 'Market treats it as one-off (shelter lag) → limited reaction, rate-cut path preserved.',
+        bear: 'Confirms inflation re-acceleration → front-end yields spike, growth/AI complex de-rates hardest.'
+      },
+      exposure: ['QQQ', 'NVDA', 'ARKK']
+    },
+    {
+      src: 'NVDA', headline: 'Nvidia Q3 earnings beat, but data-center guidance merely in-line — stock swings 8% intraday',
+      bucket: 'high',
+      scenario: {
+        bull: 'Guidance seen as conservative sandbagging → dip gets bought, AI capex thesis reaffirmed.',
+        bear: 'Read as first sign of hyperscaler capex deceleration → semis and AI-adjacent names (MU, SNDK) sell off in sympathy.'
+      },
+      exposure: ['NVDA', 'MU', 'SNDK']
+    },
+    {
+      src: 'ECB', headline: 'ECB officials privately debate pausing cuts amid euro-area services inflation stickiness',
+      bucket: 'watch',
+      points: ['留意下次 ECB 会议前的官员表态频率', '若欧元走强，关注对美元指数 (DXY) 的传导']
+    },
+    {
+      src: 'Treasury', headline: '10-year auction sees soft demand, tail comes in 2bps above WI',
+      bucket: 'watch',
+      points: ['单次拍卖弱不构成趋势，连续两次转弱才值得升级', '关注海外买家（direct bidders）占比变化']
+    },
+    {
+      src: 'Reuters', headline: 'OPEC+ delegates signal no change to production quotas at next meeting',
+      bucket: 'watch',
+      points: ['原油区间震荡为主，除非有意外减产信号']
+    },
+    {
+      src: 'PR Newswire', headline: 'Regional bank announces routine quarterly dividend of $0.42/share',
+      bucket: 'noise'
+    },
+    {
+      src: 'CoinDesk', headline: 'Mid-cap altcoin lists on second-tier exchange, volume up 3%',
+      bucket: 'noise'
+    },
+    {
+      src: 'PR Newswire', headline: 'Consumer goods company reiterates FY guidance at investor conference',
+      bucket: 'noise'
+    },
+    {
+      src: 'X/Twitter', headline: 'Crypto influencer posts bullish chart on low-cap meme token',
+      bucket: 'noise'
+    },
+    {
+      src: 'Reuters', headline: 'Minor cabinet reshuffle announced in non-G7 economy',
+      bucket: 'noise'
+    },
+    {
+      src: 'Bloomberg', headline: 'White House signals possible new tariff review on select semiconductor imports',
+      bucket: 'watch',
+      points: ['尚未成文，先标记；一旦有具体清单立刻升级为 High Impact', '关注对 MU / SNDK 供应链敞口的间接影响']
+    }
+  ];
+
+  var tickerList = document.getElementById('tickerList');
+  var feedCountEl = document.getElementById('feedCount');
+  var highList = document.getElementById('highList');
+  var watchList = document.getElementById('watchList');
+  var highCountEl = document.getElementById('highCount');
+  var watchCountEl = document.getElementById('watchCount');
+  var noiseCountEl = document.getElementById('noiseCount');
+  var noiseCountBig = document.getElementById('noiseCountBig');
+  var noiseRecent = document.getElementById('noiseRecent');
+  var rateEl = document.getElementById('rate');
+
+  var feedCount = 0, highCount = 0, watchCount = 0, noiseCount = 0;
+  var idx = 0;
+  var recentTimestamps = [];
+
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  function timeStr() {
+    var d = new Date();
+    return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+  }
+
+  function tickClock() {
+    document.getElementById('clock').textContent = timeStr();
+  }
+  setInterval(tickClock, 1000);
+  tickClock();
+
+  function updateRate() {
+    var now = Date.now();
+    recentTimestamps = recentTimestamps.filter(function (t) { return now - t < 60000; });
+    rateEl.textContent = recentTimestamps.length + ' headlines/min';
+  }
+
+  function addTickerRow(item) {
+    var row = document.createElement('div');
+    row.className = 'ticker-item';
+    row.innerHTML =
+      '<span class="tag tag-' + item.bucket + '">' +
+        (item.bucket === 'high' ? 'HIGH' : item.bucket === 'watch' ? 'WATCH' : 'NOISE') +
+      '</span>' +
+      '<span class="t-time">' + timeStr() + '</span>' +
+      '<span class="t-src">' + item.src + '</span>' +
+      '<span class="t-headline">' + item.headline + '</span>';
+    tickerList.insertBefore(row, tickerList.firstChild);
+
+    while (tickerList.children.length > 28) {
+      tickerList.removeChild(tickerList.lastChild);
+    }
+
+    feedCount++;
+    feedCountEl.textContent = feedCount + ' captured';
+    recentTimestamps.push(Date.now());
+    updateRate();
+
+    setTimeout(function () {
+      row.classList.add('routed', 'route-' + item.bucket);
+      routeToBucket(item);
+    }, 900);
+  }
+
+  function routeToBucket(item) {
+    if (item.bucket === 'high') {
+      highCount++;
+      highCountEl.textContent = highCount;
+      var empty = highList.querySelector('.bucket-empty');
+      if (empty) empty.remove();
+
+      var card = document.createElement('div');
+      card.className = 'impact-card';
+      card.innerHTML =
+        '<p class="impact-headline">' + item.headline + '</p>' +
+        '<div class="impact-meta"><span>' + item.src + '</span><span>' + timeStr() + '</span></div>' +
+        '<div class="scenario-grid">' +
+          '<div class="scenario bull"><div class="s-label">If risk-on</div><p>' + item.scenario.bull + '</p></div>' +
+          '<div class="scenario bear"><div class="s-label">If risk-off</div><p>' + item.scenario.bear + '</p></div>' +
+        '</div>' +
+        '<div class="exposure-row"><span class="e-label">敞口关注:</span>' +
+          item.exposure.map(function (t) { return '<span class="ticker-chip">' + t + '</span>'; }).join('') +
+        '</div>';
+      highList.insertBefore(card, highList.firstChild);
+    } else if (item.bucket === 'watch') {
+      watchCount++;
+      watchCountEl.textContent = watchCount;
+      var emptyW = watchList.querySelector('.bucket-empty');
+      if (emptyW) emptyW.remove();
+
+      var wcard = document.createElement('div');
+      wcard.className = 'watch-card';
+      wcard.innerHTML =
+        '<p class="watch-headline">' + item.headline + '</p>' +
+        '<ul class="watch-points">' + item.points.map(function (p) { return '<li>' + p + '</li>'; }).join('') + '</ul>';
+      watchList.insertBefore(wcard, watchList.firstChild);
+    } else {
+      noiseCount++;
+      noiseCountEl.textContent = noiseCount;
+      noiseCountBig.textContent = noiseCount;
+      noiseRecent.textContent = '最近过滤: ' + item.headline;
+    }
+  }
+
+  function tick() {
+    var item = MOCK_NEWS[idx % MOCK_NEWS.length];
+    idx++;
+    addTickerRow(item);
+    setTimeout(tick, 2600 + Math.random() * 1400);
+  }
+
+  setTimeout(tick, 400);
+})();
+</script>
+<script>
+(function () {
+  'use strict';
+
+  // The public deployment routes this read-only endpoint through the same origin.
+  // A caller may override it for local development with NEWS_API_BASE.
+  var API_BASE = (window.NEWS_API_BASE || '').replace(/\/$/, '');
+  var POLL_MS = 15000;
+  var state = { bootstrapped: false, known: {}, items: [], arrivalTimes: [] };
+  var refs = {
+    ticker: document.getElementById('tickerList'),
+    feedCount: document.getElementById('feedCount'),
+    high: document.getElementById('highList'),
+    watch: document.getElementById('watchList'),
+    noise: document.getElementById('noiseCount'),
+    noiseBig: document.getElementById('noiseCountBig'),
+    noiseRecent: document.getElementById('noiseRecent'),
+    highCount: document.getElementById('highCount'),
+    watchCount: document.getElementById('watchCount'),
+    unknownHealth: document.getElementById('unknownHealth'),
+    pendingHealth: document.getElementById('pendingHealth'),
+    failedHealth: document.getElementById('failedHealth'),
+    rate: document.getElementById('rate'),
+    connection: document.getElementById('connectionState'),
+    health: document.getElementById('sourceHealth')
+  };
+
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  function tickClock() {
+    var d = new Date();
+    document.getElementById('clock').textContent = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+  }
+  function clear(el) { while (el.firstChild) el.removeChild(el.firstChild); }
+  function text(parent, value, className) {
+    var el = document.createElement('span');
+    if (className) el.className = className;
+    el.textContent = value == null ? '' : String(value);
+    parent.appendChild(el);
+    return el;
+  }
+  function paragraph(parent, value, className) {
+    var el = document.createElement('p');
+    if (className) el.className = className;
+    el.textContent = value || '';
+    parent.appendChild(el);
+    return el;
+  }
+  function listItem(parent, value) {
+    var el = document.createElement('li');
+    el.textContent = value == null ? '' : String(value);
+    parent.appendChild(el);
+    return el;
+  }
+  function safeUrl(value) {
+    if (!value) return null;
+    try {
+      var url = new URL(value, window.location.href);
+      return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : null;
+    } catch (e) { return null; }
+  }
+  function sourceLabel(source) {
+    const labels = {
+      cls_telegraph: 'CLS',
+      eastmoney_global_news: 'EASTMONEY',
+      sec_edgar: 'SEC',
+      blockbeats_newsflash: 'BLOCKBEATS'
+    };
+    return labels[source] || source || 'SOURCE';
+  }
+  function timeLabel(value) {
+    if (!value) return '--:--:--';
+    var date = new Date(value);
+    if (isNaN(date.getTime())) return '--:--:--';
+    return new Intl.DateTimeFormat('zh-CN', {
+      timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+    }).format(date);
+  }
+  function bucketLabel(bucket) {
+    return bucket === 'high_impact' ? 'HIGH' : bucket === 'watch' ? 'WATCH' : bucket === 'noise' ? 'NOISE' : 'UNKNOWN';
+  }
+  function directionLabel(direction) {
+    return direction === 'bullish' ? '偏多' : direction === 'bearish' ? '偏空' : direction === 'mixed' ? '混合' : '方向不明';
+  }
+  function triageOf(item) { return item.triage || {}; }
+  function assetsOf(item) {
+    var assets = triageOf(item).affected_assets;
+    return Array.isArray(assets) ? assets : [];
+  }
+  function watchOf(item) {
+    var points = triageOf(item).watch_for;
+    return Array.isArray(points) ? points : [];
+  }
+  function isPending(item) {
+    var status = triageOf(item).status;
+    return status === 'pending' || status === 'processing';
+  }
+  function addHeadline(parent, item, className) {
+    var url = safeUrl(item.url);
+    if (url) {
+      var link = document.createElement('a');
+      link.href = url;
+      link.target = '_blank';
+      link.rel = 'noreferrer noopener';
+      link.className = className;
+      link.textContent = item.title || '(untitled)';
+      parent.appendChild(link);
+    } else {
+      text(parent, item.title || '(untitled)', className);
+    }
+  }
+
+  function renderTicker(items, newIds) {
+    clear(refs.ticker);
+    items.slice(0, 60).forEach(function (item) {
+      var triage = triageOf(item);
+      var bucket = triage.bucket || (isPending(item) ? 'unknown' : 'unknown');
+      var row = document.createElement('div');
+      row.className = 'ticker-item routed route-' + bucket.replace('_impact', '');
+      if (isPending(item)) row.className += ' processing';
+      if (newIds[item.id]) row.className += ' fresh';
+      text(row, bucketLabel(bucket), 'tag tag-' + bucket.replace('_impact', ''));
+      text(row, timeLabel(item.published_at || item.collected_at), 't-time');
+      text(row, sourceLabel(item.source), 't-src');
+      addHeadline(row, item, 't-headline');
+      refs.ticker.appendChild(row);
+    });
+  }
+
+  function emptyState(parent, message) {
+    var el = document.createElement('div');
+    el.className = 'bucket-empty';
+    el.textContent = message;
+    parent.appendChild(el);
+  }
+
+  function renderMeta(parent, item) {
+    var triage = triageOf(item);
+    var meta = document.createElement('div');
+    meta.className = 'impact-meta';
+    text(meta, sourceLabel(item.source));
+    text(meta, timeLabel(item.published_at || item.collected_at));
+    if (triage.direction) text(meta, directionLabel(triage.direction), 'direction direction-' + triage.direction);
+    parent.appendChild(meta);
+  }
+
+  function renderAssets(parent, item) {
+    var assets = assetsOf(item);
+    if (!assets.length) return;
+    var row = document.createElement('div');
+    row.className = 'exposure-row';
+    text(row, '影响资产:', 'e-label');
+    assets.forEach(function (asset) {
+      var symbol = typeof asset === 'string' ? asset : (asset.symbol || asset.name || 'asset');
+      text(row, symbol, 'ticker-chip');
+    });
+    parent.appendChild(row);
+  }
+
+  function renderEvidence(parent, item) {
+    var event = item.event || {};
+    var evidence = Array.isArray(event.evidence) ? event.evidence : [];
+    if (evidence.length < 2) return;
+    var row = document.createElement('div');
+    row.className = 'evidence-row';
+    text(row, '多源证据:');
+    evidence.forEach(function (entry) {
+      var url = safeUrl(entry.url);
+      if (url) {
+        var link = document.createElement('a');
+        link.href = url;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.textContent = sourceLabel(entry.source);
+        row.appendChild(link);
+      } else {
+        text(row, sourceLabel(entry.source));
+      }
+    });
+    parent.appendChild(row);
+  }
+
+  function renderHighCard(parent, item) {
+    var card = document.createElement('div');
+    card.className = 'impact-card';
+    addHeadline(card, item, 'impact-headline');
+    renderMeta(card, item);
+    paragraph(card, triageOf(item).rationale || 'AI 已确认这是重大信息，但理由仍在补全。', 'triage-rationale');
+    renderAssets(card, item);
+    renderEvidence(card, item);
+    parent.appendChild(card);
+  }
+
+  function renderWatchCard(parent, item) {
+    var card = document.createElement('div');
+    card.className = 'watch-card';
+    addHeadline(card, item, 'watch-headline');
+    renderMeta(card, item);
+    var points = watchOf(item);
+    if (!points.length && triageOf(item).rationale) points = [triageOf(item).rationale];
+    var list = document.createElement('ul');
+    list.className = 'watch-points';
+    (points.length ? points : ['等待更多事实确认后再升级']).forEach(function (point) { listItem(list, point); });
+    card.appendChild(list);
+    renderAssets(card, item);
+    renderEvidence(card, item);
+    parent.appendChild(card);
+  }
+
+  function renderBuckets(data) {
+    var buckets = data.buckets || {};
+    var high = buckets.high_impact || [];
+    var watch = buckets.watch || [];
+    var noise = buckets.noise || [];
+    clear(refs.high);
+    clear(refs.watch);
+    high.slice(0, 8).forEach(function (item) { renderHighCard(refs.high, item); });
+    watch.slice(0, 8).forEach(function (item) { renderWatchCard(refs.watch, item); });
+    if (!high.length) emptyState(refs.high, '暂无已确认的 High Impact 新闻');
+    if (!watch.length) emptyState(refs.watch, '暂无待观察项');
+    refs.highCount.textContent = high.length;
+    refs.watchCount.textContent = watch.length;
+    refs.noise.textContent = noise.length;
+    refs.noiseBig.textContent = noise.length;
+    refs.noiseRecent.textContent = noise.length ? '最近过滤: ' + (noise[0].title || '') : '最近过滤: --';
+    var operational = data.operational || {};
+    var unknown = operational.unknown || {};
+    var rate = Number(unknown.rate || 0);
+    refs.unknownHealth.textContent = 'UNKNOWN ' + Number(unknown.count || 0) + ' · ' + (rate * 100).toFixed(1) + '%';
+    refs.unknownHealth.className = 'unknown-health' + (unknown.alert ? ' alert' : '');
+    refs.unknownHealth.title = 'Operational health only · pending ' + Number(operational.pending || 0) + ' · failed ' + Number(operational.failed || 0);
+    var pending = Number(operational.pending || (data.stats && data.stats.pending) || 0);
+    var failed = Number(operational.failed || (data.stats && data.stats.failed) || 0);
+    refs.pendingHealth.textContent = 'PENDING ' + pending;
+    refs.failedHealth.textContent = 'FAILED ' + failed;
+    refs.pendingHealth.className = 'unknown-health' + (pending ? ' alert' : '');
+    refs.failedHealth.className = 'unknown-health' + (failed ? ' alert' : '');
+  }
+
+  function renderHealth(health) {
+    clear(refs.health);
+    text(refs.health, 'SOURCE HEALTH  ');
+    (health || []).forEach(function (item, index) {
+      if (index) text(refs.health, '  ·  ');
+      text(refs.health, sourceLabel(item.source) + ' ' + String(item.status || 'unknown').toUpperCase(), item.status || '');
+    });
+  }
+
+  function updateRate() {
+    var cutoff = Date.now() - 60000;
+    state.arrivalTimes = state.arrivalTimes.filter(function (value) { return value > cutoff; });
+    refs.rate.textContent = state.arrivalTimes.length + ' headlines/min';
+  }
+
+  function setConnection(label, className) {
+    refs.connection.textContent = label;
+    refs.connection.className = 'connection-state ' + (className || '');
+  }
+
+  function refresh() {
+    fetch(API_BASE + '/api/ui/realtime?window=24h&limit=120', { cache: 'no-store' })
+      .then(function (response) {
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return response.json();
+      })
+      .then(function (data) {
+        var items = Array.isArray(data.items) ? data.items : [];
+        var newIds = {};
+        if (state.bootstrapped) {
+          items.forEach(function (item) {
+            if (!state.known[item.id]) {
+              newIds[item.id] = true;
+              state.arrivalTimes.push(Date.now());
+            }
+          });
+        }
+        state.known = {};
+        items.forEach(function (item) { state.known[item.id] = true; });
+        state.items = items;
+        state.bootstrapped = true;
+        refs.feedCount.textContent = ((data.stats && data.stats.total) || items.length) + ' captured';
+        renderTicker(items, newIds);
+        renderBuckets(data);
+        renderHealth(data.source_health);
+        updateRate();
+        setConnection('SYNCED', 'ok');
+      })
+      .catch(function (error) {
+        setConnection('OFFLINE', 'error');
+        refs.health.textContent = 'SOURCE HEALTH  API unavailable · ' + error.message;
+      });
+  }
+
+  tickClock();
+  setInterval(tickClock, 1000);
+  refresh();
+  setInterval(refresh, POLL_MS);
+})();
+</script>
+</body>
+</html>
