@@ -42,6 +42,7 @@ _SOURCE_KIND: dict[str, str] = {
     "cls_telegraph": "news",
     "eastmoney_global_news": "news",
     "sec_edgar": "filing",
+    "telegram_mtproto": "news",
 }
 
 
@@ -66,6 +67,7 @@ _SOURCE_WEIGHT: dict[str, float] = {
     "cls_telegraph": 0.3,
     "eastmoney_global_news": 0.3,
     "sec_edgar": 0.5,
+    "telegram_mtproto": 0.25,
 }
 
 _KIND_WEIGHT: dict[str, float] = {
@@ -233,6 +235,12 @@ def _feed_item(article: Article, priority: float, now: datetime, event_article_i
         "source_authority": article.source_authority,
         "corroboration_state": article.corroboration_state,
         "pin_eligibility": article.pin_eligibility,
+        "review_state": article.review_state,
+        "provider_channel_id": article.provider_channel_id,
+        "provider_message_id": article.provider_message_id,
+        "provider_edit_at": (
+            article.provider_edit_at.isoformat() if article.provider_edit_at else None
+        ),
         "triage": _triage_payload(article),
         "published_at": article.published_at.isoformat() if article.published_at else None,
         "collected_at": article.collected_at.isoformat() if article.collected_at else None,
@@ -584,7 +592,8 @@ def get_realtime_feed(
             "source_health": [
                 health for health in _build_source_health(session)
                 if health["source"] in {
-                    "cls_telegraph", "eastmoney_global_news", "sec_edgar"
+                    "cls_telegraph", "eastmoney_global_news", "sec_edgar",
+                    "telegram_mtproto",
                 }
             ],
         }
@@ -645,6 +654,12 @@ def get_item(item_id: int) -> dict[str, Any]:
             "source_authority": article.source_authority,
             "corroboration_state": article.corroboration_state,
             "pin_eligibility": article.pin_eligibility,
+            "review_state": article.review_state,
+            "provider_channel_id": article.provider_channel_id,
+            "provider_message_id": article.provider_message_id,
+            "provider_edit_at": (
+                article.provider_edit_at.isoformat() if article.provider_edit_at else None
+            ),
             "triage": _triage_payload(article),
             "published_at": article.published_at.isoformat() if article.published_at else None,
             "collected_at": article.collected_at.isoformat() if article.collected_at else None,

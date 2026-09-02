@@ -436,7 +436,13 @@ def _run_realtime_triage() -> None:
         now = datetime.utcnow()
         for article in candidates:
             result = by_id[article.id]
-            article.triage_bucket = result["bucket"]
+            bucket = result["bucket"]
+            if (
+                article.source == "telegram_mtproto"
+                and article.review_state == "needs_review"
+            ):
+                bucket = "watch"
+            article.triage_bucket = bucket
             article.triage_status = "complete"
             article.triage_direction = result["direction"]
             article.triage_rationale = result["rationale"]

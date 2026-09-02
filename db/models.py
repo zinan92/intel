@@ -75,6 +75,10 @@ class Article(Base):
     source_authority: Mapped[str | None] = mapped_column(String)
     corroboration_state: Mapped[str | None] = mapped_column(String)
     pin_eligibility: Mapped[str | None] = mapped_column(String)
+    review_state: Mapped[str | None] = mapped_column(String)
+    provider_channel_id: Mapped[str | None] = mapped_column(String)
+    provider_message_id: Mapped[str | None] = mapped_column(String)
+    provider_edit_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     __table_args__ = (
         Index("idx_source", "source"),

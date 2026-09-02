@@ -84,6 +84,10 @@ class BaseCollector(ABC):
                     source_authority=data.get("source_authority"),
                     corroboration_state=data.get("corroboration_state"),
                     pin_eligibility=data.get("pin_eligibility"),
+                    review_state=data.get("review_state"),
+                    provider_channel_id=data.get("provider_channel_id"),
+                    provider_message_id=data.get("provider_message_id"),
+                    provider_edit_at=data.get("provider_edit_at"),
                 )
                 session.add(article)
                 session.commit()

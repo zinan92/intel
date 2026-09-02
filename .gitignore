@@ -39,6 +39,8 @@ frontend/dist/
 # Env files
 .env
 .env.local
+*.session
+*.session-journal
 
 # Worktrees
 .worktrees/

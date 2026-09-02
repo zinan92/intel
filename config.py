@@ -116,6 +116,7 @@ REALTIME_SOURCE_TYPES = frozenset({
     "cls_telegraph",
     "eastmoney_global_news",
     "sec_edgar",
+    "telegram_mtproto",
 })
 
 
@@ -180,6 +181,33 @@ REALTIME_SOURCE_BOOTSTRAP: list[dict] = [
                 "XOM": 2115436,
                 "NEM": 1164727,
             },
+        },
+    },
+    {
+        "source": "telegram_mtproto",
+        "source_key": "telegram_mtproto:approved-channels",
+        "display_name": "Authorized Telegram Channels",
+        "interval_seconds": 60,
+        "category": "market-news",
+        "expected_freshness_hours": 0.1,
+        "requires_setup": True,
+        "config": {
+            "approved_channel_names": [
+                "BRICS News",
+                "BlockBeats",
+                "Global News Monitor",
+                "Intel Slava",
+                "Disclose.tv",
+                "Watcher Guru",
+                "Solid Intel",
+            ],
+            "lower_trust_names": [
+                "Global News Monitor",
+                "Intel Slava",
+                "Solid Intel",
+            ],
+            "channel_ids": {},
+            "message_limit": 50,
         },
     },
 ]

@@ -249,7 +249,11 @@ def seed_source_registry(session: Session) -> int:
             # The realtime trial is explicit opt-in. Existing DB-side
             # activation is preserved by the insert-only contract, while the
             # scheduler also checks this flag as a runtime kill switch.
-            is_active=1 if cfg.realtime_lane_enabled() else 0,
+            is_active=(
+                1
+                if cfg.realtime_lane_enabled() and not entry.get("requires_setup")
+                else 0
+            ),
             source_key=entry.get("source_key"),
         ):
             inserted += 1
