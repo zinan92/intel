@@ -109,6 +109,64 @@ def _recent_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return rows
 
 
+def _verify_pinned_cik(ticker: str, official_cik: int, cik_map: dict[str, int]) -> None:
+    try:
+        pinned_cik = int(cik_map[ticker])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise SourceConfigurationError(
+            f"SEC CIK pin missing or invalid: {ticker}"
+        ) from exc
+    if pinned_cik != official_cik:
+        raise SourceConfigurationError(
+            f"SEC CIK pin mismatch for {ticker}: "
+            f"expected {pinned_cik}, official {official_cik}"
+        )
+
+
+def _normalize_filing(
+    *,
+    row: dict[str, Any],
+    ticker: str,
+    cik: int,
+    company: str,
+) -> dict[str, Any] | None:
+    form = str(row.get("form") or "").strip().upper()
+    accession = str(row.get("accessionNumber") or "").strip()
+    document = str(row.get("primaryDocument") or "").strip()
+    if not accession or not document:
+        return None
+    published_at = _parse_timestamp(
+        row.get("acceptanceDateTime"), row.get("filingDate")
+    )
+    description = str(row.get("primaryDocDescription") or form).strip()
+    report_date = str(row.get("reportDate") or row.get("filingDate") or "").strip()
+    items = str(row.get("items") or "").strip()
+    content = f"{company} filed {form} for {report_date}."
+    if items:
+        content += f" Items: {items}."
+    return {
+        "source": "sec_edgar",
+        "source_id": f"sec_edgar:{accession}",
+        "author": company,
+        "title": f"{ticker} {form} — {description}",
+        "content": content,
+        "url": ARCHIVES_URL.format(
+            cik=cik,
+            accession=accession.replace("-", ""),
+            document=document,
+        ),
+        "tags": ["sec-filing", form.lower()],
+        "tickers": [ticker],
+        "score": 0,
+        "published_at": published_at,
+        "collection_lane": "realtime",
+        "source_authority": "official",
+        "corroboration_state": "primary_source",
+        "pin_eligibility": "eligible_if_high_impact",
+        "_timestamp_status": "valid" if published_at else "missing",
+    }
+
+
 def fetch_sec_edgar_filings(
     *,
     tickers: list[str],
@@ -116,6 +174,8 @@ def fetch_sec_edgar_filings(
     cik_map: dict[str, int] | None = None,
 ) -> list[dict[str, Any]]:
     """Resolve the watchlist through SEC metadata and return approved filings."""
+    if not isinstance(cik_map, dict) or not cik_map:
+        raise SourceConfigurationError("SEC CIK pin contract is required")
     company_index = _company_index()
     approved_forms = {form.strip().upper() for form in forms if form.strip()}
     normalized: list[dict[str, Any]] = []
@@ -124,17 +184,7 @@ def fetch_sec_edgar_filings(
         if ticker not in company_index:
             raise SourceConfigurationError(f"SEC ticker mapping not found: {ticker}")
         cik, indexed_title = company_index[ticker]
-        if cik_map is not None:
-            try:
-                pinned_cik = int(cik_map[ticker])
-            except (KeyError, TypeError, ValueError) as exc:
-                raise SourceConfigurationError(
-                    f"SEC CIK pin missing or invalid: {ticker}"
-                ) from exc
-            if pinned_cik != cik:
-                raise SourceConfigurationError(
-                    f"SEC CIK pin mismatch for {ticker}: expected {pinned_cik}, official {cik}"
-                )
+        _verify_pinned_cik(ticker, cik, cik_map)
         url = SUBMISSIONS_URL.format(cik=cik)
         payload = _get_json(url)
         if not isinstance(payload, dict):
@@ -144,38 +194,12 @@ def fetch_sec_edgar_filings(
             form = str(row.get("form") or "").strip().upper()
             if form not in approved_forms:
                 continue
-            accession = str(row.get("accessionNumber") or "").strip()
-            document = str(row.get("primaryDocument") or "").strip()
-            if not accession or not document:
-                continue
-            published_at = _parse_timestamp(
-                row.get("acceptanceDateTime"), row.get("filingDate")
+            filing = _normalize_filing(
+                row=row,
+                ticker=ticker,
+                cik=cik,
+                company=company,
             )
-            description = str(row.get("primaryDocDescription") or form).strip()
-            report_date = str(row.get("reportDate") or row.get("filingDate") or "").strip()
-            items = str(row.get("items") or "").strip()
-            content = f"{company} filed {form} for {report_date}."
-            if items:
-                content += f" Items: {items}."
-            normalized.append({
-                "source": "sec_edgar",
-                "source_id": f"sec_edgar:{accession}",
-                "author": company,
-                "title": f"{ticker} {form} — {description}",
-                "content": content,
-                "url": ARCHIVES_URL.format(
-                    cik=cik,
-                    accession=accession.replace("-", ""),
-                    document=document,
-                ),
-                "tags": ["sec-filing", form.lower()],
-                "tickers": [ticker],
-                "score": 0,
-                "published_at": published_at,
-                "collection_lane": "realtime",
-                "source_authority": "official",
-                "corroboration_state": "primary_source",
-                "pin_eligibility": "eligible_if_high_impact",
-                "_timestamp_status": "valid" if published_at else "missing",
-            })
+            if filing is not None:
+                normalized.append(filing)
     return normalized

@@ -49,7 +49,11 @@ def test_sec_adapter_resolves_ticker_and_normalizes_approved_filing(monkeypatch)
         rows, result = collect_from_source({
             "source_key": "sec_edgar:watchlist",
             "source_type": "sec_edgar",
-            "config": {"tickers": ["NVDA"], "forms": ["8-K", "10-Q"]},
+            "config": {
+                "tickers": ["NVDA"],
+                "forms": ["8-K", "10-Q"],
+                "cik_map": {"NVDA": 1045810},
+            },
         })
 
     assert result.status == "ok"
@@ -176,7 +180,11 @@ def test_sec_missing_user_agent_is_visible_configuration_failure(monkeypatch):
     rows, result = collect_from_source({
         "source_key": "sec_edgar:watchlist",
         "source_type": "sec_edgar",
-        "config": {"tickers": ["NVDA"], "forms": ["8-K"]},
+        "config": {
+            "tickers": ["NVDA"],
+            "forms": ["8-K"],
+            "cik_map": {"NVDA": 1045810},
+        },
     })
 
     assert rows == []
@@ -200,7 +208,11 @@ def test_sec_rejects_ambiguous_official_ticker_mapping(monkeypatch):
         rows, result = collect_from_source({
             "source_key": "sec_edgar:watchlist",
             "source_type": "sec_edgar",
-            "config": {"tickers": ["NVDA"], "forms": ["8-K"]},
+            "config": {
+                "tickers": ["NVDA"],
+                "forms": ["8-K"],
+                "cik_map": {"NVDA": 1045810},
+            },
         })
 
     assert rows == []
@@ -228,7 +240,11 @@ def test_sec_requests_respect_bounded_fair_access_gap(monkeypatch):
         "collectors.sec_edgar.time.monotonic",
         side_effect=[10.0, 10.01, 10.12],
     ), patch("collectors.sec_edgar.time.sleep") as sleep:
-        assert fetch_sec_edgar_filings(tickers=["NVDA"], forms=["8-K"]) == []
+        assert fetch_sec_edgar_filings(
+            tickers=["NVDA"],
+            forms=["8-K"],
+            cik_map={"NVDA": 1045810},
+        ) == []
 
     assert sleep.call_count == 1
     assert sleep.call_args.args[0] >= 0.09
@@ -258,6 +274,28 @@ def test_sec_adapter_rejects_verified_cik_pin_drift(monkeypatch):
     assert rows == []
     assert result.error_category == "config"
     assert "CIK pin mismatch" in result.error_message
+
+
+def test_sec_adapter_rejects_missing_cik_pin_contract(monkeypatch):
+    from sources.adapters import collect_from_source
+
+    monkeypatch.setenv("SEC_EDGAR_USER_AGENT", "Park Intel park@example.com")
+    company_tickers = {
+        "0": {"cik_str": 1045810, "ticker": "NVDA", "title": "NVIDIA CORP"},
+    }
+    with patch(
+        "collectors.sec_edgar.requests.get",
+        return_value=_response(company_tickers),
+    ):
+        rows, result = collect_from_source({
+            "source_key": "sec_edgar:watchlist",
+            "source_type": "sec_edgar",
+            "config": {"tickers": ["NVDA"], "forms": ["8-K"]},
+        })
+
+    assert rows == []
+    assert result.error_category == "config"
+    assert "CIK pin contract is required" in result.error_message
 
 
 def test_sec_ui_health_uses_successful_poll_when_filings_are_duplicates(monkeypatch):
