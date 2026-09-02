@@ -1,5 +1,13 @@
 # Runtime Registry
 
+## 2026-09-02 · High Impact floor narrowed to actual policy events
+
+- Issue #77 keeps FOMC, rate decisions, emergency hikes/cuts, CPI/PCE/NFP and
+  equivalent Chinese releases on the deterministic High Impact floor.
+- Generic central-bank names, official meetings and non-directional comments
+  are no longer force-upgraded. This prevents the validator from demanding a
+  fabricated bullish/bearish call for news that contains no policy action.
+
 ## 2026-09-02 · Realtime decision buckets collapse duplicate source reports
 
 - Issue #72 keeps `/api/ui/realtime.items` as the immutable raw Article stream
