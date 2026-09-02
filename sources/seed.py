@@ -166,12 +166,13 @@ def _seed_single_instance(
     schedule_seconds: int | None = None,
     expected_freshness_hours: float | None = None,
     is_active: int = 1,
+    source_key: str | None = None,
 ) -> bool:
     """Seed a single-instance source (hackernews, xueqiu, etc.).
 
     Returns True if inserted, False if already existed.
     """
-    key = f"{source_type}:main"
+    key = source_key or f"{source_type}:main"
     return _insert_if_missing(session, {
         "source_key": key,
         "source_type": source_type,
@@ -249,6 +250,7 @@ def seed_source_registry(session: Session) -> int:
             # activation is preserved by the insert-only contract, while the
             # scheduler also checks this flag as a runtime kill switch.
             is_active=1 if cfg.realtime_lane_enabled() else 0,
+            source_key=entry.get("source_key"),
         ):
             inserted += 1
 

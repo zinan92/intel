@@ -112,7 +112,11 @@ SOURCE_BOOTSTRAP: list[dict] = [
 
 # Realtime sources are intentionally separate from SOURCE_BOOTSTRAP. The
 # hourly lane remains unchanged while the migration lane is validated.
-REALTIME_SOURCE_TYPES = frozenset({"cls_telegraph", "eastmoney_global_news"})
+REALTIME_SOURCE_TYPES = frozenset({
+    "cls_telegraph",
+    "eastmoney_global_news",
+    "sec_edgar",
+})
 
 
 def realtime_lane_enabled() -> bool:
@@ -136,6 +140,47 @@ REALTIME_SOURCE_BOOTSTRAP: list[dict] = [
         "interval_seconds": 60,
         "category": "cn-market-news",
         "expected_freshness_hours": 0.1,
+    },
+    {
+        "source": "sec_edgar",
+        "source_key": "sec_edgar:watchlist",
+        "display_name": "SEC EDGAR Watchlist",
+        "interval_seconds": 60,
+        "category": "official-filings",
+        "expected_freshness_hours": 0.1,
+        "config": {
+            "tickers": [
+                "NVDA", "MSFT", "AAPL", "AMZN", "GOOGL", "META", "TSLA",
+                "AVGO", "AMD", "MU", "SNDK", "TSM", "ASML", "ORCL", "PLTR",
+                "JPM", "COIN", "MSTR", "XOM", "NEM",
+            ],
+            "forms": ["8-K", "10-Q", "10-K", "6-K", "20-F"],
+            # Verified against the official SEC company_tickers.json snapshot.
+            # Every poll re-resolves the official index and fails visibly if a
+            # ticker's current CIK differs from this pinned operator contract.
+            "cik_map": {
+                "NVDA": 1045810,
+                "MSFT": 789019,
+                "AAPL": 320193,
+                "AMZN": 1018724,
+                "GOOGL": 1652044,
+                "META": 1326801,
+                "TSLA": 1318605,
+                "AVGO": 1730168,
+                "AMD": 2488,
+                "MU": 723125,
+                "SNDK": 2023554,
+                "TSM": 1046179,
+                "ASML": 937966,
+                "ORCL": 1341439,
+                "PLTR": 1321655,
+                "JPM": 19617,
+                "COIN": 1679788,
+                "MSTR": 1050446,
+                "XOM": 2115436,
+                "NEM": 1164727,
+            },
+        },
     },
 ]
 

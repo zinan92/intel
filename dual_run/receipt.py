@@ -381,10 +381,23 @@ def build_dual_run_receipt(
 
 def _default_smoke_fetchers() -> dict[str, Callable[[], list[dict[str, Any]]]]:
     from collectors.realtime_news import fetch_cls_telegraph, fetch_eastmoney_global_news
+    from collectors.sec_edgar import fetch_sec_edgar_filings
+    from config import REALTIME_SOURCE_BOOTSTRAP
+
+    sec_config = next(
+        entry.get("config", {})
+        for entry in REALTIME_SOURCE_BOOTSTRAP
+        if entry["source"] == "sec_edgar"
+    )
 
     return {
         "cls_telegraph": fetch_cls_telegraph,
         "eastmoney_global_news": fetch_eastmoney_global_news,
+        "sec_edgar": lambda: fetch_sec_edgar_filings(
+            tickers=[str(value) for value in sec_config.get("tickers", [])],
+            forms=[str(value) for value in sec_config.get("forms", [])],
+            cik_map=sec_config.get("cik_map"),
+        ),
     }
 
 

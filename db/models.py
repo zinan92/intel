@@ -72,6 +72,9 @@ class Article(Base):
     triage_error: Mapped[str | None] = mapped_column(Text)
     triage_attempts: Mapped[int] = mapped_column(Integer, default=0)
     triaged_at: Mapped[datetime | None] = mapped_column(DateTime)
+    source_authority: Mapped[str | None] = mapped_column(String)
+    corroboration_state: Mapped[str | None] = mapped_column(String)
+    pin_eligibility: Mapped[str | None] = mapped_column(String)
 
     __table_args__ = (
         Index("idx_source", "source"),

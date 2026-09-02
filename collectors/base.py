@@ -81,6 +81,9 @@ class BaseCollector(ABC):
                     published_at=data.get("published_at"),
                     collected_at=datetime.utcnow(),
                     collection_lane=data.get("collection_lane", "hourly"),
+                    source_authority=data.get("source_authority"),
+                    corroboration_state=data.get("corroboration_state"),
+                    pin_eligibility=data.get("pin_eligibility"),
                 )
                 session.add(article)
                 session.commit()

@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import re
 from collections import Counter
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
@@ -41,6 +41,7 @@ _SOURCE_KIND: dict[str, str] = {
     "google_news": "news",
     "cls_telegraph": "news",
     "eastmoney_global_news": "news",
+    "sec_edgar": "filing",
 }
 
 
@@ -64,6 +65,7 @@ _SOURCE_WEIGHT: dict[str, float] = {
     "google_news": 0.2,
     "cls_telegraph": 0.3,
     "eastmoney_global_news": 0.3,
+    "sec_edgar": 0.5,
 }
 
 _KIND_WEIGHT: dict[str, float] = {
@@ -73,6 +75,7 @@ _KIND_WEIGHT: dict[str, float] = {
     "blog": 0.1,
     "trend": 0.15,
     "news": 0.15,
+    "filing": 0.2,
 }
 
 
@@ -227,6 +230,9 @@ def _feed_item(article: Article, priority: float, now: datetime, event_article_i
         "tags": _parse_tags(article.tags),
         "narrative_tags": _parse_tags(article.narrative_tags),
         "collection_lane": article.collection_lane,
+        "source_authority": article.source_authority,
+        "corroboration_state": article.corroboration_state,
+        "pin_eligibility": article.pin_eligibility,
         "triage": _triage_payload(article),
         "published_at": article.published_at.isoformat() if article.published_at else None,
         "collected_at": article.collected_at.isoformat() if article.collected_at else None,
@@ -266,6 +272,21 @@ def _build_source_health(session: Any) -> list[dict[str, Any]]:
 
     active = list_active_sources(session)
     active_types = sorted({s.source_type for s in active})
+    expected_freshness = {
+        source_type: min(
+            (
+                source.expected_freshness_hours
+                for source in active
+                if source.source_type == source_type
+                and source.expected_freshness_hours is not None
+            ),
+            default=0.1 if any(
+                source.source_type == source_type and source.lane == "realtime"
+                for source in active
+            ) else 24.0,
+        )
+        for source_type in active_types
+    }
 
     db_rows = (
         session.query(
@@ -296,13 +317,25 @@ def _build_source_health(session: Any) -> list[dict[str, Any]]:
             status = "stale"
 
         run = last_results.get(source_type)
+        last_attempt_at = run.timestamp if run else None
         if run and run.error:
             status = "degraded"
+        elif run and run.articles_fetched > 0:
+            try:
+                run_at = datetime.fromisoformat(run.timestamp.replace("Z", "+00:00"))
+                if run_at.tzinfo is not None:
+                    run_at = run_at.astimezone(timezone.utc).replace(tzinfo=None)
+                run_age_hours = (now - run_at).total_seconds() / 3600
+                if run_age_hours <= expected_freshness[source_type]:
+                    status = "ok"
+            except (TypeError, ValueError):
+                pass
 
         result.append({
             "source": source_type,
             "count": count,
             "last_seen_at": last_collected.isoformat() if last_collected else None,
+            "last_attempt_at": last_attempt_at,
             "status": status,
         })
 
@@ -550,7 +583,9 @@ def get_realtime_feed(
             },
             "source_health": [
                 health for health in _build_source_health(session)
-                if health["source"] in {"cls_telegraph", "eastmoney_global_news"}
+                if health["source"] in {
+                    "cls_telegraph", "eastmoney_global_news", "sec_edgar"
+                }
             ],
         }
     finally:
@@ -607,6 +642,9 @@ def get_item(item_id: int) -> dict[str, Any]:
             "narrative_tags": _parse_tags(article.narrative_tags),
             "relevance_score": article.relevance_score,
             "collection_lane": article.collection_lane,
+            "source_authority": article.source_authority,
+            "corroboration_state": article.corroboration_state,
+            "pin_eligibility": article.pin_eligibility,
             "triage": _triage_payload(article),
             "published_at": article.published_at.isoformat() if article.published_at else None,
             "collected_at": article.collected_at.isoformat() if article.collected_at else None,

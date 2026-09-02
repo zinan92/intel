@@ -225,6 +225,18 @@ def _adapt_eastmoney_global_news(record: dict[str, Any]) -> list[dict[str, Any]]
     )
 
 
+def _adapt_sec_edgar(record: dict[str, Any]) -> list[dict[str, Any]]:
+    """Collect approved filings for the configured SEC watchlist."""
+    from collectors.sec_edgar import fetch_sec_edgar_filings
+
+    cfg = _parse_config(record)
+    return fetch_sec_edgar_filings(
+        tickers=[str(value) for value in cfg.get("tickers", [])],
+        forms=[str(value) for value in cfg.get("forms", [])],
+        cik_map=cfg.get("cik_map"),
+    )
+
+
 # --- Adapter registry ---
 
 _ADAPTERS: dict[str, AdapterFn] = {
@@ -240,6 +252,7 @@ _ADAPTERS: dict[str, AdapterFn] = {
     "github_trending": _adapt_github_trending,
     "cls_telegraph": _adapt_cls_telegraph,
     "eastmoney_global_news": _adapt_eastmoney_global_news,
+    "sec_edgar": _adapt_sec_edgar,
 }
 
 

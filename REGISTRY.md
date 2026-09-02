@@ -1,5 +1,20 @@
 # Runtime Registry
 
+## 2026-09-02 · SEC EDGAR realtime watchlist code integrated, live gate open
+
+- Issue #53 adds the official SEC EDGAR adapter for the approved 20-company
+  watchlist and five filing forms, with an explicit SEC User-Agent gate,
+  sub-10-request/second throttling, official ticker-to-CIK verification,
+  pinned CIK drift detection, accession-id deduplication, and metadata-only
+  smoke receipts.
+- Source authority, corroboration state, and pin eligibility are persisted and
+  exposed independently from AI impact classification. An official filing can
+  satisfy trusted-source evidence but does not force High Impact or pinning.
+- The code and full local suite pass, but this host currently receives HTTP 403
+  from the official SEC JSON and archive hosts. The adapter reports that as a
+  provider block rather than empty success. Issue #53 remains open until a real
+  provider-to-persistence-to-API receipt succeeds.
+
 ## 2026-09-01 · Realtime polling cursor fixed
 
 - PR #49 fixes CLS Telegraph and Eastmoney realtime polling: each poll reads
@@ -68,6 +83,8 @@
   provider windows every 60 seconds, persists unique News Items, and exposes
   them through the local News Triage Desk; its throughput measurement remains
   provisional until a clean observation window completes.
+- The SEC EDGAR watchlist source is implemented behind the same realtime opt-in
+  but is not live-verified on this host while the official endpoints return 403.
 - The Daily Finance Newsletter archive and delivery contract is available on `main`.
 - Weekly retrospective, calendar verification, Obsidian/Feishu publication, delivery manifests, same-week no-op, and explicit force-resend are available on `main`.
 - Finance Daily, Finance Weekly, and the upstream Park Intel service now run from the clean production checkout `/Users/wendy/work/trading-co/park-intel-production`, created from `origin/main`.
@@ -81,6 +98,8 @@
 
 ## 下一步
 
+- Obtain a successful official SEC live receipt without bypassing fair-access
+  controls, then close issue #53.
 - Complete an uninterrupted clean observation window for realtime unique
   article throughput, then decide whether the lane is ready for broader source
   coverage or canonical-lane convergence.
