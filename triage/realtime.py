@@ -13,8 +13,9 @@ DIRECTIONS = frozenset({"bullish", "bearish", "unclear"})
 ASSET_IMPACTS = frozenset({"up", "down"})
 _HIGH_IMPACT_RE = re.compile(
     r"\b(?:fomc|cpi|pce|nfp|nonfarm payroll|jackson hole|fed decision|rate decision|"
-    r"central bank|emergency rate|ecb|boj)\b|美联储|非农|消费者价格|通胀数据|"
-    r"利率决议|央行|杰克逊霍尔|紧急降息|紧急加息",
+    r"emergency rate|(?:fed|ecb|boj|central bank) (?:rate )?decision)\b|"
+    r"非农|消费者价格|通胀数据|利率决议|杰克逊霍尔|紧急降息|紧急加息|"
+    r"(?:美联储|欧洲央行|日本央行|央行).{0,20}(?:加息|降息|利率决定|利率决议)",
     re.IGNORECASE,
 )
 

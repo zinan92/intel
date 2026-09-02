@@ -116,6 +116,31 @@ def test_watch_with_unclear_direction_requires_concrete_watch_condition():
     assert "watch_for" in result[0]["validation_error"]
 
 
+def test_generic_central_bank_meeting_is_not_forced_high_impact():
+    from triage.realtime import RealtimeTriage
+
+    client = MagicMock()
+    client.complete.return_value = json.dumps({"results": [{
+        "id": 401,
+        "bucket": "watch",
+        "direction": "unclear",
+        "rationale": "The meeting contains no policy decision or directional signal.",
+        "affected_assets": [],
+        "watch_for": ["a formal policy announcement"],
+    }]})
+
+    result = RealtimeTriage(client=client).triage_batch([{
+        "id": 401,
+        "title": "中国人民银行行长会见国际金融机构负责人和相关国家央行行长",
+        "content": "双方举行例行会面。",
+        "source": "eastmoney_global_news",
+    }])
+
+    assert result[0]["bucket"] == "watch"
+    assert result[0]["direction"] == "unclear"
+    assert client.complete.call_count == 1
+
+
 def test_triage_batch_normalizes_ai_contract():
     from triage.realtime import RealtimeTriage
 
