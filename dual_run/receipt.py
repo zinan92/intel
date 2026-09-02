@@ -380,6 +380,7 @@ def build_dual_run_receipt(
 
 
 def _default_smoke_fetchers() -> dict[str, Callable[[], list[dict[str, Any]]]]:
+    from collectors.blockbeats import fetch_blockbeats_newsflash
     from collectors.realtime_news import fetch_cls_telegraph, fetch_eastmoney_global_news
     from collectors.sec_edgar import fetch_sec_edgar_filings
     from config import REALTIME_SOURCE_BOOTSTRAP
@@ -398,6 +399,7 @@ def _default_smoke_fetchers() -> dict[str, Callable[[], list[dict[str, Any]]]]:
             cik_map=sec_config.get("cik_map"),
             lookback_hours=int(sec_config.get("lookback_hours", 72)),
         ),
+        "blockbeats_newsflash": fetch_blockbeats_newsflash,
     }
 
 

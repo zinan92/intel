@@ -1,5 +1,24 @@
 # Runtime Registry
 
+## 2026-09-02 · BlockBeats official Pro API integration, live gate open
+
+- Issue #64 adds the official BlockBeats `/v1/newsflash` source at a 300-second
+  free-tier baseline cadence. It preserves the BlockBeats permalink and any distinct
+  upstream URL/attribution, strips provider HTML, and accepts both documented
+  date-time strings and legacy Unix timestamps.
+- Missing/invalid credentials, rate limits, malformed payloads and provider
+  status failures remain visible; they are never converted into an empty
+  success. Replay is deduplicated through provider ID/GUID or a stable hash.
+- BlockBeats is treated as secondary evidence: items enter `needs_review`, are
+  unconfirmed, and cannot independently qualify for pinning. AI impact remains
+  a separate classification, so a genuinely major event may still be High
+  Impact while awaiting primary-source confirmation.
+- The free account was created with 10,000 monthly calls and its key is stored
+  outside the repository. A sanitized live receipt returned 50 valid rows,
+  persisted and AI-triaged a 10-item sample, exposed 10 UI items with healthy
+  source status, then proved replay deduplication (`saved=0`, `duplicates=10`).
+  The production deployment uses the 300-second baseline after merge.
+
 ## 2026-09-02 · Telegram ingestion permanently retired
 
 - Issue #63 removes the Telegram MTProto collector, adapter, bootstrap entry,
@@ -134,6 +153,8 @@
   provider windows every 60 seconds, persists unique News Items, and exposes
   them through the local News Triage Desk; its throughput measurement remains
   provisional until a clean observation window completes.
+- The BlockBeats official Pro API source is implemented at 300-second baseline
+  cadence; temporary 60-second event windows are isolated in issue #68.
 - The SEC EDGAR watchlist source is implemented behind the same realtime opt-in
   but is not live-verified on this host while the official endpoints return 403.
 - Telegram ingestion is permanently retired; historical registry rows and
@@ -153,8 +174,10 @@
 
 - Obtain a successful official SEC live receipt without bypassing fair-access
   controls, then close issue #53.
-- Replace Telegram mirrors only through each publisher's own permitted official
-  API or feed, beginning with the BlockBeats official API contract in issue #64.
+- Measure BlockBeats versus CLS/Eastmoney/SEC over a clean 24-hour window under
+  issue #65, then decide which incremental event categories justify retention.
+- Add quota-aware temporary 60-second BlockBeats event windows under issue #68
+  without changing the 300-second free-tier baseline.
 - Complete an uninterrupted clean observation window for realtime unique
   article throughput, then decide whether the lane is ready for broader source
   coverage or canonical-lane convergence.

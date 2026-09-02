@@ -88,6 +88,8 @@ class BaseCollector(ABC):
                     provider_channel_id=data.get("provider_channel_id"),
                     provider_message_id=data.get("provider_message_id"),
                     provider_edit_at=data.get("provider_edit_at"),
+                    upstream_url=data.get("upstream_url"),
+                    upstream_attribution=data.get("upstream_attribution"),
                     is_backfill=bool(data.get("is_backfill", False)),
                     backfill_reason=data.get("backfill_reason"),
                 )

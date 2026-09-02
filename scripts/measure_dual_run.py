@@ -33,7 +33,7 @@ def main() -> None:
     parser.add_argument(
         "--live-smoke",
         action="store_true",
-        help="Call CLS and Eastmoney once without saving responses",
+        help="Call configured realtime providers once without saving responses",
     )
     parser.add_argument("--output", type=Path, help="Write JSON receipt to this path")
     args = parser.parse_args()
