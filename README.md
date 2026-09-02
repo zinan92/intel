@@ -116,6 +116,7 @@ PYTHONPATH=. python scripts/publish_finance_daily_newsletter.py
 | CLS Telegraph | Explicit opt-in | `REALTIME_LANE_ENABLED=1` | Public rolling market-news endpoint; trial only |
 | Eastmoney 7x24 | Explicit opt-in | `REALTIME_LANE_ENABLED=1` | Public fast-news endpoint; trial only |
 | SEC EDGAR Watchlist | Explicit opt-in | `REALTIME_LANE_ENABLED=1`, `SEC_EDGAR_USER_AGENT` | Official filings for the pinned 20-company watchlist and approved forms |
+| BlockBeats Newsflash | Free account + explicit opt-in | `BLOCKBEATS_API_KEY`, `REALTIME_LANE_ENABLED=1` | Official Pro API; 5-minute free-tier baseline; secondary evidence requires confirmation |
 
 Without `ANTHROPIC_API_KEY`, articles still collect and get keyword tags -- they just won't have LLM-based relevance scores or narrative tags.
 

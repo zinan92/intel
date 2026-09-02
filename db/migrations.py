@@ -108,6 +108,24 @@ def _retire_telegram_source(engine: Engine) -> bool:
         return bool(result.rowcount)
 
 
+def _migrate_blockbeats_free_tier_schedule(engine: Engine) -> bool:
+    """Move the unreleased 60s BlockBeats seed to its quota-safe baseline."""
+    if not _table_exists(engine, "source_registry"):
+        return False
+    with engine.begin() as conn:
+        result = conn.execute(
+            text(
+                "UPDATE source_registry SET schedule_seconds = 300 "
+                "WHERE source_key = 'blockbeats_newsflash:main' "
+                "AND source_type = 'blockbeats_newsflash' "
+                "AND schedule_seconds = 60"
+            )
+        )
+        if result.rowcount:
+            logger.info("Migrated BlockBeats cadence from 60s to 300s free-tier baseline")
+        return bool(result.rowcount)
+
+
 _LEGACY_TO_CANONICAL: dict[str, str] = {
     "clawfeed": "social_kol",
     "github": "github_trending",
@@ -203,6 +221,8 @@ def run_migrations(engine: Engine) -> None:
         ("articles", "provider_channel_id", "TEXT"),
         ("articles", "provider_message_id", "TEXT"),
         ("articles", "provider_edit_at", "DATETIME"),
+        ("articles", "upstream_url", "TEXT"),
+        ("articles", "upstream_attribution", "TEXT"),
         ("articles", "is_backfill", "INTEGER"),
         ("articles", "backfill_reason", "TEXT"),
         ("source_registry", "lane", "TEXT"),
@@ -278,6 +298,7 @@ def run_migrations(engine: Engine) -> None:
 
     _migrate_sec_cik_map(engine)
     _retire_telegram_source(engine)
+    _migrate_blockbeats_free_tier_schedule(engine)
 
     # Keep the backfill for databases upgraded by an earlier revision that
     # added the lane columns as nullable. New upgrades use NOT NULL defaults

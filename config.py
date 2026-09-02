@@ -116,6 +116,7 @@ REALTIME_SOURCE_TYPES = frozenset({
     "cls_telegraph",
     "eastmoney_global_news",
     "sec_edgar",
+    "blockbeats_newsflash",
 })
 
 
@@ -182,6 +183,16 @@ REALTIME_SOURCE_BOOTSTRAP: list[dict] = [
                 "NEM": 1164727,
             },
         },
+    },
+    {
+        "source": "blockbeats_newsflash",
+        "source_key": "blockbeats_newsflash:main",
+        "display_name": "BlockBeats Newsflash",
+        "interval_seconds": 300,
+        "category": "crypto-news",
+        "expected_freshness_hours": 0.1,
+        "requires_setup": True,
+        "config": {"page_size": 50, "lang": "cn"},
     },
 ]
 

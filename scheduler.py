@@ -290,9 +290,8 @@ def _run_source_type(source_type: str) -> None:
                 missing_timestamp_count=save_stats["missing_timestamps"],
                 invalid_timestamp_count=save_stats["invalid_timestamps"],
             )
-            if adapter_result.error_category == "auth" and source_type in REALTIME_SOURCE_TYPES:
-                if "provider blocked" in (adapter_result.error_message or ""):
-                    _mark_realtime_blocked(source_type)
+            if adapter_result.provider_blocked and source_type in REALTIME_SOURCE_TYPES:
+                _mark_realtime_blocked(source_type)
             elif adapter_result.status == "ok":
                 _realtime_blocked_until.pop(source_type, None)
         except Exception as e:

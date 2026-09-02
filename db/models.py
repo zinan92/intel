@@ -79,6 +79,8 @@ class Article(Base):
     provider_channel_id: Mapped[str | None] = mapped_column(String)
     provider_message_id: Mapped[str | None] = mapped_column(String)
     provider_edit_at: Mapped[datetime | None] = mapped_column(DateTime)
+    upstream_url: Mapped[str | None] = mapped_column(String)
+    upstream_attribution: Mapped[str | None] = mapped_column(String)
     is_backfill: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     backfill_reason: Mapped[str | None] = mapped_column(String)
 

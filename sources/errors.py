@@ -110,3 +110,4 @@ class CollectorResult:
     error_message: str | None
     error_category: str | None
     retry_count: int
+    provider_blocked: bool = False

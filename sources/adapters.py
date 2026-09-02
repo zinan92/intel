@@ -21,7 +21,13 @@ from tenacity import (
     wait_exponential_jitter,
 )
 
-from sources.errors import CollectorResult, ErrorCategory, categorize_error, is_retryable
+from sources.errors import (
+    CollectorResult,
+    ErrorCategory,
+    SourceBlockedError,
+    categorize_error,
+    is_retryable,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -238,6 +244,17 @@ def _adapt_sec_edgar(record: dict[str, Any]) -> list[dict[str, Any]]:
     )
 
 
+def _adapt_blockbeats_newsflash(record: dict[str, Any]) -> list[dict[str, Any]]:
+    """Collect the latest official BlockBeats Pro newsflash window."""
+    from collectors.blockbeats import fetch_blockbeats_newsflash
+
+    cfg = _parse_config(record)
+    return fetch_blockbeats_newsflash(
+        page_size=int(cfg.get("page_size", 50)),
+        lang=str(cfg.get("lang", "cn")),
+    )
+
+
 # --- Adapter registry ---
 
 _ADAPTERS: dict[str, AdapterFn] = {
@@ -254,6 +271,7 @@ _ADAPTERS: dict[str, AdapterFn] = {
     "cls_telegraph": _adapt_cls_telegraph,
     "eastmoney_global_news": _adapt_eastmoney_global_news,
     "sec_edgar": _adapt_sec_edgar,
+    "blockbeats_newsflash": _adapt_blockbeats_newsflash,
 }
 
 
@@ -345,5 +363,6 @@ def collect_from_source(record: dict[str, Any]) -> tuple[list[dict[str, Any]], C
             error_message=str(exc)[:500],
             error_category=category.value,
             retry_count=retry_count,
+            provider_blocked=isinstance(exc, SourceBlockedError),
         )
         return ([], result)
