@@ -1,5 +1,22 @@
 # Runtime Registry
 
+## 2026-09-02 · Telegram MTProto source implemented, human gate open
+
+- Issue #54 adds an MTProto user-session source for exactly seven approved
+  Telegram channels. Setup enumerates joined channels by display-name hints,
+  requires each hint to resolve exactly once, and persists only the approved
+  immutable numeric IDs after an explicit `--approve` step.
+- The source reads bounded text-message windows for reconnect/gap recovery,
+  records original and edited message versions idempotently, never downloads
+  media, and keeps session/API credentials outside the repository.
+- Telegram-only evidence always requires independent confirmation before
+  pinning. Global News Monitor, Intel Slava, and Solid Intel are forced to
+  Watch/needs-review even if the AI model proposes High Impact.
+- The source remains inactive until the operator supplies Telegram API
+  credentials, completes phone/OTP/2FA authorization, and approves the seven
+  numeric channel IDs. Issue #54 remains open until a real approved-channel
+  provider-to-persistence-to-API receipt succeeds.
+
 ## 2026-09-02 · SEC EDGAR realtime watchlist code integrated, live gate open
 
 - Issue #53 adds the official SEC EDGAR adapter for the approved 20-company
@@ -85,6 +102,8 @@
   provisional until a clean observation window completes.
 - The SEC EDGAR watchlist source is implemented behind the same realtime opt-in
   but is not live-verified on this host while the official endpoints return 403.
+- The Telegram MTProto source is implemented but inactive until its explicit
+  human credential/session/channel-ID gate is completed.
 - The Daily Finance Newsletter archive and delivery contract is available on `main`.
 - Weekly retrospective, calendar verification, Obsidian/Feishu publication, delivery manifests, same-week no-op, and explicit force-resend are available on `main`.
 - Finance Daily, Finance Weekly, and the upstream Park Intel service now run from the clean production checkout `/Users/wendy/work/trading-co/park-intel-production`, created from `origin/main`.
@@ -100,6 +119,8 @@
 
 - Obtain a successful official SEC live receipt without bypassing fair-access
   controls, then close issue #53.
+- Complete Telegram API/session authorization and approve the exact seven
+  numeric channel IDs, then capture the #54 live receipt.
 - Complete an uninterrupted clean observation window for realtime unique
   article throughput, then decide whether the lane is ready for broader source
   coverage or canonical-lane convergence.

@@ -111,8 +111,14 @@ PYTHONPATH=. python scripts/publish_finance_daily_newsletter.py
 | CLS Telegraph | Explicit opt-in | `REALTIME_LANE_ENABLED=1` | Public rolling market-news endpoint; trial only |
 | Eastmoney 7x24 | Explicit opt-in | `REALTIME_LANE_ENABLED=1` | Public fast-news endpoint; trial only |
 | SEC EDGAR Watchlist | Explicit opt-in | `REALTIME_LANE_ENABLED=1`, `SEC_EDGAR_USER_AGENT` | Official filings for the pinned 20-company watchlist and approved forms |
+| Authorized Telegram Channels | Human setup + explicit opt-in | `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `TELEGRAM_SESSION_PATH` | MTProto user session; numeric-ID allowlist only; no Bot API or media download |
 
 Without `ANTHROPIC_API_KEY`, articles still collect and get keyword tags -- they just won't have LLM-based relevance scores or narrative tags.
+
+Telegram setup is intentionally interactive. First run
+`python scripts/setup_telegram_channels.py` to inspect the seven resolved
+numeric channel IDs, then rerun with `--approve` to persist that exact mapping.
+The session file must remain outside the repository.
 
 ## Architecture
 

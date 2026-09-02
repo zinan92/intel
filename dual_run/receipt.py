@@ -382,12 +382,18 @@ def build_dual_run_receipt(
 def _default_smoke_fetchers() -> dict[str, Callable[[], list[dict[str, Any]]]]:
     from collectors.realtime_news import fetch_cls_telegraph, fetch_eastmoney_global_news
     from collectors.sec_edgar import fetch_sec_edgar_filings
+    from collectors.telegram_mtproto import fetch_telegram_messages
     from config import REALTIME_SOURCE_BOOTSTRAP
 
     sec_config = next(
         entry.get("config", {})
         for entry in REALTIME_SOURCE_BOOTSTRAP
         if entry["source"] == "sec_edgar"
+    )
+    telegram_config = next(
+        entry.get("config", {})
+        for entry in REALTIME_SOURCE_BOOTSTRAP
+        if entry["source"] == "telegram_mtproto"
     )
 
     return {
@@ -397,6 +403,10 @@ def _default_smoke_fetchers() -> dict[str, Callable[[], list[dict[str, Any]]]]:
             tickers=[str(value) for value in sec_config.get("tickers", [])],
             forms=[str(value) for value in sec_config.get("forms", [])],
             cik_map=sec_config.get("cik_map"),
+        ),
+        "telegram_mtproto": lambda: fetch_telegram_messages(
+            channel_ids=telegram_config.get("channel_ids", {}),
+            message_limit=int(telegram_config.get("message_limit", 50)),
         ),
     }
 
