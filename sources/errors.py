@@ -29,6 +29,10 @@ class SourceBlockedError(RuntimeError):
     """A provider explicitly rejected automated polling and should not retry."""
 
 
+class SourceConfigurationError(ValueError):
+    """A required source setting or verified identity mapping is invalid."""
+
+
 _TRANSIENT_HTTP_CODES = frozenset({429, 500, 502, 503})
 _AUTH_HTTP_CODES = frozenset({400, 401, 403})
 
@@ -69,7 +73,7 @@ def categorize_error(exc: Exception) -> ErrorCategory:
 
     # Configuration / environment errors (check before OSError since
     # FileNotFoundError is a subclass of OSError)
-    if isinstance(exc, (ImportError, FileNotFoundError)):
+    if isinstance(exc, (ImportError, FileNotFoundError, SourceConfigurationError)):
         return ErrorCategory.CONFIG
 
     # OS-level network errors (socket errors etc.)

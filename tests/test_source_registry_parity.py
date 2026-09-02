@@ -63,7 +63,7 @@ class TestRegistryCoversPreviousConfig:
             assert legacy not in active_types, f"Legacy name {legacy} still in registry"
 
     def test_registry_keeps_legacy_types_and_adds_realtime_types(self, seeded_session):
-        """The original 10 types remain alongside the two realtime sources."""
+        """The original 10 types remain alongside approved realtime sources."""
         from sources.registry import list_all_sources
 
         registered = list_all_sources(seeded_session)
@@ -72,6 +72,7 @@ class TestRegistryCoversPreviousConfig:
             "rss", "reddit", "github_release", "website_monitor", "social_kol",
             "hackernews", "xueqiu", "yahoo_finance", "google_news", "github_trending",
             "cls_telegraph", "eastmoney_global_news",
+            "sec_edgar",
         }
         assert types == expected
 
