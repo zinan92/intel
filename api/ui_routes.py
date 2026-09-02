@@ -241,6 +241,8 @@ def _feed_item(article: Article, priority: float, now: datetime, event_article_i
         "provider_edit_at": (
             article.provider_edit_at.isoformat() if article.provider_edit_at else None
         ),
+        "is_backfill": bool(article.is_backfill),
+        "backfill_reason": article.backfill_reason,
         "triage": _triage_payload(article),
         "published_at": article.published_at.isoformat() if article.published_at else None,
         "collected_at": article.collected_at.isoformat() if article.collected_at else None,
@@ -578,6 +580,7 @@ def get_feed(
 def get_realtime_feed(
     window: str = Query(default="24h"),
     limit: int = Query(default=80, ge=1, le=200),
+    include_backfill: bool = False,
 ) -> dict[str, Any]:
     """Return realtime items plus their persisted AI triage buckets."""
     session = get_session()
@@ -592,6 +595,8 @@ def get_realtime_feed(
             )
             .order_by(Article.collected_at.desc())
         )
+        if not include_backfill:
+            query = query.filter(Article.is_backfill.is_(False))
         total = query.count()
         articles = query.limit(limit).all()
         items = [
@@ -701,6 +706,8 @@ def get_item(item_id: int) -> dict[str, Any]:
             "provider_edit_at": (
                 article.provider_edit_at.isoformat() if article.provider_edit_at else None
             ),
+            "is_backfill": bool(article.is_backfill),
+            "backfill_reason": article.backfill_reason,
             "triage": _triage_payload(article),
             "published_at": article.published_at.isoformat() if article.published_at else None,
             "collected_at": article.collected_at.isoformat() if article.collected_at else None,

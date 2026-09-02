@@ -1,5 +1,15 @@
 # Runtime Registry
 
+## 2026-09-02 · SEC historical filings retained as reversible backfill
+
+- Issue #61 adds `is_backfill` plus a traceable reason. SEC filings outside
+  the configured 72-hour realtime window remain stored for retrospective
+  research but are excluded from scheduled realtime AI triage.
+- `/api/ui/realtime` hides backfill by default and exposes it only when
+  `include_backfill=true` is explicitly requested. No SEC Article is deleted.
+- The one-time marker command is dry-run by default and can undo only rows
+  carrying the exact supplied reason, preserving completed historical triage.
+
 ## 2026-09-02 · Telegram MTProto source implemented, human gate open
 
 - Issue #54 adds an MTProto user-session source for exactly seven approved

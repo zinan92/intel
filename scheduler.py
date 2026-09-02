@@ -401,6 +401,7 @@ def _run_realtime_triage() -> None:
             session.query(Article)
             .filter(
                 Article.collection_lane == "realtime",
+                Article.is_backfill.is_(False),
                 or_(
                     Article.triage_status.is_(None),
                     Article.triage_status.in_(["failed", "processing"]),

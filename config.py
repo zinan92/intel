@@ -156,6 +156,7 @@ REALTIME_SOURCE_BOOTSTRAP: list[dict] = [
                 "JPM", "COIN", "MSTR", "XOM", "NEM",
             ],
             "forms": ["8-K", "10-Q", "10-K", "6-K", "20-F"],
+            "lookback_hours": 72,
             # Verified against the official SEC company_tickers.json snapshot.
             # Every poll re-resolves the official index and fails visibly if a
             # ticker's current CIK differs from this pinned operator contract.

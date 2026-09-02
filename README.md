@@ -49,6 +49,11 @@ The realtime UI read model is available at `GET /api/ui/realtime`. It returns
 rolling News Items, persisted AI triage (`high_impact`, `watch`, `noise`, or
 `unknown`), affected assets, conditional scenarios, and source health.
 
+SEC filings outside the configured 72-hour realtime lookback are retained as
+reversible backfill records. They are excluded from realtime AI triage and the
+default rolling response; use `GET /api/ui/realtime?include_backfill=true` for
+research and retrospective triage work.
+
 **Run as background service (macOS):**
 
 ```bash

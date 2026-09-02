@@ -11,6 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from db.models import Base
 from sources.registry import list_active_sources
@@ -30,8 +31,20 @@ def seeded_session():
 
 @pytest.fixture
 def client():
-    with patch("main.CollectorScheduler.start"), \
-         patch("main.CollectorScheduler.shutdown"):
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine)
+    with factory() as session:
+        seed_source_registry(session)
+    with patch("main.init_db"), \
+         patch("main.CollectorScheduler.start"), \
+         patch("main.CollectorScheduler.shutdown"), \
+         patch("api.routes.get_session", side_effect=factory), \
+         patch("api.ui_routes.get_session", side_effect=factory):
         from main import app
         with TestClient(app) as c:
             yield c

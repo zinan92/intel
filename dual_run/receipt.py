@@ -403,6 +403,7 @@ def _default_smoke_fetchers() -> dict[str, Callable[[], list[dict[str, Any]]]]:
             tickers=[str(value) for value in sec_config.get("tickers", [])],
             forms=[str(value) for value in sec_config.get("forms", [])],
             cik_map=sec_config.get("cik_map"),
+            lookback_hours=int(sec_config.get("lookback_hours", 72)),
         ),
         "telegram_mtproto": lambda: fetch_telegram_messages(
             channel_ids=telegram_config.get("channel_ids", {}),
