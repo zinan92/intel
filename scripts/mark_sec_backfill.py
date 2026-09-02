@@ -10,18 +10,22 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from sqlalchemy.orm import Session  # noqa: E402
+
 from db.database import get_session, init_db  # noqa: E402
 from db.models import Article  # noqa: E402
 
 
 def mark_sec_backfill(
-    session,
+    session: Session,
     *,
     cutoff: datetime,
     reason: str,
     apply: bool,
 ) -> int:
     """Mark parsed SEC rows older than cutoff; return candidate count."""
+    if not reason.strip():
+        raise ValueError("backfill reason must not be empty")
     query = session.query(Article).filter(
         Article.source == "sec_edgar",
         Article.published_at.isnot(None),
@@ -41,8 +45,10 @@ def mark_sec_backfill(
     return count
 
 
-def undo_sec_backfill(session, *, reason: str, apply: bool) -> int:
+def undo_sec_backfill(session: Session, *, reason: str, apply: bool) -> int:
     """Undo only SEC markers carrying the exact supplied reason."""
+    if not reason.strip():
+        raise ValueError("backfill reason must not be empty")
     query = session.query(Article).filter(
         Article.source == "sec_edgar",
         Article.is_backfill.is_(True),

@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import Session
 
 from db.models import Article, Base, SourceRegistry
@@ -228,3 +228,30 @@ def test_backfill_marker_is_dry_run_first_and_reversible():
     assert session.query(Article).filter(Article.is_backfill.is_(True)).count() == 0
     assert session.query(Article).count() == 3
     session.close()
+
+
+def test_existing_article_table_migrates_backfill_to_false():
+    from db.migrations import run_migrations
+
+    engine = create_engine("sqlite:///:memory:")
+    with engine.begin() as connection:
+        connection.execute(text(
+            "CREATE TABLE articles ("
+            "id INTEGER PRIMARY KEY, source TEXT NOT NULL, title TEXT, "
+            "collected_at DATETIME)"
+        ))
+        connection.execute(text(
+            "INSERT INTO articles (id, source, title, collected_at) "
+            "VALUES (1, 'sec_edgar', 'Legacy filing', '2026-09-02 12:00:00')"
+        ))
+
+    run_migrations(engine)
+
+    columns = {column["name"]: column for column in inspect(engine).get_columns("articles")}
+    assert "is_backfill" in columns
+    with engine.connect() as connection:
+        row = connection.execute(text(
+            "SELECT is_backfill, backfill_reason FROM articles WHERE id = 1"
+        )).one()
+    assert row[0] == 0
+    assert row[1] is None
