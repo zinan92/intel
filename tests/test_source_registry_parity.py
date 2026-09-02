@@ -86,7 +86,6 @@ class TestRegistryCoversPreviousConfig:
             "hackernews", "xueqiu", "yahoo_finance", "google_news", "github_trending",
             "cls_telegraph", "eastmoney_global_news",
             "sec_edgar",
-            "telegram_mtproto",
         }
         assert types == expected
 

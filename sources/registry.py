@@ -11,12 +11,18 @@ from db.models import SourceRegistry
 
 logger = logging.getLogger(__name__)
 
+# Policy-denied source types remain queryable for audit/history but can never
+# be made active through generic registry CRUD. This is intentionally separate
+# from adapter availability so a future refactor cannot silently re-enable one.
+PERMANENTLY_RETIRED_SOURCE_TYPES = frozenset({"telegram_mtproto"})
+
 
 def list_active_sources(session: Session) -> list[SourceRegistry]:
     """Return all source registry records where is_active == 1."""
     return (
         session.query(SourceRegistry)
         .filter(SourceRegistry.is_active == 1)
+        .filter(~SourceRegistry.source_type.in_(PERMANENTLY_RETIRED_SOURCE_TYPES))
         .order_by(SourceRegistry.priority, SourceRegistry.source_key)
         .all()
     )
@@ -60,12 +66,14 @@ def upsert_source(session: Session, payload: dict[str, Any]) -> SourceRegistry:
         schedule_seconds, expected_freshness_hours, priority (optional)
 
     On update, only keys present in the payload are modified.
-    Reactivating a source (is_active=1) clears retired_at.
+    Reactivating a source (is_active=1) clears retired_at unless its source
+    type has been permanently retired by policy.
     """
     source_key = payload["source_key"]
     existing = get_source_by_key(session, source_key)
 
     if existing is not None:
+        original_source_type = existing.source_type
         existing.source_type = payload.get("source_type", existing.source_type)
         existing.display_name = payload.get("display_name", existing.display_name)
         existing.category = payload.get("category", existing.category)
@@ -88,9 +96,17 @@ def upsert_source(session: Session, payload: dict[str, Any]) -> SourceRegistry:
             existing.config_json = _serialize_config(config_raw)
 
         # Handle is_active + retired_at consistency
-        new_active = payload.get("is_active", existing.is_active)
+        permanently_retired = (
+            original_source_type in PERMANENTLY_RETIRED_SOURCE_TYPES
+            or existing.source_type in PERMANENTLY_RETIRED_SOURCE_TYPES
+        )
+        new_active = 0 if permanently_retired else payload.get(
+            "is_active", existing.is_active,
+        )
         existing.is_active = new_active
-        if new_active == 1 and existing.retired_at is not None:
+        if permanently_retired and existing.retired_at is None:
+            existing.retired_at = datetime.now(timezone.utc)
+        elif new_active == 1 and existing.retired_at is not None:
             existing.retired_at = None
 
         session.commit()
@@ -98,6 +114,9 @@ def upsert_source(session: Session, payload: dict[str, Any]) -> SourceRegistry:
 
     config_json = _serialize_config(payload.get("config", {}))
 
+    permanently_retired = (
+        payload["source_type"] in PERMANENTLY_RETIRED_SOURCE_TYPES
+    )
     record = SourceRegistry(
         source_key=source_key,
         source_type=payload["source_type"],
@@ -106,7 +125,8 @@ def upsert_source(session: Session, payload: dict[str, Any]) -> SourceRegistry:
         config_json=config_json,
         owner_type=payload.get("owner_type", "system"),
         visibility=payload.get("visibility", "internal"),
-        is_active=payload.get("is_active", 1),
+        is_active=0 if permanently_retired else payload.get("is_active", 1),
+        retired_at=datetime.now(timezone.utc) if permanently_retired else None,
         schedule_hours=payload.get("schedule_hours"),
         lane=payload.get("lane", "hourly"),
         schedule_seconds=payload.get("schedule_seconds"),

@@ -437,13 +437,7 @@ def _run_realtime_triage() -> None:
         now = datetime.utcnow()
         for article in candidates:
             result = by_id[article.id]
-            bucket = result["bucket"]
-            if (
-                article.source == "telegram_mtproto"
-                and article.review_state == "needs_review"
-            ):
-                bucket = "watch"
-            article.triage_bucket = bucket
+            article.triage_bucket = result["bucket"]
             article.triage_status = "complete"
             article.triage_direction = result["direction"]
             article.triage_rationale = result["rationale"]
@@ -579,6 +573,7 @@ class CollectorScheduler:
         and intervals. One job is created per source_type (not per instance).
         """
         from db.database import get_session
+        from sources.adapters import get_adapter
         from sources.registry import list_active_sources
 
         session = get_session()
@@ -593,6 +588,12 @@ class CollectorScheduler:
         type_intervals: dict[str, int] = {}
         realtime_intervals: dict[str, int] = {}
         for src in active:
+            if get_adapter(src.source_type) is None:
+                logger.error(
+                    "Skipping active source type %s: no runtime adapter",
+                    src.source_type,
+                )
+                continue
             lane = getattr(src, "lane", "hourly")
             if lane == "realtime":
                 if not _realtime_lane_enabled():

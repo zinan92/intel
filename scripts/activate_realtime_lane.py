@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import sys
 from pathlib import Path
@@ -16,22 +15,6 @@ from sources.registry import list_all_sources
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
-
-
-def _ready_for_activation(source) -> bool:
-    if source.source_type != "telegram_mtproto":
-        return True
-    from collectors.telegram_mtproto import APPROVED_CHANNEL_NAMES
-
-    try:
-        channel_ids = json.loads(source.config_json).get("channel_ids", {})
-        numeric_ids = [int(channel_ids[name]) for name in APPROVED_CHANNEL_NAMES]
-    except (json.JSONDecodeError, KeyError, TypeError, ValueError):
-        return False
-    return (
-        set(channel_ids) == set(APPROVED_CHANNEL_NAMES)
-        and len(set(numeric_ids)) == len(APPROVED_CHANNEL_NAMES)
-    )
 
 
 def main() -> None:
@@ -50,7 +33,6 @@ def main() -> None:
                 source.lane == "realtime"
                 and source.is_active == 0
                 and source.retired_at is None
-                and _ready_for_activation(source)
             ):
                 source.is_active = 1
                 activated += 1

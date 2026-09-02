@@ -1,5 +1,21 @@
 # Runtime Registry
 
+## 2026-09-02 · Telegram ingestion permanently retired
+
+- Issue #63 removes the Telegram MTProto collector, adapter, bootstrap entry,
+  activation path, live-smoke path, dependency, and credential instructions.
+- Existing source-registry rows and collected Articles are preserved for audit
+  and retrospective research, but startup migration marks the legacy source
+  inactive and retired so it cannot be scheduled accidentally.
+- This supersedes the earlier Issue #54 implementation. Under Telegram's
+  current [API Terms](https://core.telegram.org/api/terms) and
+  [Content Licensing Terms](https://telegram.org/tos/content-licensing), the
+  proposed third-party-channel AI triage path is not eligible without explicit
+  channel-owner permission. Credential acquisition is therefore not a blocker
+  to retry; the source is disqualified from the product path. The dated
+  decision record is
+  [`docs/telegram-ai-terms-decision-2026-09-02.md`](docs/telegram-ai-terms-decision-2026-09-02.md).
+
 ## 2026-09-02 · SEC historical filings retained as reversible backfill
 
 - Issue #61 adds `is_backfill` plus a traceable reason. SEC filings outside
@@ -10,7 +26,7 @@
 - The one-time marker command is dry-run by default and can undo only rows
   carrying the exact supplied reason, preserving completed historical triage.
 
-## 2026-09-02 · Telegram MTProto source implemented, human gate open
+## 2026-09-02 · Telegram MTProto source implemented, human gate open (superseded)
 
 - Issue #54 adds an MTProto user-session source for exactly seven approved
   Telegram channels. Setup enumerates joined channels by display-name hints,
@@ -26,6 +42,8 @@
   credentials, completes phone/OTP/2FA authorization, and approves the seven
   numeric channel IDs. Issue #54 remains open until a real approved-channel
   provider-to-persistence-to-API receipt succeeds.
+- The statements above record the historical implementation state only and are
+  superseded by the permanent-retirement decision at the top of this file.
 
 ## 2026-09-02 · SEC EDGAR realtime watchlist code integrated, live gate open
 
@@ -118,8 +136,8 @@
   provisional until a clean observation window completes.
 - The SEC EDGAR watchlist source is implemented behind the same realtime opt-in
   but is not live-verified on this host while the official endpoints return 403.
-- The Telegram MTProto source is implemented but inactive until its explicit
-  human credential/session/channel-ID gate is completed.
+- Telegram ingestion is permanently retired; historical registry rows and
+  Articles remain stored, while no collector or scheduler path can activate it.
 - The Daily Finance Newsletter archive and delivery contract is available on `main`.
 - Weekly retrospective, calendar verification, Obsidian/Feishu publication, delivery manifests, same-week no-op, and explicit force-resend are available on `main`.
 - Finance Daily, Finance Weekly, and the upstream Park Intel service now run from the clean production checkout `/Users/wendy/work/trading-co/park-intel-production`, created from `origin/main`.
@@ -135,8 +153,8 @@
 
 - Obtain a successful official SEC live receipt without bypassing fair-access
   controls, then close issue #53.
-- Complete Telegram API/session authorization and approve the exact seven
-  numeric channel IDs, then capture the #54 live receipt.
+- Replace Telegram mirrors only through each publisher's own permitted official
+  API or feed, beginning with the BlockBeats official API contract in issue #64.
 - Complete an uninterrupted clean observation window for realtime unique
   article throughput, then decide whether the lane is ready for broader source
   coverage or canonical-lane convergence.

@@ -89,6 +89,25 @@ def _migrate_sec_cik_map(engine: Engine) -> bool:
         return True
 
 
+def _retire_telegram_source(engine: Engine) -> bool:
+    """Disable the legacy Telegram row while preserving its data and config."""
+    if not _table_exists(engine, "source_registry"):
+        return False
+    with engine.begin() as conn:
+        result = conn.execute(
+            text(
+                "UPDATE source_registry "
+                "SET is_active = 0, "
+                "retired_at = COALESCE(retired_at, CURRENT_TIMESTAMP) "
+                "WHERE source_type = 'telegram_mtproto' "
+                "AND (is_active != 0 OR retired_at IS NULL)"
+            )
+        )
+        if result.rowcount:
+            logger.info("Retired legacy Telegram source without deleting its data")
+        return bool(result.rowcount)
+
+
 _LEGACY_TO_CANONICAL: dict[str, str] = {
     "clawfeed": "social_kol",
     "github": "github_trending",
@@ -258,6 +277,7 @@ def run_migrations(engine: Engine) -> None:
         logger.info("Seeded expected_freshness_hours defaults for source_registry")
 
     _migrate_sec_cik_map(engine)
+    _retire_telegram_source(engine)
 
     # Keep the backfill for databases upgraded by an earlier revision that
     # added the lane columns as nullable. New upgrades use NOT NULL defaults
