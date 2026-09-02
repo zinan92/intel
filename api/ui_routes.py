@@ -42,7 +42,6 @@ _SOURCE_KIND: dict[str, str] = {
     "cls_telegraph": "news",
     "eastmoney_global_news": "news",
     "sec_edgar": "filing",
-    "telegram_mtproto": "news",
 }
 
 
@@ -67,7 +66,6 @@ _SOURCE_WEIGHT: dict[str, float] = {
     "cls_telegraph": 0.3,
     "eastmoney_global_news": 0.3,
     "sec_edgar": 0.5,
-    "telegram_mtproto": 0.25,
 }
 
 _KIND_WEIGHT: dict[str, float] = {
@@ -639,7 +637,6 @@ def get_realtime_feed(
                 health for health in _build_source_health(session)
                 if health["source"] in {
                     "cls_telegraph", "eastmoney_global_news", "sec_edgar",
-                    "telegram_mtproto",
                 }
             ],
         }

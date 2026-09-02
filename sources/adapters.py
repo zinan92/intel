@@ -238,17 +238,6 @@ def _adapt_sec_edgar(record: dict[str, Any]) -> list[dict[str, Any]]:
     )
 
 
-def _adapt_telegram_mtproto(record: dict[str, Any]) -> list[dict[str, Any]]:
-    """Collect text posts from the pinned Telegram channel allowlist."""
-    from collectors.telegram_mtproto import fetch_telegram_messages
-
-    cfg = _parse_config(record)
-    return fetch_telegram_messages(
-        channel_ids=cfg.get("channel_ids", {}),
-        message_limit=int(cfg.get("message_limit", 50)),
-    )
-
-
 # --- Adapter registry ---
 
 _ADAPTERS: dict[str, AdapterFn] = {
@@ -265,7 +254,6 @@ _ADAPTERS: dict[str, AdapterFn] = {
     "cls_telegraph": _adapt_cls_telegraph,
     "eastmoney_global_news": _adapt_eastmoney_global_news,
     "sec_edgar": _adapt_sec_edgar,
-    "telegram_mtproto": _adapt_telegram_mtproto,
 }
 
 
