@@ -1,5 +1,16 @@
 # Runtime Registry
 
+## 2026-09-02 · Core APIs exclude realtime backfill from current activity
+
+- Issue #70 fixes the remaining read-path leak in `api/routes.py`: imported
+  historical SEC filings no longer inflate health, latest, search, source
+  freshness, or 24-hour activity.
+- `/api/articles/sources` still preserves the full historical total and now
+  reports `backfill_count` explicitly; no filing is deleted or re-dated.
+- The regression fixture reproduces the production shape exactly: 3 current
+  filings plus 2,935 same-day-collected backfill rows report current activity
+  as 3 while retaining an archive total of 2,938.
+
 ## 2026-09-02 · BlockBeats official Pro API integration, live gate open
 
 - Issue #64 adds the official BlockBeats `/v1/newsflash` source at a 300-second
@@ -172,8 +183,8 @@
 
 ## 下一步
 
-- Obtain a successful official SEC live receipt without bypassing fair-access
-  controls, then close issue #53.
+- Improve the decision usability of realtime AI output under issue #71, then
+  merge duplicate source reports in the decision buckets under issue #72.
 - Measure BlockBeats versus CLS/Eastmoney/SEC over a clean 24-hour window under
   issue #65, then decide which incremental event categories justify retention.
 - Add quota-aware temporary 60-second BlockBeats event windows under issue #68

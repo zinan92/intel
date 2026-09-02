@@ -7,7 +7,7 @@ from typing import Any
 
 import config
 from fastapi import APIRouter, Query
-from sqlalchemy import func
+from sqlalchemy import case, func
 
 from db.database import get_session
 from db.models import Article
@@ -62,7 +62,10 @@ def health() -> dict[str, Any]:
                 func.count(Article.id),
                 func.max(Article.collected_at),
             )
-            .filter(Article.source.in_(active_types))
+            .filter(
+                Article.source.in_(active_types),
+                Article.is_backfill.is_(False),
+            )
             .group_by(Article.source)
             .all()
         )
@@ -131,7 +134,11 @@ def get_latest_articles(
     """Get latest articles, optionally filtered by source and min relevance."""
     session = get_session()
     try:
-        query = session.query(Article).order_by(Article.collected_at.desc())
+        query = (
+            session.query(Article)
+            .filter(Article.is_backfill.is_(False))
+            .order_by(Article.collected_at.desc())
+        )
         if source:
             query = query.filter(Article.source == source)
         if min_relevance is not None:
@@ -155,6 +162,7 @@ def search_articles(
         cutoff = datetime.utcnow() - timedelta(days=days)
         query = session.query(Article).filter(
             Article.collected_at >= cutoff,
+            Article.is_backfill.is_(False),
             (Article.title.ilike(f"%{q}%")) | (Article.content.ilike(f"%{q}%")),
         )
         if source:
@@ -397,23 +405,35 @@ def get_sources() -> list[dict[str, Any]]:
             session.query(
                 Article.source,
                 func.count(Article.id),
-                func.max(Article.collected_at),
-                func.max(Article.published_at),
+                func.sum(case((Article.is_backfill.is_(True), 1), else_=0)),
+                func.max(case(
+                    (Article.is_backfill.is_(False), Article.collected_at),
+                    else_=None,
+                )),
+                func.max(case(
+                    (Article.is_backfill.is_(False), Article.published_at),
+                    else_=None,
+                )),
             )
             .group_by(Article.source)
             .all()
         )
 
         sources = []
-        for source, count, last_collected, last_published in results:
+        for source, count, backfill_count, last_collected, last_published in results:
             count_24h = (
                 session.query(func.count(Article.id))
-                .filter(Article.source == source, Article.collected_at >= cutoff_24h)
+                .filter(
+                    Article.source == source,
+                    Article.collected_at >= cutoff_24h,
+                    Article.is_backfill.is_(False),
+                )
                 .scalar()
             )
             sources.append({
                 "source": source,
                 "count": count,
+                "backfill_count": backfill_count or 0,
                 "last_collected_at": last_collected.isoformat() if last_collected else None,
                 "latest_published_at": last_published.isoformat() if last_published else None,
                 "articles_last_24h": count_24h or 0,
