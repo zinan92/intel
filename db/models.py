@@ -71,6 +71,8 @@ class Article(Base):
     triage_model: Mapped[str | None] = mapped_column(String)
     triage_error: Mapped[str | None] = mapped_column(Text)
     triage_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    triage_rescan_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    triage_rescan_after: Mapped[datetime | None] = mapped_column(DateTime)
     triaged_at: Mapped[datetime | None] = mapped_column(DateTime)
     source_authority: Mapped[str | None] = mapped_column(String)
     corroboration_state: Mapped[str | None] = mapped_column(String)

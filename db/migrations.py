@@ -213,6 +213,8 @@ def run_migrations(engine: Engine) -> None:
         ("articles", "triage_model", "TEXT"),
         ("articles", "triage_error", "TEXT"),
         ("articles", "triage_attempts", "INTEGER"),
+        ("articles", "triage_rescan_count", "INTEGER"),
+        ("articles", "triage_rescan_after", "DATETIME"),
         ("articles", "triaged_at", "DATETIME"),
         ("articles", "source_authority", "TEXT"),
         ("articles", "corroboration_state", "TEXT"),
@@ -245,6 +247,7 @@ def run_migrations(engine: Engine) -> None:
                 defaulted_columns = {
                     ("articles", "collection_lane"): "TEXT NOT NULL DEFAULT 'hourly'",
                     ("articles", "triage_attempts"): "INTEGER NOT NULL DEFAULT 0",
+                    ("articles", "triage_rescan_count"): "INTEGER NOT NULL DEFAULT 0",
                     ("articles", "is_backfill"): "INTEGER NOT NULL DEFAULT 0",
                     ("source_registry", "lane"): "TEXT NOT NULL DEFAULT 'hourly'",
                     ("collector_runs", "articles_duplicate"): "INTEGER NOT NULL DEFAULT 0",
