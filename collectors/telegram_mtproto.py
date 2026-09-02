@@ -100,15 +100,24 @@ def _version(edit_at: datetime | None) -> str:
     return edit_at.strftime("%Y%m%dT%H%M%S%f") if edit_at else "original"
 
 
+def _canonical_peer_id(entity: Any) -> int:
+    test_peer_id = getattr(entity, "peer_id", None)
+    if test_peer_id is not None:
+        return int(test_peer_id)
+    from telethon import utils
+
+    return int(utils.get_peer_id(entity))
+
+
 def _normalize_message(
     entity: Any,
     message: Any,
     channel_name: str,
+    channel_id: int,
 ) -> dict[str, Any] | None:
     content = str(getattr(message, "message", "") or "").strip()
     if not content:
         return None
-    channel_id = int(entity.id)
     message_id = int(message.id)
     published_at = _utc_naive(getattr(message, "date", None))
     edit_at = _utc_naive(getattr(message, "edit_date", None))
@@ -157,12 +166,17 @@ async def _fetch_async(
         rows: list[dict[str, Any]] = []
         for expected_name, channel_id in channel_ids.items():
             entity = await client.get_entity(int(channel_id))
-            if int(entity.id) != int(channel_id):
+            if _canonical_peer_id(entity) != int(channel_id):
                 raise SourceConfigurationError(
                     f"Telegram channel pin mismatch: {expected_name} ({channel_id})"
                 )
             async for message in client.iter_messages(entity, limit=message_limit):
-                normalized = _normalize_message(entity, message, expected_name)
+                normalized = _normalize_message(
+                    entity,
+                    message,
+                    expected_name,
+                    int(channel_id),
+                )
                 if normalized is not None:
                     rows.append(normalized)
         return rows

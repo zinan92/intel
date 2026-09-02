@@ -60,7 +60,12 @@ def test_telegram_adapter_normalizes_approved_text_post_and_edit(monkeypatch):
     monkeypatch.setenv("TELEGRAM_API_ID", "12345")
     monkeypatch.setenv("TELEGRAM_API_HASH", "test-hash")
     monkeypatch.setenv("TELEGRAM_SESSION_PATH", "/tmp/park-intel-test.session")
-    entity = SimpleNamespace(id=101, title="BRICS News (renamed)", username="bricsnews")
+    entity = SimpleNamespace(
+        id=101,
+        peer_id=101,
+        title="BRICS News (renamed)",
+        username="bricsnews",
+    )
     message = SimpleNamespace(
         id=77,
         message="JUST IN: Central bank signals an emergency policy meeting.",
@@ -72,6 +77,7 @@ def test_telegram_adapter_normalizes_approved_text_post_and_edit(monkeypatch):
         channel_id: {
             "entity": entity if channel_id == 101 else SimpleNamespace(
                 id=channel_id,
+                peer_id=channel_id,
                 title=name,
                 username=f"channel{channel_id}",
             ),
@@ -385,7 +391,12 @@ def test_telegram_flood_wait_pauses_source_without_automatic_retry(monkeypatch):
     monkeypatch.setenv("TELEGRAM_SESSION_PATH", "/tmp/park-intel-test.session")
     channels = {
         channel_id: {
-            "entity": SimpleNamespace(id=channel_id, title=name, username=None),
+                "entity": SimpleNamespace(
+                    id=channel_id,
+                    peer_id=channel_id,
+                    title=name,
+                    username=None,
+                ),
             "messages": [],
         }
         for name, channel_id in _approved_channel_ids().items()
@@ -416,7 +427,12 @@ def test_telegram_original_and_edit_versions_have_stable_distinct_ids(monkeypatc
     def client_for(edit_date):
         channels = {}
         for name, channel_id in _approved_channel_ids().items():
-            entity = SimpleNamespace(id=channel_id, title=name, username="bricsnews")
+            entity = SimpleNamespace(
+                id=channel_id,
+                peer_id=channel_id,
+                title=name,
+                username="bricsnews",
+            )
             messages = []
             if name == "BRICS News":
                 messages = [SimpleNamespace(

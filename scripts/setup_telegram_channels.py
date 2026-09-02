@@ -19,6 +19,7 @@ from collectors.telegram_mtproto import (  # noqa: E402
 
 async def _discover_joined_channels() -> dict[str, int]:
     from telethon import TelegramClient
+    from telethon import utils
     from telethon.tl.types import Channel
 
     api_id, api_hash, session_path = _credentials()
@@ -32,7 +33,10 @@ async def _discover_joined_channels() -> dict[str, int]:
         async for dialog in client.iter_dialogs():
             entity = dialog.entity
             if isinstance(entity, Channel):
-                joined.append((str(entity.title or "").strip(), int(entity.id)))
+                joined.append((
+                    str(entity.title or "").strip(),
+                    int(utils.get_peer_id(entity)),
+                ))
         return resolve_approved_channel_ids(joined)
     finally:
         await client.disconnect()
