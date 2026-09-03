@@ -234,3 +234,30 @@ def test_backfill_archives_historical_brief_without_sending_feishu(monkeypatch):
     assert generate.call_args.kwargs["publish_current"] is False
     assert generate.call_args.kwargs["window_end"] == datetime(2026, 8, 26, 0, 0, 0)
     send.assert_not_called()
+
+
+def test_recovery_replaces_canonical_archive_after_preserving_backup(tmp_path, monkeypatch):
+    from scripts.publish_finance_daily_newsletter import save_to_obsidian
+
+    monkeypatch.setenv("OBSIDIAN_FINANCE_NEWSLETTER_DIR", str(tmp_path))
+    canonical = tmp_path / "2026-08-26-finance-daily-newsletter.md"
+    canonical.write_text("old unscored archive", encoding="utf-8")
+    brief = Brief(
+        id=99,
+        content="recovered",
+        article_count=100,
+        signal_count=3,
+        provider="codex-cli",
+        candidate_article_count=300,
+        scored_article_count=300,
+        scoring_coverage=1.0,
+        created_at=datetime(2026, 8, 26, 0, 0, 0),
+    )
+
+    path = save_to_obsidian(brief, "- recovered", replace_existing=True)
+
+    assert path == canonical
+    assert "brief_id: 99" in canonical.read_text(encoding="utf-8")
+    backups = list((tmp_path / ".recovery-backups").glob("2026-08-26-*.md"))
+    assert len(backups) == 1
+    assert backups[0].read_text(encoding="utf-8") == "old unscored archive"

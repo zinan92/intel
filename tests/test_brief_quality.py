@@ -82,3 +82,26 @@ def test_validate_published_brief_requires_trader_sections():
     result = validate_published_brief("Only a short summary without sections.")
     assert not result.passed
     assert any("missing trader-facing sections" in issue for issue in result.issues)
+
+
+def test_validate_published_brief_rejects_ungrounded_market_numbers():
+    content = VALID_BRIEF + "\n- Gold 当前约 $4,700；NVDA 收入增长 96.2%。\n"
+
+    result = validate_published_brief(
+        content,
+        evidence_text="Gold trades around $4,000. NVDA revenue increased 88%.",
+    )
+
+    assert not result.passed
+    assert any("ungrounded market numbers" in issue for issue in result.issues)
+
+
+def test_validate_published_brief_accepts_exact_market_numbers_from_evidence():
+    content = VALID_BRIEF + "\n- Gold 当前约 $4,000；NVDA 收入增长 88%。\n"
+
+    result = validate_published_brief(
+        content,
+        evidence_text="Gold trades around $4,000. NVDA revenue increased 88%.",
+    )
+
+    assert result.passed

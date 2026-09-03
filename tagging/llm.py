@@ -172,19 +172,27 @@ class LLMTagger:
             fallback_reason = "invalid_primary_output"
             logger.warning("DeepSeek tagging output was invalid; using Codex fallback")
 
-        try:
-            text = self.fallback_client.complete(
-                user_msg,
-                system_prompt=_SYSTEM_PROMPT,
-                json_mode=True,
-                timeout=300,
-                max_tokens=4096,
-            )
-            items = self._validate(text, articles)
-            self._batches_processed += 1
-            return TagBatchResult(items, "codex-cli", fallback_reason)
-        except Exception as exc:
-            raise TaggingError("both providers failed to return a valid scoring batch") from exc
+        last_error: Exception | None = None
+        for attempt in range(2):
+            try:
+                text = self.fallback_client.complete(
+                    user_msg,
+                    system_prompt=_SYSTEM_PROMPT,
+                    json_mode=True,
+                    timeout=300,
+                    max_tokens=4096,
+                )
+                items = self._validate(text, articles)
+                self._batches_processed += 1
+                return TagBatchResult(items, "codex-cli", fallback_reason)
+            except Exception as exc:
+                last_error = exc
+                if attempt == 0:
+                    logger.warning(
+                        "Codex tagging fallback was unusable; retrying once (%s)",
+                        type(exc).__name__,
+                    )
+        raise TaggingError("both providers failed to return a valid scoring batch") from last_error
 
     @property
     def batches_processed(self) -> int:

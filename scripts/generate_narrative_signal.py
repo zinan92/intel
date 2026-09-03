@@ -425,6 +425,27 @@ def _build_prompt(
 重要价格规则：必须区分“当前价格/已发生事实”和“目标价/情景价/分析师预测”。如果文章只是 price target、scenario、forecast，不得写成“已经突破”。published_at 明显早于本窗口的旧文章不得作为今日事实。"""
 
 
+def _build_quality_repair_prompt(
+    original_prompt: str,
+    draft: str,
+    issues: list[str],
+) -> str:
+    return f"""修复下面的 Daily Trader Brief，只返回修复后的完整正文。
+
+质量门错误：
+{chr(10).join(f'- {issue}' for issue in issues)}
+
+对于 ungrounded market numbers，只能删除该数字，或改回原始文章中逐字存在的金额/百分比；
+不得四舍五入、换算单位、推测现价或补造新数字。保留原来的用户可读章节，不得输出内部字段。
+
+待修复草稿：
+{draft}
+
+原始任务和冻结证据：
+{original_prompt}
+"""
+
+
 def generate_brief(
     limit: int = 100,
     *,
@@ -496,7 +517,23 @@ def generate_brief(
             logger.error("Failed to generate brief")
             return None
 
-        validation = validate_published_brief(content)
+        evidence_text = "\n".join(
+            f"{article.title or ''}\n{article.content or ''}"
+            for article in articles
+        )
+        validation = validate_published_brief(content, evidence_text=evidence_text)
+        if not validation.passed:
+            repaired, repair_provider = _call_llm(
+                _build_quality_repair_prompt(prompt, content, validation.issues)
+            )
+            if repaired:
+                content = repaired
+                provider = f"{provider}+repair:{repair_provider or 'unknown'}"
+                validation = validate_published_brief(
+                    content,
+                    evidence_text=evidence_text,
+                )
+
         if not validation.passed:
             rejected = Brief(
                 content=content,

@@ -10,7 +10,7 @@ import logging
 import sys
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -78,10 +78,16 @@ def run_tagger(
     batch_size: int = 10,
     include_realtime: bool = False,
     tagger: LLMTagger | None = None,
+    window_start: datetime | None = None,
+    window_end: datetime | None = None,
 ) -> TaggerRunResult:
     """Run the LLM tagger programmatically (no argparse). Called by scheduler and main()."""
     if not backfill and limit <= 0 and not prefiltered:
         raise ValueError("Specify backfill=True, limit>0, or prefiltered=True")
+    if (window_start is None) != (window_end is None):
+        raise ValueError("window_start and window_end must be supplied together")
+    if prefiltered and window_start is not None:
+        raise ValueError("explicit windows cannot be combined with prefiltered mode")
 
     init_db()
     session = get_session()
@@ -113,6 +119,13 @@ def run_tagger(
             query = session.query(Article).filter(Article.relevance_score.is_(None))
             if not include_realtime:
                 query = query.filter(Article.collection_lane == "hourly")
+            if window_start is not None and window_end is not None:
+                query = query.filter(
+                    Article.collected_at >= window_start,
+                    Article.collected_at < window_end,
+                    (Article.published_at.is_(None)) | (Article.published_at >= window_start),
+                    (Article.published_at.is_(None)) | (Article.published_at < window_end),
+                )
             if backfill:
                 articles = query.order_by(Article.collected_at.desc()).all()
             else:
@@ -232,10 +245,19 @@ def main() -> None:
         action="store_true",
         help="Explicitly include realtime candidates after the convergence decision",
     )
+    parser.add_argument(
+        "--window-end",
+        help="Bound recovery to the 24h UTC window ending at this ISO timestamp",
+    )
     args = parser.parse_args()
 
     if not args.backfill and args.limit <= 0 and not args.prefiltered:
         parser.error("Specify --backfill, --limit N, or --prefiltered")
+    try:
+        window_end = datetime.fromisoformat(args.window_end) if args.window_end else None
+    except ValueError:
+        parser.error("--window-end must be an ISO timestamp")
+    window_start = window_end - timedelta(hours=24) if window_end else None
 
     run_tagger(
         backfill=args.backfill,
@@ -243,6 +265,8 @@ def main() -> None:
         prefiltered=args.prefiltered,
         batch_size=args.batch_size,
         include_realtime=args.include_realtime,
+        window_start=window_start,
+        window_end=window_end,
     )
 
 
