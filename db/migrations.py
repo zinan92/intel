@@ -242,6 +242,9 @@ def run_migrations(engine: Engine) -> None:
         ("events", "trading_play", "TEXT"),
         ("events", "outcome_data", "TEXT"),
         ("briefs", "provider", "TEXT"),
+        ("briefs", "candidate_article_count", "INTEGER"),
+        ("briefs", "scored_article_count", "INTEGER"),
+        ("briefs", "scoring_coverage", "REAL"),
     ]
 
     with engine.connect() as conn:

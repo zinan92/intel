@@ -2,6 +2,7 @@
 from datetime import datetime, timedelta
 from unittest.mock import Mock, patch
 
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -236,6 +237,51 @@ def test_select_publishable_articles_filters_stale_noise_and_dedups():
     assert selected == [fresh_high]
 
 
+def test_generate_brief_blocks_all_null_scoring_window():
+    from scripts import generate_narrative_signal as mod
+
+    session = _session()
+    now = datetime.utcnow()
+    _seed_articles(session, now=now)
+    session.query(Article).update({Article.relevance_score: None})
+    session.commit()
+
+    with patch.object(mod, "init_db", return_value=None), \
+         patch.object(mod, "get_session", return_value=session), \
+         patch.object(mod, "_call_llm") as llm:
+        with pytest.raises(mod.ScoringCoverageError) as exc_info:
+            mod.generate_brief(limit=10, window_end=now)
+
+    assert exc_info.value.eligible_count == 6
+    assert exc_info.value.scored_count == 0
+    assert exc_info.value.coverage == 0.0
+    llm.assert_not_called()
+
+
+def test_generate_brief_blocks_partial_scoring_window():
+    from scripts import generate_narrative_signal as mod
+
+    session = _session()
+    now = datetime.utcnow()
+    _seed_articles(session, now=now)
+    session.query(Article).filter(Article.source_id.in_(["fresh_0", "fresh_1"])).update(
+        {Article.relevance_score: None},
+        synchronize_session=False,
+    )
+    session.commit()
+
+    with patch.object(mod, "init_db", return_value=None), \
+         patch.object(mod, "get_session", return_value=session), \
+         patch.object(mod, "_call_llm") as llm:
+        with pytest.raises(mod.ScoringCoverageError) as exc_info:
+            mod.generate_brief(limit=10, window_end=now)
+
+    assert exc_info.value.eligible_count == 6
+    assert exc_info.value.scored_count == 4
+    assert exc_info.value.coverage == pytest.approx(4 / 6)
+    llm.assert_not_called()
+
+
 def test_source_health_summary_surfaces_disabled_trade_sources():
     from scripts import generate_narrative_signal as mod
 
@@ -318,6 +364,9 @@ def test_generate_brief_publishes_only_after_quality_passes():
     rows = session.query(Brief).order_by(Brief.id).all()
     assert [row.status for row in rows] == ["archived", "published"]
     assert rows[1].provider == "test"
+    assert rows[1].candidate_article_count == 6
+    assert rows[1].scored_article_count == 6
+    assert rows[1].scoring_coverage == 1.0
 
 
 def test_generate_historical_brief_does_not_replace_current_published_brief():

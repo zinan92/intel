@@ -53,6 +53,7 @@ def test_migration_adds_columns(engine):
     assert not _column_exists(engine, "articles", "relevance_provider")
     assert not _column_exists(engine, "articles", "relevance_scored_at")
     assert not _column_exists(engine, "briefs", "provider")
+    assert not _column_exists(engine, "briefs", "scoring_coverage")
 
     run_migrations(engine)
 
@@ -61,6 +62,9 @@ def test_migration_adds_columns(engine):
     assert _column_exists(engine, "articles", "relevance_provider")
     assert _column_exists(engine, "articles", "relevance_scored_at")
     assert _column_exists(engine, "briefs", "provider")
+    assert _column_exists(engine, "briefs", "candidate_article_count")
+    assert _column_exists(engine, "briefs", "scored_article_count")
+    assert _column_exists(engine, "briefs", "scoring_coverage")
 
 
 def test_migration_idempotent(engine):

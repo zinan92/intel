@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import json
 import logging
 import os
 import re
@@ -18,7 +19,11 @@ from dotenv import load_dotenv
 
 from briefs.models import Brief
 from db.database import get_session
-from scripts.generate_narrative_signal import generate_brief, window_end_for_archive_date
+from scripts.generate_narrative_signal import (
+    ScoringCoverageError,
+    generate_brief,
+    window_end_for_archive_date,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -177,6 +182,8 @@ article_count: {brief.article_count}
 signal_count: {brief.signal_count}
 source: park-intel
 provider: {brief.provider or "unknown"}
+scoring_coverage: {(brief.scoring_coverage or 0.0):.1%}
+scored_articles: {brief.scored_article_count or 0}/{brief.candidate_article_count or 0}
 ---
 
 # 财经日报 | {title_date}
@@ -216,6 +223,8 @@ def _feishu_text(brief: Brief, obsidian_path: Path, source_health: str) -> str:
     header = (
         f"财经日报 | {local_created.strftime('%Y-%m-%d')}\n"
         f"Brief #{brief.id} | {brief.article_count} articles | {brief.signal_count} signals\n"
+        f"评分覆盖率: {(brief.scoring_coverage or 0.0):.1%} "
+        f"({brief.scored_article_count or 0}/{brief.candidate_article_count or 0})\n"
         f"Obsidian: {obsidian_path}\n\n"
         "Source Status:\n"
         f"{source_health}\n\n"
@@ -232,6 +241,13 @@ def send_to_feishu(brief: Brief, obsidian_path: Path, source_health: str) -> boo
         logger.info("PARK_INTEL_SKIP_FEISHU=1, skipping Feishu send")
         return False
 
+    _send_feishu_status(_feishu_text(brief, obsidian_path, source_health))
+
+    logger.info("Sent finance newsletter brief #%d to Feishu", brief.id)
+    return True
+
+
+def _send_feishu_status(text: str) -> None:
     webhook = os.getenv("FEISHU_BOT_WEBHOOK", "").strip()
     secret = os.getenv("FEISHU_BOT_SECRET", "").strip()
     if not webhook:
@@ -241,7 +257,7 @@ def send_to_feishu(brief: Brief, obsidian_path: Path, source_health: str) -> boo
     payload = {
         "timestamp": timestamp,
         "msg_type": "text",
-        "content": {"text": _feishu_text(brief, obsidian_path, source_health)},
+        "content": {"text": text},
     }
     if secret:
         payload["sign"] = _feishu_signature(secret, timestamp)
@@ -253,8 +269,57 @@ def send_to_feishu(brief: Brief, obsidian_path: Path, source_health: str) -> boo
     if code not in (0, "0"):
         raise RuntimeError(f"Feishu bot send failed: {data}")
 
-    logger.info("Sent finance newsletter brief #%d to Feishu", brief.id)
-    return True
+
+def _record_scoring_failure(error: ScoringCoverageError, *, is_backfill: bool) -> Path:
+    output_dir = _obsidian_dir() / ".delivery-manifests"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    window_end = error.window_end.replace(tzinfo=ZoneInfo("UTC"))
+    report_date = window_end.astimezone(BRIEF_TIMEZONE).date().isoformat()
+    path = output_dir / f"{report_date}-daily.json"
+    fingerprint = hashlib.sha256(
+        f"finance_daily_newsletter|{report_date}|blocked_scoring_coverage".encode("utf-8")
+    ).hexdigest()
+
+    previous: dict = {}
+    if path.exists():
+        try:
+            previous = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            previous = {}
+
+    already_alerted = previous.get("fingerprint") == fingerprint and previous.get("alert_sent") is True
+    payload = {
+        "report": "finance_daily_newsletter",
+        "report_date": report_date,
+        "status": "blocked_scoring_coverage",
+        "window_start": error.window_start.isoformat(),
+        "window_end": error.window_end.isoformat(),
+        "eligible_count": error.eligible_count,
+        "scored_count": error.scored_count,
+        "scoring_coverage": error.coverage,
+        "fingerprint": fingerprint,
+        "alert_sent": already_alerted,
+        "updated_at": datetime.now(BRIEF_TIMEZONE).isoformat(),
+    }
+
+    if not is_backfill and not already_alerted and os.getenv("PARK_INTEL_SKIP_FEISHU", "").strip() != "1":
+        message = (
+            f"财经日报 | {report_date} | 生成已阻断\n"
+            f"评分覆盖率 {error.scored_count}/{error.eligible_count} ({error.coverage:.1%})，"
+            "不足以进行相关性排序。今天未发送旧日报或按时间倒序的替代内容。"
+        )
+        try:
+            _send_feishu_status(message)
+            payload["alert_sent"] = True
+        except Exception as exc:
+            payload["alert_error"] = type(exc).__name__
+            logger.exception("Failed to send Daily scoring status to Feishu")
+
+    temp_path = path.with_suffix(".tmp")
+    temp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    temp_path.replace(path)
+    logger.error("Daily publication blocked; scoring status saved to %s", path)
+    return path
 
 
 def publish_finance_daily_newsletter(
@@ -266,15 +331,19 @@ def publish_finance_daily_newsletter(
     """Publish the current Daily Brief or archive one explicit historical day."""
 
     is_backfill = archive_date is not None
-    brief_id = (
-        generate_brief(
-            limit=limit,
-            window_end=window_end_for_archive_date(archive_date) if archive_date else None,
-            publish_current=not is_backfill,
+    try:
+        brief_id = (
+            generate_brief(
+                limit=limit,
+                window_end=window_end_for_archive_date(archive_date) if archive_date else None,
+                publish_current=not is_backfill,
+            )
+            if generate
+            else None
         )
-        if generate
-        else None
-    )
+    except ScoringCoverageError as exc:
+        _record_scoring_failure(exc, is_backfill=is_backfill)
+        return None
 
     session = get_session()
     try:

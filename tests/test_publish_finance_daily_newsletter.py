@@ -1,4 +1,5 @@
 """Tests for Finance Daily Newsletter delivery."""
+import json
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -27,6 +28,9 @@ def test_save_to_obsidian_writes_markdown(tmp_path, monkeypatch):
         signal_count=3,
         status="published",
         provider="codex-cli",
+        candidate_article_count=100,
+        scored_article_count=100,
+        scoring_coverage=1.0,
         created_at=datetime(2026, 6, 27, 10, 0, 0),
     )
 
@@ -36,6 +40,7 @@ def test_save_to_obsidian_writes_markdown(tmp_path, monkeypatch):
     content = path.read_text(encoding="utf-8")
     assert "brief_id: 12" in content
     assert "provider: codex-cli" in content
+    assert "scoring_coverage: 100.0%" in content
     assert "## Source Status" in content
     assert "RSS/媒体源" in content
     assert "今日交易地图" in content
@@ -133,6 +138,37 @@ def test_publish_skips_delivery_when_generation_fails(monkeypatch):
 
     assert result is None
     save.assert_not_called()
+
+
+def test_scoring_failure_writes_manifest_and_alerts_once(tmp_path, monkeypatch):
+    from scripts import publish_finance_daily_newsletter as mod
+    from scripts.generate_narrative_signal import ScoringCoverageError
+
+    monkeypatch.setenv("OBSIDIAN_FINANCE_NEWSLETTER_DIR", str(tmp_path))
+    failure = ScoringCoverageError(
+        eligible_count=100,
+        scored_count=0,
+        window_start=datetime(2026, 9, 2, 0, 0, 0),
+        window_end=datetime(2026, 9, 3, 0, 0, 0),
+    )
+
+    with patch.object(mod, "generate_brief", side_effect=failure), \
+         patch.object(mod, "_send_feishu_status") as alert, \
+         patch.object(mod, "save_to_obsidian") as save:
+        first = mod.publish_finance_daily_newsletter()
+        second = mod.publish_finance_daily_newsletter()
+
+    assert first is None
+    assert second is None
+    save.assert_not_called()
+    alert.assert_called_once()
+    manifest = tmp_path / ".delivery-manifests" / "2026-09-03-daily.json"
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    assert payload["status"] == "blocked_scoring_coverage"
+    assert payload["eligible_count"] == 100
+    assert payload["scored_count"] == 0
+    assert payload["scoring_coverage"] == 0.0
+    assert payload["alert_sent"] is True
 
 
 def test_backfill_archives_historical_brief_without_sending_feishu(monkeypatch):

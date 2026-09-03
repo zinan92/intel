@@ -9,6 +9,18 @@
   manual-review reason; they no longer consume repair calls or scheduler retry
   attempts and remain visible in raw feed/operational health.
 
+## 2026-09-03 · Finance Daily ranking fails closed on incomplete scores
+
+- Issue #92 excludes unscored and invalidly scored Articles from relevance
+  ranking and blocks publication unless the deduplicated candidate pool has
+  complete valid scoring coverage.
+- Daily Briefs persist candidate/scored counts and coverage. Successful
+  Obsidian and Feishu output displays that coverage instead of implying an
+  unverified relevance rank.
+- A blocked run preserves the prior published Brief, writes an idempotent
+  Obsidian delivery manifest, and sends at most one scoring alert per report
+  date instead of substituting stale or recency-ranked content.
+
 ## 2026-09-03 · Finance article scoring gains explicit provider fallback
 
 - Issue #91 routes Finance article scoring through DeepSeek first and one

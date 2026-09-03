@@ -1,7 +1,7 @@
 """SQLAlchemy model for narrative signal briefs."""
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, Text
+from sqlalchemy import DateTime, Float, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models import Base
@@ -18,4 +18,7 @@ class Brief(Base):
     signal_count: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String, default="published")
     provider: Mapped[str | None] = mapped_column(String, nullable=True)
+    candidate_article_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    scored_article_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    scoring_coverage: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
