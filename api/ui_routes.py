@@ -803,6 +803,11 @@ def get_item(item_id: int) -> dict[str, Any]:
         if not article:
             raise HTTPException(status_code=404, detail="Item not found")
 
+        exposure = match_article_exposure(article.title, article.content, article.tickers)
+        exposure_targets = _parse_json_list(article.exposure_targets)
+        if not exposure_targets and exposure.targets:
+            exposure_targets = list(exposure.targets)
+
         # Related: same source or overlapping narrative_tags, last 24h, not self
         now = datetime.utcnow()
         cutoff = now - timedelta(hours=24)
@@ -842,6 +847,11 @@ def get_item(item_id: int) -> dict[str, Any]:
             "narrative_tags": _parse_tags(article.narrative_tags),
             "relevance_score": article.relevance_score,
             "collection_lane": article.collection_lane,
+            "exposure_universe_version": EXPOSURE_UNIVERSE_VERSION,
+            "exposure_status": article.exposure_status or exposure.status,
+            "exposure_assets": _parse_json_list(article.exposure_assets) or list(exposure.asset_keys),
+            "exposure_reason": article.exposure_reason or exposure.reason,
+            "exposure_targets": exposure_targets,
             "source_authority": article.source_authority,
             "corroboration_state": article.corroboration_state,
             "pin_eligibility": article.pin_eligibility,

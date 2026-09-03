@@ -144,7 +144,8 @@ def test_feed_item_required_fields(client):
     item = data["items"][0]
     for field in ("id", "title", "source", "source_kind", "url", "summary",
                   "relevance_score", "priority_score", "momentum_label",
-                  "tags", "narrative_tags", "published_at", "collected_at",
+                  "tags", "narrative_tags", "exposure_targets",
+                  "published_at", "collected_at",
                   "in_event"):
         assert field in item, f"Missing field: {field}"
 
@@ -269,6 +270,8 @@ def test_item_detail_shape(client):
     data = resp.json()
     for field in ("id", "title", "source", "source_kind", "url", "author",
                   "content", "tags", "narrative_tags", "relevance_score",
+                  "exposure_universe_version", "exposure_status",
+                  "exposure_assets", "exposure_reason", "exposure_targets",
                   "published_at", "collected_at", "related"):
         assert field in data, f"Missing field: {field}"
 
