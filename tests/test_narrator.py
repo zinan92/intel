@@ -69,11 +69,13 @@ def test_generate_narrative_skips_single_source(db_session):
 def test_generate_narrative_calls_deepseek(db_session):
     from events.narrator import generate_narratives
     event = _seed_event_with_articles(db_session)
-    with patch("events.narrator._call_deepseek") as mock:
-        mock.return_value = "BTC ETFs saw record inflows."
-        generate_narratives(db_session)
+    with patch("events.narrator._call_llm") as mock:
+        mock.return_value = ("BTC ETFs saw record inflows.", "deepseek:deepseek-v4-flash", None)
+        result = generate_narratives(db_session)
     refreshed = db_session.query(Event).filter_by(id=event.id).first()
     assert refreshed.narrative_summary == "BTC ETFs saw record inflows."
+    assert refreshed.narrative_provider == "deepseek:deepseek-v4-flash"
+    assert result.generated == 1
 
 
 def test_generate_narrative_ignores_articles_outside_event_window(db_session):
@@ -116,8 +118,8 @@ def test_generate_narrative_ignores_articles_outside_event_window(db_session):
     db_session.add(EventArticle(event_id=event.id, article_id=fresh.id))
     db_session.commit()
 
-    with patch("events.narrator._call_deepseek") as mock:
-        mock.return_value = "Fresh gold summary"
+    with patch("events.narrator._call_llm") as mock:
+        mock.return_value = ("Fresh gold summary", "codex-cli", "DeepSeekError")
         generate_narratives(db_session)
 
     prompt = mock.call_args[0][0]
@@ -128,8 +130,47 @@ def test_generate_narrative_ignores_articles_outside_event_window(db_session):
 def test_generate_narrative_handles_api_failure(db_session):
     from events.narrator import generate_narratives
     event = _seed_event_with_articles(db_session)
-    with patch("events.narrator._call_deepseek") as mock:
-        mock.return_value = None
-        generate_narratives(db_session)
+    with patch("events.narrator._call_llm") as mock:
+        mock.return_value = (None, None, "deepseek=DeepSeekError;codex=timeout")
+        result = generate_narratives(db_session)
     refreshed = db_session.query(Event).filter_by(id=event.id).first()
     assert refreshed.narrative_summary is None
+    assert refreshed.narrative_provider is None
+    assert result.failed == 1
+
+
+def test_narrator_falls_back_to_codex_for_any_deepseek_failure(monkeypatch):
+    from events import narrator
+
+    monkeypatch.setattr(
+        narrator,
+        "_call_deepseek",
+        lambda _prompt: (_ for _ in ()).throw(narrator.DeepSeekError("transport")),
+    )
+    monkeypatch.setattr(narrator, "_call_codex", lambda _prompt: "fallback narrative")
+
+    assert narrator._call_llm("prompt") == (
+        "fallback narrative",
+        "codex-cli",
+        "DeepSeekError",
+    )
+
+
+def test_narrator_reports_both_provider_failure(monkeypatch):
+    from events import narrator
+
+    monkeypatch.setattr(
+        narrator,
+        "_call_deepseek",
+        lambda _prompt: (_ for _ in ()).throw(narrator.DeepSeekError("transport")),
+    )
+    monkeypatch.setattr(
+        narrator,
+        "_call_codex",
+        lambda _prompt: (_ for _ in ()).throw(narrator.CodexCLIError("timeout")),
+    )
+
+    content, provider, failure = narrator._call_llm("prompt")
+    assert content is None
+    assert provider is None
+    assert failure == "deepseek=DeepSeekError;codex=timeout"

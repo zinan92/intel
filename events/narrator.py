@@ -1,12 +1,14 @@
 """LLM narrative generation for cross-source events via DeepSeek API."""
 import logging
 import time
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
 from db.models import Article
 from events.models import Event, EventArticle
+from llm.codex import CodexCLIClient, CodexCLIError
 from llm.deepseek import DeepSeekClient, DeepSeekError
 
 logger = logging.getLogger(__name__)
@@ -14,12 +16,36 @@ logger = logging.getLogger(__name__)
 _RATE_LIMIT_SECONDS = 2
 
 
-def _call_deepseek(prompt: str) -> str | None:
+@dataclass(frozen=True)
+class NarrativeRunResult:
+    generated: int
+    failed: int
+    providers: tuple[str, ...] = field(default_factory=tuple)
+    fallback_reasons: tuple[str, ...] = field(default_factory=tuple)
+
+
+def _call_deepseek(prompt: str) -> str:
+    return DeepSeekClient().complete(prompt, timeout=30, max_tokens=2048)
+
+
+def _call_codex(prompt: str) -> str:
+    return CodexCLIClient().complete(prompt, timeout=300, max_tokens=2048)
+
+
+def _call_llm(prompt: str) -> tuple[str | None, str | None, str | None]:
     try:
-        return DeepSeekClient().complete(prompt, timeout=30, max_tokens=2048)
+        content = _call_deepseek(prompt)
+        return content, f"deepseek:{DeepSeekClient().model}", None
     except DeepSeekError as exc:
-        logger.warning("DeepSeek narrative generation failed: %s", exc)
-        return None
+        fallback_reason = type(exc).__name__
+        logger.warning("DeepSeek narrative generation failed; trying Codex: %s", fallback_reason)
+
+    try:
+        return _call_codex(prompt), "codex-cli", fallback_reason
+    except CodexCLIError as exc:
+        failure = f"deepseek={fallback_reason};codex={exc.reason}"
+        logger.error("Both event narrative providers failed: %s", failure)
+        return None, None, failure
 
 
 def _parse_narrator_response(response: str) -> tuple[str, str | None]:
@@ -82,7 +108,7 @@ def _article_timestamp(article: Article):
     return article.published_at or article.collected_at
 
 
-def generate_narratives(session: Session) -> int:
+def generate_narratives(session: Session) -> NarrativeRunResult:
     now = datetime.utcnow()
     cutoff = now - timedelta(hours=48)
     events = (
@@ -99,9 +125,12 @@ def generate_narratives(session: Session) -> int:
         .all()
     )
     if not events:
-        return 0
+        return NarrativeRunResult(generated=0, failed=0)
 
     generated = 0
+    failed = 0
+    providers: set[str] = set()
+    fallback_reasons: set[str] = set()
     for event in events:
         articles = (
             session.query(Article)
@@ -118,19 +147,33 @@ def generate_narratives(session: Session) -> int:
             continue
 
         prompt = _build_prompt(event, articles)
-        narrative = _call_deepseek(prompt)
+        narrative, provider, fallback_reason = _call_llm(prompt)
 
         if narrative:
             summary, play = _parse_narrator_response(narrative)
             event.narrative_summary = summary
             event.trading_play = play
+            event.narrative_provider = provider
             generated += 1
+            if provider:
+                providers.add(provider)
+            if fallback_reason:
+                fallback_reasons.add(fallback_reason)
             logger.info("[narrator] Generated narrative for '%s'", event.narrative_tag)
         else:
+            failed += 1
+            if fallback_reason:
+                fallback_reasons.add(fallback_reason)
             logger.warning("[narrator] Failed to generate for '%s'", event.narrative_tag)
 
-        time.sleep(_RATE_LIMIT_SECONDS)
+        if event is not events[-1]:
+            time.sleep(_RATE_LIMIT_SECONDS)
 
     session.commit()
     logger.info("[narrator] Generated %d narratives (of %d candidates)", generated, len(events))
-    return generated
+    return NarrativeRunResult(
+        generated=generated,
+        failed=failed,
+        providers=tuple(sorted(providers)),
+        fallback_reasons=tuple(sorted(fallback_reasons)),
+    )

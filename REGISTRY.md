@@ -1,5 +1,17 @@
 # Runtime Registry
 
+## 2026-09-03 · Finance event health and narrative fallback are explicit
+
+- Issue #93 aggregates only Articles with a valid 1–5 relevance score and at
+  least one usable narrative tag; invalid inputs cannot enter event averages or
+  signal scores.
+- Event aggregation persists fresh/usable/failure counts and reports degraded
+  when fresh input exists but tagging is absent or incomplete. The scheduler
+  propagates that degraded result instead of logging a successful zero-tag run.
+- Cross-source event narratives now use DeepSeek followed by isolated Codex CLI
+  fallback and persist their provider. Health and Daily delivery output show
+  collection, scoring, and event-processing state separately.
+
 ## 2026-09-03 · Scheduled realtime previews remain visible
 
 - Issue #96 accepts common Chinese future-event forms such as `明晚来袭`,
