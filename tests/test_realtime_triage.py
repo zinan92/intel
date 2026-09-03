@@ -403,6 +403,9 @@ def test_triage_scheduler_persists_a_real_result_shape():
         title="FOMC statement",
         content="The FOMC statement is released.",
         collection_lane="realtime",
+        exposure_status="matched",
+        exposure_assets=json.dumps(["gold"]),
+        exposure_reason="macro:us_macro",
         published_at=datetime(2026, 9, 1, 8, 0, 0),
         collected_at=datetime(2026, 9, 1, 8, 0, 5),
     )
@@ -454,6 +457,9 @@ def test_triage_scheduler_isolates_invalid_item_and_passes_source_tickers():
             content="Rates rise.",
             tickers=json.dumps(["GC=F"]),
             collection_lane="realtime",
+            exposure_status="matched",
+            exposure_assets=json.dumps(["gold"]),
+            exposure_reason="asset:gold",
         ),
         Article(
             source="cls_telegraph",
@@ -461,6 +467,9 @@ def test_triage_scheduler_isolates_invalid_item_and_passes_source_tickers():
             title="FOMC decision",
             content="Incomplete model output.",
             collection_lane="realtime",
+            exposure_status="matched",
+            exposure_assets=json.dumps(["gold"]),
+            exposure_reason="macro:us_macro",
         ),
     ])
     session.commit()
@@ -534,6 +543,9 @@ def test_realtime_endpoint_exposes_real_buckets(monkeypatch):
         triage_watch_for=json.dumps(["real yields"]),
         triage_scenario_bull="Gold holds.",
         triage_scenario_bear="Gold sells off.",
+        exposure_status="matched",
+        exposure_assets=json.dumps(["gold"]),
+        exposure_reason="macro:us_macro",
         published_at=datetime.utcnow(),
         collected_at=datetime.utcnow(),
     ))

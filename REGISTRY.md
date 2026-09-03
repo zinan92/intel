@@ -1,5 +1,17 @@
 # Runtime Registry
 
+## 2026-09-03 · Realtime exposure gate uses the approved 16-asset universe
+
+- Issue #97 adds the versioned `macro-assets-v3` deterministic exposure table;
+  realtime Articles retain `matched/unmatched` status, canonical asset keys,
+  and the lookup reason.
+- Only matched operational Articles enter realtime AI triage and the default
+  Rolling News decision stream. Unmatched raw Articles remain stored and are
+  available through the explicit audit view.
+- The gate includes explicit mappings for US macro, China macro, Japan/Korea
+  macro, risk events, approved index constituents, and direct asset aliases;
+  it does not use an LLM to decide exposure.
+
 ## 2026-09-03 · Finance event health and narrative fallback are explicit
 
 - Issue #93 aggregates only Articles with a valid 1–5 relevance score and at
@@ -11,7 +23,6 @@
 - Cross-source event narratives now use DeepSeek followed by isolated Codex CLI
   fallback and persist their provider. Health and Daily delivery output show
   collection, scoring, and event-processing state separately.
-
 ## 2026-09-03 · Scheduled realtime previews remain visible
 
 - Issue #96 accepts common Chinese future-event forms such as `明晚来袭`,

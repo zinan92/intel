@@ -84,10 +84,13 @@ def test_deterministic_validation_fallback_is_persisted_as_visible_complete_unkn
     session.add(Article(
         source="eastmoney_global_news",
         source_id="scheduled-preview-1",
-        title="美国8月非农明晚来袭",
-        content="等待非农数据。",
-        collection_lane="realtime",
-        collected_at=datetime(2026, 9, 3, 3, 0, 0),
+            title="美国8月非农明晚来袭",
+            content="等待非农数据。",
+            collection_lane="realtime",
+            exposure_status="matched",
+            exposure_assets='["sp500"]',
+            exposure_reason="macro:us_macro",
+            collected_at=datetime(2026, 9, 3, 3, 0, 0),
         triage_attempts=0,
     ))
     session.commit()

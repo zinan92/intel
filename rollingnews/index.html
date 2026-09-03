@@ -577,7 +577,7 @@
   </div>
 
   <div class="footnote">
-      LIVE DATA：CLS + Eastmoney + SEC EDGAR + BlockBeats → Park Intel realtime lane → AI triage。页面每 15 秒刷新；旧 hourly digest / event / signal lane 保持隔离。AI 未完成时显示 Unknown，不伪造判断。
+      LIVE DATA：CLS + Eastmoney + SEC EDGAR + BlockBeats → 16-asset exposure gate → AI triage。页面每 15 秒刷新；旧 hourly digest / event / signal lane 保持隔离。AI 未完成时显示 Unknown，不伪造判断。
     <div id="sourceHealth" class="source-health-line">等待 source health…</div>
   </div>
 </div>
@@ -1081,7 +1081,10 @@
         items.forEach(function (item) { state.known[item.id] = true; });
         state.items = items;
         state.bootstrapped = true;
-        refs.feedCount.textContent = ((data.stats && data.stats.total) || items.length) + ' captured';
+        var exposureStats = data.stats || {};
+        var exposed = exposureStats.total || items.length;
+        var excluded = exposureStats.exposure_excluded || 0;
+        refs.feedCount.textContent = exposed + ' exposed · ' + excluded + ' filtered';
         renderTicker(items, newIds);
         renderBuckets(data);
         renderHealth(data.source_health);

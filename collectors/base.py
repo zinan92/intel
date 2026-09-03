@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from db.database import get_session, init_db
 from db.models import Article
 from tagging import tag_article, extract_tickers
+from triage.exposure import match_article_exposure
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,13 @@ class BaseCollector(ABC):
                     except (json.JSONDecodeError, TypeError):
                         source_tickers = None
                 tickers = extract_tickers(data.get("title"), data.get("content"), source_tickers)
+                exposure = None
+                if data.get("collection_lane", "hourly") == "realtime":
+                    exposure = match_article_exposure(
+                        data.get("title"),
+                        data.get("content"),
+                        tickers,
+                    )
 
                 article = Article(
                     source=data.get("source", self.source),
@@ -81,6 +89,12 @@ class BaseCollector(ABC):
                     published_at=data.get("published_at"),
                     collected_at=datetime.utcnow(),
                     collection_lane=data.get("collection_lane", "hourly"),
+                    exposure_status=exposure.status if exposure else None,
+                    exposure_assets=(
+                        json.dumps(list(exposure.asset_keys), ensure_ascii=False)
+                        if exposure else None
+                    ),
+                    exposure_reason=exposure.reason if exposure else None,
                     source_authority=data.get("source_authority"),
                     corroboration_state=data.get("corroboration_state"),
                     pin_eligibility=data.get("pin_eligibility"),

@@ -44,6 +44,7 @@ def related_evidence_map(
     query = session.query(Article).filter(
         Article.collection_lane == "realtime",
         Article.is_backfill.is_(False),
+        Article.exposure_status == "matched",
         or_(
             Article.published_at.between(window_start, window_end),
             and_(
