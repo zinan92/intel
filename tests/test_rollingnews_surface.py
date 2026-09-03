@@ -14,6 +14,20 @@ def test_rollingnews_page_uses_the_read_only_same_origin_contract():
     assert "127.0.0.1:8001" not in page
 
 
+def test_rollingnews_page_displays_received_time_as_primary_provenance():
+    page = (ROOT / "rollingnews" / "index.html").read_text(encoding="utf-8")
+
+    assert "'收 ' + timeLabel(item.collected_at)" in page
+    assert "sourceTimeLabel(item)" in page
+    assert "timeLabel(item.published_at || item.collected_at)" not in page
+    assert "event.latest_collected_at" in page
+    assert 'id="lastReceived"' in page
+    assert 'id="lastTriaged"' in page
+    assert "renderPipelineTimes(data.stats)" in page
+    assert 'id="pendingHealth"' in page
+    assert 'id="failedHealth"' in page
+
+
 def test_rollingnews_launch_surface_is_scoped_to_static_directory():
     service = (ROOT / "scripts" / "rollingnews-static-service.sh").read_text(
         encoding="utf-8"
