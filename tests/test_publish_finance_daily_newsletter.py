@@ -179,7 +179,8 @@ def test_publish_skips_delivery_when_generation_fails(monkeypatch):
 
     assert result is None
     save.assert_not_called()
-    assert (Path(manifest_dir.name) / ".delivery-manifests" / "2026-09-03-daily.json").exists()
+    report_date = datetime.now(mod.BRIEF_TIMEZONE).date().isoformat()
+    assert (Path(manifest_dir.name) / ".delivery-manifests" / f"{report_date}-daily.json").exists()
     manifest_dir.cleanup()
 
 
@@ -194,7 +195,8 @@ def test_generation_failure_without_previous_brief_still_writes_manifest(monkeyp
          patch.object(mod, "get_session", return_value=_session()):
         assert mod.publish_finance_daily_newsletter() is None
 
-    assert (Path(manifest_dir.name) / ".delivery-manifests" / "2026-09-03-daily.json").exists()
+    report_date = datetime.now(mod.BRIEF_TIMEZONE).date().isoformat()
+    assert (Path(manifest_dir.name) / ".delivery-manifests" / f"{report_date}-daily.json").exists()
     manifest_dir.cleanup()
 
 
@@ -210,8 +212,9 @@ def test_generation_failure_writes_manifest_and_alerts_once(tmp_path, monkeypatc
         assert mod.publish_finance_daily_newsletter() is None
 
     alert.assert_called_once()
+    report_date = datetime.now(mod.BRIEF_TIMEZONE).date().isoformat()
     payload = json.loads(
-        (tmp_path / ".delivery-manifests" / "2026-09-03-daily.json").read_text(encoding="utf-8")
+        (tmp_path / ".delivery-manifests" / f"{report_date}-daily.json").read_text(encoding="utf-8")
     )
     assert payload["status"] == "generation_failed"
     assert payload["alert_sent"] is True
