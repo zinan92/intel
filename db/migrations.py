@@ -200,6 +200,8 @@ def run_migrations(engine: Engine) -> None:
     migrations = [
         ("articles", "relevance_score", "INTEGER"),
         ("articles", "narrative_tags", "TEXT"),
+        ("articles", "relevance_provider", "TEXT"),
+        ("articles", "relevance_scored_at", "DATETIME"),
         ("articles", "tickers", "TEXT"),
         ("articles", "collection_lane", "TEXT"),
         ("articles", "triage_bucket", "TEXT"),
@@ -233,6 +235,8 @@ def run_migrations(engine: Engine) -> None:
         ("collector_runs", "articles_failed", "INTEGER"),
         ("collector_runs", "articles_missing_timestamp", "INTEGER"),
         ("collector_runs", "articles_invalid_timestamp", "INTEGER"),
+        ("collector_runs", "provider", "TEXT"),
+        ("collector_runs", "fallback_reason", "TEXT"),
         ("events", "narrative_summary", "TEXT"),
         ("events", "prev_signal_score", "REAL"),
         ("events", "trading_play", "TEXT"),

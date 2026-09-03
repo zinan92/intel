@@ -317,6 +317,54 @@ def _build_source_details(session) -> list[dict[str, Any]]:
     return result
 
 
+def _build_processing_health(session) -> dict[str, dict[str, Any]]:
+    """Return persisted health for non-collector processing stages."""
+
+    from db.models import Article, CollectorRun
+
+    latest = (
+        session.query(CollectorRun)
+        .filter(CollectorRun.source_type == "llm_tagger")
+        .order_by(CollectorRun.completed_at.desc())
+        .first()
+    )
+    unscored = (
+        session.query(Article)
+        .filter(
+            Article.collection_lane == "hourly",
+            Article.relevance_score.is_(None),
+        )
+        .count()
+    )
+    if latest is None:
+        return {
+            "llm_tagger": {
+                "status": "no_data",
+                "attempted": 0,
+                "scored": 0,
+                "failed": 0,
+                "unscored": unscored,
+                "provider": None,
+                "fallback_reason": None,
+                "last_error": None,
+                "last_run_at": None,
+            }
+        }
+    return {
+        "llm_tagger": {
+            "status": latest.status,
+            "attempted": latest.articles_fetched,
+            "scored": latest.articles_saved,
+            "failed": latest.articles_failed,
+            "unscored": unscored,
+            "provider": latest.provider,
+            "fallback_reason": latest.fallback_reason,
+            "last_error": latest.error_message,
+            "last_run_at": latest.completed_at.isoformat() if latest.completed_at else None,
+        }
+    }
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -334,12 +382,14 @@ def health_sources() -> dict[str, Any]:
     session = get_session()
     try:
         sources = _build_source_details(session)
+        processing = _build_processing_health(session)
         scheduler_alive = _get_scheduler_alive()
         process_health = _get_process_health()
         return {
             "scheduler_alive": scheduler_alive,
             "process": process_health,
             "sources": sources,
+            "processing": processing,
         }
     finally:
         session.close()
@@ -351,6 +401,7 @@ def health_summary() -> dict[str, Any]:
     session = get_session()
     try:
         sources = _build_source_details(session)
+        processing = _build_processing_health(session)
         scheduler_alive = _get_scheduler_alive()
         process_health = _get_process_health()
 
@@ -383,6 +434,7 @@ def health_summary() -> dict[str, Any]:
             "total_articles_24h": total_articles_24h,
             "scheduler_alive": scheduler_alive,
             "process": process_health,
+            "processing": processing,
         }
     finally:
         session.close()

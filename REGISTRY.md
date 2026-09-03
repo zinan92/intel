@@ -1,5 +1,17 @@
 # Runtime Registry
 
+## 2026-09-03 · Finance article scoring gains explicit provider fallback
+
+- Issue #91 routes Finance article scoring through DeepSeek first and one
+  isolated Codex CLI fallback when the primary completion or its structured
+  output is unusable.
+- Scored Articles persist provider and scored-at provenance. Tagger runs persist
+  attempted/scored/failed counts, provider, fallback reason, and error status in
+  the existing operational run ledger.
+- A pending batch that neither provider can score now raises to the scheduler
+  and appears under processing health; it can no longer finish as a successful
+  zero-score run.
+
 ## 2026-09-03 · Production Rolling News time display aligned
 
 - Issue #89 applies the received-time contract to the tracked production page:

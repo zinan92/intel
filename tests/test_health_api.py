@@ -304,6 +304,21 @@ def _make_test_db():
         completed_at=now - timedelta(hours=2),
     ))
 
+    session.add(CollectorRun(
+        source_type="llm_tagger",
+        source_key="finance:article-scoring",
+        status="error",
+        articles_fetched=500,
+        articles_saved=0,
+        articles_failed=500,
+        duration_ms=1000,
+        error_message="both providers failed",
+        error_category="provider",
+        provider=None,
+        fallback_reason="DeepSeekError",
+        completed_at=now - timedelta(minutes=5),
+    ))
+
     # HN has no runs (no_data case)
 
     session.commit()
@@ -345,6 +360,16 @@ class TestHealthSourcesEndpoint:
         assert "scheduler_alive" in data
         assert isinstance(data["sources"], list)
         assert len(data["sources"]) == 3
+        assert data["processing"]["llm_tagger"]["status"] == "error"
+
+    def test_tagger_failure_is_visible(self, test_client):
+        data = test_client.get("/api/health/sources").json()
+        tagger = data["processing"]["llm_tagger"]
+        assert tagger["attempted"] == 500
+        assert tagger["scored"] == 0
+        assert tagger["failed"] == 500
+        assert tagger["fallback_reason"] == "DeepSeekError"
+        assert tagger["last_error"] == "both providers failed"
 
     def test_source_has_required_fields(self, test_client):
         resp = test_client.get("/api/health/sources")
@@ -431,6 +456,7 @@ class TestHealthSummaryEndpoint:
         assert data["healthy_count"] >= 1
         # GitHub is disabled (no token) and HN has no_data -> both count as disabled
         assert data["disabled_count"] >= 1
+        assert data["processing"]["llm_tagger"]["status"] == "error"
 
 
 class TestExistingHealthEndpoint:
@@ -439,3 +465,5 @@ class TestExistingHealthEndpoint:
     def test_existing_health_returns_200(self, test_client):
         resp = test_client.get("/api/health")
         assert resp.status_code == 200
+        assert resp.json()["status"] == "degraded"
+        assert resp.json()["processing"]["llm_tagger"]["status"] == "error"

@@ -381,6 +381,7 @@ def _run_llm_tagger() -> None:
         logger.warning("LLM tagger script not found, skipping")
     except Exception as e:
         logger.exception("LLM tagger failed: %s", e)
+        raise
 
 
 def _run_realtime_triage() -> None:
