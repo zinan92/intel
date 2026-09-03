@@ -187,10 +187,19 @@
     from { opacity: 0; transform: translateY(-6px); }
     to { opacity: 1; transform: translateY(0); }
   }
+  .ticker-item .t-times {
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    width: 72px;
+    line-height: 1.35;
+  }
   .ticker-item .t-time {
     color: var(--text-faint);
-    flex-shrink: 0;
-    width: 42px;
+  }
+  .ticker-item .t-source-time {
+    color: #4f5662;
+    font-size: 9.5px;
   }
   .ticker-item .t-src {
     color: var(--text-faint);
@@ -498,6 +507,8 @@
       <span id="unknownHealth" class="unknown-health">UNKNOWN --</span>
       <span id="pendingHealth" class="unknown-health">PENDING --</span>
       <span id="failedHealth" class="unknown-health">FAILED --</span>
+      <span id="lastReceived">RECEIVED --</span>
+      <span id="lastTriaged">TRIAGED --</span>
       <span id="clock">--:--:--</span>
       <span id="rate">0 headlines/min</span>
     </div>
@@ -787,6 +798,8 @@
     unknownHealth: document.getElementById('unknownHealth'),
     pendingHealth: document.getElementById('pendingHealth'),
     failedHealth: document.getElementById('failedHealth'),
+    lastReceived: document.getElementById('lastReceived'),
+    lastTriaged: document.getElementById('lastTriaged'),
     rate: document.getElementById('rate'),
     connection: document.getElementById('connectionState'),
     health: document.getElementById('sourceHealth')
@@ -842,6 +855,19 @@
       timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
     }).format(date);
   }
+  function receivedAt(item) {
+    return (item.event && item.event.latest_collected_at) || item.collected_at;
+  }
+  function sourceTimeLabel(item) {
+    if (!item.published_at) return '源 --';
+    var published = new Date(item.published_at);
+    var received = new Date(item.collected_at);
+    if (isNaN(published.getTime())) return '源时间无效';
+    if (!isNaN(received.getTime()) && published.getTime() > received.getTime() + 60000) {
+      return '源时间待核';
+    }
+    return '源 ' + timeLabel(item.published_at);
+  }
   function bucketLabel(bucket) {
     return bucket === 'high_impact' ? 'HIGH' : bucket === 'watch' ? 'WATCH' : bucket === 'noise' ? 'NOISE' : 'UNKNOWN';
   }
@@ -886,7 +912,11 @@
       if (isPending(item)) row.className += ' processing';
       if (newIds[item.id]) row.className += ' fresh';
       text(row, bucketLabel(bucket), 'tag tag-' + bucket.replace('_impact', ''));
-      text(row, timeLabel(item.published_at || item.collected_at), 't-time');
+      var times = document.createElement('span');
+      times.className = 't-times';
+      text(times, '收 ' + timeLabel(item.collected_at), 't-time');
+      text(times, sourceTimeLabel(item), 't-source-time');
+      row.appendChild(times);
       text(row, sourceLabel(item.source), 't-src');
       addHeadline(row, item, 't-headline');
       refs.ticker.appendChild(row);
@@ -905,7 +935,8 @@
     var meta = document.createElement('div');
     meta.className = 'impact-meta';
     text(meta, sourceLabel(item.source));
-    text(meta, timeLabel(item.published_at || item.collected_at));
+    text(meta, '收 ' + timeLabel(receivedAt(item)));
+    text(meta, sourceTimeLabel(item));
     if (triage.direction) text(meta, directionLabel(triage.direction), 'direction direction-' + triage.direction);
     parent.appendChild(meta);
   }
@@ -1023,6 +1054,12 @@
     refs.connection.className = 'connection-state ' + (className || '');
   }
 
+  function renderPipelineTimes(stats) {
+    stats = stats || {};
+    refs.lastReceived.textContent = 'RECEIVED ' + timeLabel(stats.last_collected_at);
+    refs.lastTriaged.textContent = 'TRIAGED ' + timeLabel(stats.last_triaged_at);
+  }
+
   function refresh() {
     fetch(API_BASE + '/api/ui/realtime?window=24h&limit=120', { cache: 'no-store' })
       .then(function (response) {
@@ -1048,6 +1085,7 @@
         renderTicker(items, newIds);
         renderBuckets(data);
         renderHealth(data.source_health);
+        renderPipelineTimes(data.stats);
         updateRate();
         setConnection('SYNCED', 'ok');
       })

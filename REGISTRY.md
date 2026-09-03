@@ -1,5 +1,12 @@
 # Runtime Registry
 
+## 2026-09-03 · Production Rolling News time display aligned
+
+- Issue #89 applies the received-time contract to the tracked production page:
+  Rolling Feed now shows `collected_at` first and source publication time second.
+- High/Watch cards show the latest grouped evidence receipt time, and the header
+  exposes latest received/latest triaged while retaining pending/failed health.
+
 ## 2026-09-03 · Realtime timestamp semantics made explicit
 
 - Issue #87 serializes product-facing realtime timestamps as RFC3339 UTC with
