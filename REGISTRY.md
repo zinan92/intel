@@ -1,5 +1,16 @@
 # Runtime Registry
 
+## 2026-09-03 · Finance delivery review gaps closed
+
+- Issue #104 records all Daily and Weekly generation failures, including
+  quality/coverage failures before a previous Brief exists, in durable delivery
+  manifests with one idempotent Feishu status alert.
+- `/api/briefs/latest` now exposes provider, scoring coverage, status, and
+  explicit `is_stale`/`is_usable` flags.
+- Recovery recognizes complete canonical Daily evidence without relying only on
+  its receipt file, preserves residual-gap evidence on partial failure, and the
+  migration/Codex CLI edge paths have regression coverage.
+
 ## 2026-09-03 · Finance Daily/Weekly recovery completed with bounded scope
 
 - Issue #94 preserved the existing `2026-08-24` and `2026-08-25` Daily bodies

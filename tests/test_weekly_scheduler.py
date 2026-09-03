@@ -4,6 +4,8 @@ from datetime import date, datetime
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
+import pytest
+
 
 def test_scheduled_week_ending_targets_sunday_and_monday_only():
     from scripts.run_scheduled_weekly_finance_newsletter import scheduled_week_ending
@@ -41,3 +43,18 @@ def test_scheduler_noops_outside_sunday_or_monday(monkeypatch):
     now = datetime(2026, 8, 25, 8, 30, tzinfo=ZoneInfo("Asia/Shanghai"))
 
     assert mod.run_scheduled_weekly(now) == "noop"
+
+
+def test_scheduler_surfaces_weekly_generation_failure(monkeypatch):
+    from scripts import run_scheduled_weekly_finance_newsletter as mod
+
+    monkeypatch.setattr(
+        mod,
+        "publish_weekly_finance_newsletter",
+        lambda week: (_ for _ in ()).throw(mod.WeeklyGenerationError("coverage missing")),
+    )
+
+    with pytest.raises(mod.WeeklyGenerationError, match="coverage missing"):
+        mod.run_scheduled_weekly(
+            datetime(2026, 8, 24, 8, 30, tzinfo=ZoneInfo("Asia/Shanghai"))
+        )

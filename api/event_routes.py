@@ -28,12 +28,25 @@ def get_latest_brief() -> dict[str, Any]:
         )
         if not brief:
             return {"brief": None}
+        scoring_coverage = brief.scoring_coverage
+        is_usable = (
+            brief.status == "published"
+            and scoring_coverage is not None
+            and scoring_coverage >= 1.0
+        )
         return {
             "brief": {
                 "id": brief.id,
                 "content": brief.content,
                 "article_count": brief.article_count,
                 "signal_count": brief.signal_count,
+                "status": brief.status,
+                "provider": brief.provider,
+                "candidate_article_count": brief.candidate_article_count,
+                "scored_article_count": brief.scored_article_count,
+                "scoring_coverage": scoring_coverage,
+                "is_stale": not is_usable,
+                "is_usable": is_usable,
                 "created_at": brief.created_at.isoformat() if brief.created_at else None,
             }
         }

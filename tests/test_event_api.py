@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import pytest
 from fastapi.testclient import TestClient
 
+from briefs.models import Brief
 from db.models import Base, Article
 from events.models import Event, EventArticle
 
@@ -54,6 +55,18 @@ def client(monkeypatch, tmp_path):
     link = EventArticle(event_id=event.id, article_id=article.id)
     session.add(link)
     session.commit()
+    session.add(Brief(
+        content="brief",
+        article_count=100,
+        signal_count=3,
+        status="published",
+        provider="codex-cli",
+        candidate_article_count=300,
+        scored_article_count=300,
+        scoring_coverage=1.0,
+        created_at=now,
+    ))
+    session.commit()
     session.close()
 
     with TestClient(app) as c:
@@ -89,3 +102,17 @@ def test_get_event_detail(client):
 def test_get_event_not_found(client):
     resp = client.get("/api/events/99999")
     assert resp.status_code == 404
+
+
+def test_get_latest_brief_exposes_usable_provenance(client):
+    resp = client.get("/api/briefs/latest")
+
+    assert resp.status_code == 200
+    brief = resp.json()["brief"]
+    assert brief["provider"] == "codex-cli"
+    assert brief["scoring_coverage"] == 1.0
+    assert brief["candidate_article_count"] == 300
+    assert brief["scored_article_count"] == 300
+    assert brief["status"] == "published"
+    assert brief["is_stale"] is False
+    assert brief["is_usable"] is True

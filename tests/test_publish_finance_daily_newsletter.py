@@ -166,6 +166,11 @@ def test_publish_skips_delivery_when_generation_fails(monkeypatch):
     ))
     session.commit()
     monkeypatch.setenv("PARK_INTEL_SKIP_FEISHU", "1")
+    # A failed generation is recorded, but the previous Brief is not archived.
+    # Keep this test's manifest outside the real Obsidian vault.
+    import tempfile
+    manifest_dir = tempfile.TemporaryDirectory()
+    monkeypatch.setenv("OBSIDIAN_FINANCE_NEWSLETTER_DIR", manifest_dir.name)
 
     with patch.object(mod, "generate_brief", return_value=None), \
          patch.object(mod, "get_session", return_value=session), \
@@ -174,6 +179,42 @@ def test_publish_skips_delivery_when_generation_fails(monkeypatch):
 
     assert result is None
     save.assert_not_called()
+    assert (Path(manifest_dir.name) / ".delivery-manifests" / "2026-09-03-daily.json").exists()
+    manifest_dir.cleanup()
+
+
+def test_generation_failure_without_previous_brief_still_writes_manifest(monkeypatch):
+    from scripts import publish_finance_daily_newsletter as mod
+
+    import tempfile
+    manifest_dir = tempfile.TemporaryDirectory()
+    monkeypatch.setenv("OBSIDIAN_FINANCE_NEWSLETTER_DIR", manifest_dir.name)
+    monkeypatch.setenv("PARK_INTEL_SKIP_FEISHU", "1")
+    with patch.object(mod, "generate_brief", return_value=None), \
+         patch.object(mod, "get_session", return_value=_session()):
+        assert mod.publish_finance_daily_newsletter() is None
+
+    assert (Path(manifest_dir.name) / ".delivery-manifests" / "2026-09-03-daily.json").exists()
+    manifest_dir.cleanup()
+
+
+def test_generation_failure_writes_manifest_and_alerts_once(tmp_path, monkeypatch):
+    from scripts import publish_finance_daily_newsletter as mod
+
+    monkeypatch.setenv("OBSIDIAN_FINANCE_NEWSLETTER_DIR", str(tmp_path))
+    failure = RuntimeError("provider unavailable")
+    with patch.object(mod, "generate_brief", side_effect=failure), \
+         patch.object(mod, "_send_feishu_status") as alert, \
+         patch.object(mod, "get_session", return_value=_session()):
+        assert mod.publish_finance_daily_newsletter() is None
+        assert mod.publish_finance_daily_newsletter() is None
+
+    alert.assert_called_once()
+    payload = json.loads(
+        (tmp_path / ".delivery-manifests" / "2026-09-03-daily.json").read_text(encoding="utf-8")
+    )
+    assert payload["status"] == "generation_failed"
+    assert payload["alert_sent"] is True
 
 
 def test_scoring_failure_writes_manifest_and_alerts_once(tmp_path, monkeypatch):

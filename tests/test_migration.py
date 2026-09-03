@@ -60,6 +60,17 @@ def test_migration_adds_columns(engine):
         """))
         conn.commit()
 
+        conn.execute(text("DROP TABLE IF EXISTS collector_runs"))
+        conn.execute(text("""
+            CREATE TABLE collector_runs (
+                id INTEGER PRIMARY KEY,
+                source_type VARCHAR NOT NULL,
+                status VARCHAR NOT NULL,
+                completed_at DATETIME NOT NULL
+            )
+        """))
+        conn.commit()
+
     assert not _column_exists(engine, "articles", "relevance_score")
     assert not _column_exists(engine, "articles", "narrative_tags")
     assert not _column_exists(engine, "articles", "relevance_provider")
@@ -70,6 +81,8 @@ def test_migration_adds_columns(engine):
     assert not _column_exists(engine, "briefs", "provider")
     assert not _column_exists(engine, "briefs", "scoring_coverage")
     assert not _column_exists(engine, "events", "narrative_provider")
+    assert not _column_exists(engine, "collector_runs", "provider")
+    assert not _column_exists(engine, "collector_runs", "fallback_reason")
 
     run_migrations(engine)
 
@@ -85,6 +98,8 @@ def test_migration_adds_columns(engine):
     assert _column_exists(engine, "briefs", "scored_article_count")
     assert _column_exists(engine, "briefs", "scoring_coverage")
     assert _column_exists(engine, "events", "narrative_provider")
+    assert _column_exists(engine, "collector_runs", "provider")
+    assert _column_exists(engine, "collector_runs", "fallback_reason")
 
 
 def test_migration_idempotent(engine):

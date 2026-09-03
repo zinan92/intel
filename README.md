@@ -250,6 +250,12 @@ validated Daily archives; the recovery command preserves the SQLite backup,
 rescoring window, archive replacements, Weekly Feishu delivery, replay result,
 and residual gaps in a JSON receipt under `docs/`.
 
+`GET /api/briefs/latest` also exposes `status`, provider, scoring coverage, and
+`is_stale`/`is_usable` so API consumers cannot mistake an older or unvalidated
+brief for current production output. Weekly generation failures are recorded
+in the Weekly delivery manifest and emit one status alert when Feishu delivery
+is configured.
+
 ## Project Structure
 
 ```
