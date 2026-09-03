@@ -52,6 +52,8 @@ _last_results: dict[str, CollectorResult] = {}
 # type instead of retrying unattended on every minute tick.
 _realtime_blocked_until: dict[str, datetime] = {}
 _REALTIME_BLOCK_COOLDOWN_SECONDS = 15 * 60
+_realtime_triage_blocked_until: datetime | None = None
+_REALTIME_TRIAGE_COOLDOWN_SECONDS = 5 * 60
 
 # Heartbeat: updated every 5 minutes, checked by health endpoints
 _heartbeat_ts: datetime | None = None
@@ -386,12 +388,23 @@ def _run_llm_tagger() -> None:
 
 def _run_realtime_triage() -> None:
     """Classify pending realtime items without entering hourly consumers."""
+    global _realtime_triage_blocked_until
+
     if not _realtime_lane_enabled():
         return
+
+    now_utc = datetime.now(timezone.utc)
+    if (
+        _realtime_triage_blocked_until is not None
+        and now_utc < _realtime_triage_blocked_until
+    ):
+        return
+    _realtime_triage_blocked_until = None
 
     import json
     from db.database import get_session
     from db.models import Article
+    from llm.deepseek import DeepSeekError
     from triage.realtime import RealtimeTriage
     from triage.revisit import related_evidence_map
     from sqlalchemy import or_
@@ -502,6 +515,29 @@ def _run_realtime_triage() -> None:
             completed,
             failed,
             triage.model_name,
+        )
+    except DeepSeekError:
+        session.rollback()
+        _realtime_triage_blocked_until = (
+            datetime.now(timezone.utc)
+            + timedelta(seconds=_REALTIME_TRIAGE_COOLDOWN_SECONDS)
+        )
+        deferred = 0
+        for article in candidates if "candidates" in locals() else []:
+            saved = session.get(Article, article.id)
+            if saved is None:
+                continue
+            saved.triage_status = None
+            saved.triage_error = "provider_unavailable"
+            saved.triage_attempts = max(0, (saved.triage_attempts or 1) - 1)
+            saved.triaged_at = None
+            deferred += 1
+        if deferred:
+            session.commit()
+        logger.warning(
+            "[realtime-triage] providers unavailable; deferred=%d cooldown=%ds",
+            deferred,
+            _REALTIME_TRIAGE_COOLDOWN_SECONDS,
         )
     except Exception as exc:
         session.rollback()

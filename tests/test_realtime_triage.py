@@ -514,6 +514,53 @@ def test_triage_scheduler_isolates_invalid_item_and_passes_source_tickers():
     session.close()
 
 
+def test_triage_scheduler_defers_provider_outage_without_burning_attempts(monkeypatch):
+    import scheduler
+    from llm.deepseek import DeepSeekError
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session = Session(engine)
+    session.add(Article(
+        source="cls_telegraph",
+        source_id="provider-outage",
+        title="OpenAI service update",
+        content="Provider outage fixture.",
+        collection_lane="realtime",
+        exposure_status="matched",
+        exposure_assets="[]",
+        triage_attempts=0,
+    ))
+    session.commit()
+    calls = []
+
+    class FailingTriage:
+        model_name = "unavailable"
+
+        def __init__(self, **_kwargs):
+            pass
+
+        def triage_batch(self, articles):
+            calls.append(list(articles))
+            raise DeepSeekError("both providers unavailable")
+
+    monkeypatch.setattr(scheduler, "_realtime_triage_blocked_until", None, raising=False)
+    with patch("db.database.get_session", return_value=session), \
+         patch.object(scheduler, "_realtime_lane_enabled", return_value=True), \
+         patch("triage.realtime.RealtimeTriage", FailingTriage):
+        scheduler._run_realtime_triage()
+        scheduler._run_realtime_triage()
+
+    session.expire_all()
+    saved = session.query(Article).filter_by(source_id="provider-outage").one()
+    assert len(calls) == 1
+    assert saved.triage_status is None
+    assert saved.triage_attempts == 0
+    assert saved.triage_error == "provider_unavailable"
+    assert scheduler._realtime_triage_blocked_until is not None
+    session.close()
+
+
 def test_realtime_endpoint_exposes_real_buckets(monkeypatch):
     import api.ui_routes as ui
 

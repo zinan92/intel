@@ -1,5 +1,15 @@
 # Runtime Registry
 
+## 2026-09-03 · Realtime AI provider outages defer instead of exhausting retries
+
+- When both DeepSeek and the Codex CLI fallback are unavailable, claimed
+  realtime items return to pending without consuming a triage attempt.
+- The triage scheduler enters a five-minute process-local cooldown before the
+  next provider probe, preventing a short outage from creating permanent
+  `failed` rows every 30 seconds.
+- Deterministic decision-contract failures retain their existing visible
+  `complete + unknown` behavior; the cooldown applies only to provider failure.
+
 ## 2026-09-03 · Realtime exposure uses Park Exposure Registry v6
 
 - The realtime gate reads the pinned `config/park-exposure-registry.yaml`
