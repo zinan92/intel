@@ -75,6 +75,32 @@ def test_unclear_high_impact_without_scheduled_evidence_isolated_without_repair(
     assert client.complete.call_count == 1
 
 
+def test_incidental_macro_reference_late_in_body_does_not_force_high_impact_floor():
+    from triage.realtime import RealtimeTriage
+
+    client = MagicMock()
+    client.complete.return_value = json.dumps({"results": [
+        _scheduled_result(3),
+    ]})
+    content = (
+        "This is a BTC technical-level discussion about support, resistance, "
+        "ETF flows, and spot demand. " * 6
+        + "正文后半段才顺带提到周五非农报告是潜在催化剂。"
+    )
+
+    result = RealtimeTriage(client=client).triage_batch([{
+        "id": 3,
+        "title": "BTC must hold support before the sell wall is absorbed",
+        "content": content,
+        "source": "blockbeats_newsflash",
+    }])
+
+    assert result[0]["bucket"] == "unknown"
+    assert result[0]["retryable"] is False
+    assert result[0]["failure_kind"] == "deterministic_validation"
+    assert client.complete.call_count == 1
+
+
 def test_deterministic_validation_fallback_is_persisted_as_visible_complete_unknown():
     import api.ui_routes as ui
     import scheduler
