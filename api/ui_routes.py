@@ -22,6 +22,7 @@ from sqlalchemy import func, or_
 
 from db.database import get_session
 from db.models import Article, CollectorRun
+from api.time_contract import utc_rfc3339
 from triage.event_match import normalize_headline, reports_match
 
 ui_router = APIRouter(prefix="/api/ui")
@@ -99,6 +100,14 @@ def _group_realtime_events(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "event_id": f"realtime-event:{article_ids[0]}",
             "event_key": hashlib.sha256(event_key_material.encode()).hexdigest()[:20],
             "primary_article_id": primary["id"],
+            "latest_collected_at": max(
+                (
+                    item.get("collected_at")
+                    for item in group["items"]
+                    if item.get("collected_at")
+                ),
+                default=None,
+            ),
             "evidence_count": len(group["items"]),
             "operationally_unresolved": any(
                 item.get("triage", {}).get("status") != "complete"
@@ -113,6 +122,7 @@ def _group_realtime_events(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     "source": item.get("source"),
                     "url": item.get("url"),
                     "published_at": item.get("published_at"),
+                    "collected_at": item.get("collected_at"),
                 }
                 for item in sorted(group["items"], key=lambda value: int(value["id"]))
             ],
@@ -240,7 +250,7 @@ def _triage_payload(article: Article) -> dict[str, Any]:
         "watch_for": _parse_json_list(article.triage_watch_for),
         "model": article.triage_model,
         "error": article.triage_error,
-        "triaged_at": article.triaged_at.isoformat() if article.triaged_at else None,
+        "triaged_at": utc_rfc3339(article.triaged_at),
     }
 
 
@@ -309,14 +319,12 @@ def _feed_item(article: Article, priority: float, now: datetime, event_article_i
         "provider_message_id": article.provider_message_id,
         "upstream_url": article.upstream_url,
         "upstream_attribution": article.upstream_attribution,
-        "provider_edit_at": (
-            article.provider_edit_at.isoformat() if article.provider_edit_at else None
-        ),
+        "provider_edit_at": utc_rfc3339(article.provider_edit_at),
         "is_backfill": bool(article.is_backfill),
         "backfill_reason": article.backfill_reason,
         "triage": _triage_payload(article),
-        "published_at": article.published_at.isoformat() if article.published_at else None,
-        "collected_at": article.collected_at.isoformat() if article.collected_at else None,
+        "published_at": utc_rfc3339(article.published_at),
+        "collected_at": utc_rfc3339(article.collected_at),
         "in_event": article.id in event_article_ids,
     }
 
@@ -456,8 +464,8 @@ def _build_source_health(session: Any) -> list[dict[str, Any]]:
         result.append({
             "source": source_type,
             "count": count,
-            "last_seen_at": last_collected.isoformat() if last_collected else None,
-            "last_attempt_at": last_attempt_at,
+            "last_seen_at": utc_rfc3339(last_collected),
+            "last_attempt_at": utc_rfc3339(last_attempt_at),
             "status": status,
         })
 
@@ -734,9 +742,9 @@ def get_realtime_feed(
                 "triaged": triaged_count,
                 "pending": pending_count,
                 "failed": failed_count,
-                "last_collected_at": last_collected.isoformat() if last_collected else None,
-                "last_triaged_at": max(triaged_times).isoformat() if triaged_times else None,
-                "refreshed_at": now.isoformat(),
+                "last_collected_at": utc_rfc3339(last_collected),
+                "last_triaged_at": utc_rfc3339(max(triaged_times) if triaged_times else None),
+                "refreshed_at": utc_rfc3339(now),
             },
             "source_health": [
                 health for health in _build_source_health(session)
