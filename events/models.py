@@ -25,6 +25,7 @@ class Event(Base):
     avg_relevance: Mapped[float] = mapped_column(Float, default=0.0)
     status: Mapped[str] = mapped_column(String, default="active")
     narrative_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    narrative_provider: Mapped[str | None] = mapped_column(String, nullable=True)
     prev_signal_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     trading_play: Mapped[str | None] = mapped_column(Text, nullable=True)
     outcome_data: Mapped[str | None] = mapped_column(Text, nullable=True)

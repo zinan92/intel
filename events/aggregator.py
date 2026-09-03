@@ -1,17 +1,31 @@
 """Event aggregation — clusters articles by narrative_tag within 48h windows."""
 import json
 import logging
+import time
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
-from db.models import Article
+from db.models import Article, CollectorRun
 from events.models import Event, EventArticle
 
 logger = logging.getLogger(__name__)
 
 _WINDOW_HOURS = 48
+
+
+@dataclass(frozen=True)
+class AggregationResult:
+    status: str
+    fresh_articles: int
+    usable_articles: int
+    tags_processed: int
+    events_updated: int
+    narratives_generated: int
+    narratives_failed: int
+    error: str | None = None
 
 
 def _parse_narrative_tags(raw: str | None) -> list[str]:
@@ -43,15 +57,20 @@ def _close_expired_events(session: Session, now: datetime) -> list[Event]:
     return expired
 
 
-def run_aggregation(session: Session) -> None:
+def _has_valid_score(article: Article) -> bool:
+    return article.relevance_score is not None and 1 <= article.relevance_score <= 5
+
+
+def run_aggregation(session: Session) -> AggregationResult:
     """Run one aggregation cycle: cluster recent articles into events."""
+    started = time.monotonic()
     now = datetime.utcnow()
     cutoff = now - timedelta(hours=_WINDOW_HOURS)
 
     expired = _close_expired_events(session, now)
 
-    # 1. Fetch recent articles with narrative tags
-    articles = (
+    # 1. Fetch the fresh hourly lane first so missing scoring/tagging remains visible.
+    fresh_articles = (
         session.query(Article)
         .filter(
             Article.collected_at >= cutoff,
@@ -59,20 +78,23 @@ def run_aggregation(session: Session) -> None:
             # Realtime items remain readable candidates during the migration,
             # but must not become production events/signals before convergence.
             Article.collection_lane == "hourly",
-            Article.narrative_tags.isnot(None),
-            Article.narrative_tags != "",
-            Article.narrative_tags != "[]",
         )
         .all()
     )
+    usable_articles = [
+        article
+        for article in fresh_articles
+        if _has_valid_score(article) and _parse_narrative_tags(article.narrative_tags)
+    ]
 
     # 2. Group articles by tag
     tag_articles: dict[str, list[Article]] = defaultdict(list)
-    for article in articles:
+    for article in usable_articles:
         for tag in _parse_narrative_tags(article.narrative_tags):
             tag_articles[tag].append(article)
 
     # 3. For each tag, create or update event
+    events_updated = 0
     for tag, tag_arts in tag_articles.items():
         timestamps = [_article_timestamp(a) for a in tag_arts]
         earliest = min(timestamps)
@@ -133,12 +155,14 @@ def run_aggregation(session: Session) -> None:
         linked_articles = [
             article for article in linked_articles
             if active_event.window_start <= _article_timestamp(article) < active_event.window_end
+            and _has_valid_score(article)
+            and tag in _parse_narrative_tags(article.narrative_tags)
         ]
 
         sources = {a.source for a in linked_articles}
         relevances = [
             a.relevance_score for a in linked_articles
-            if a.relevance_score is not None
+            if _has_valid_score(a)
         ]
         avg_rel = sum(relevances) / len(relevances) if relevances else 0.0
 
@@ -150,6 +174,7 @@ def run_aggregation(session: Session) -> None:
         active_event.avg_relevance = round(avg_rel, 2)
         active_event.signal_score = round(len(sources) * avg_rel, 2)
         active_event.updated_at = now
+        events_updated += 1
 
     # 4. Snapshot price outcomes for events closed at the start of this run.
     for event in expired:
@@ -188,15 +213,74 @@ def run_aggregation(session: Session) -> None:
 
     session.commit()
 
-    # Generate narratives for cross-source events
+    narrative_generated = 0
+    narrative_failed = 0
+    narrative_providers: tuple[str, ...] = ()
+    fallback_reasons: tuple[str, ...] = ()
     try:
         from events.narrator import generate_narratives
-        generate_narratives(session)
-    except Exception:
-        logger.exception("Narrative generation failed (non-fatal)")
+        narrative_result = generate_narratives(session)
+        narrative_generated = narrative_result.generated
+        narrative_failed = narrative_result.failed
+        narrative_providers = narrative_result.providers
+        fallback_reasons = narrative_result.fallback_reasons
+    except Exception as exc:
+        narrative_failed = 1
+        fallback_reasons = (type(exc).__name__,)
+        logger.exception("Narrative generation failed")
+
+    unusable_count = len(fresh_articles) - len(usable_articles)
+    if not fresh_articles:
+        status = "no_data"
+        error = None
+    elif not usable_articles:
+        status = "degraded"
+        error = "fresh articles present but zero usable scored/tagged articles"
+    elif unusable_count or narrative_failed:
+        status = "degraded"
+        error = (
+            f"unusable_articles={unusable_count}; "
+            f"narrative_failures={narrative_failed}"
+        )
+    else:
+        status = "ok"
+        error = None
+
+    session.add(CollectorRun(
+        source_type="event_aggregation",
+        source_key="event_aggregation:hourly",
+        status=status,
+        articles_fetched=len(fresh_articles),
+        articles_saved=len(usable_articles),
+        articles_duplicate=events_updated,
+        articles_failed=unusable_count + narrative_failed,
+        duration_ms=int((time.monotonic() - started) * 1000),
+        error_message=error,
+        error_category="processing" if status == "degraded" else None,
+        provider=",".join(narrative_providers) or None,
+        fallback_reason=",".join(fallback_reasons) or None,
+        completed_at=now,
+    ))
+    session.commit()
+
+    result = AggregationResult(
+        status=status,
+        fresh_articles=len(fresh_articles),
+        usable_articles=len(usable_articles),
+        tags_processed=len(tag_articles),
+        events_updated=events_updated,
+        narratives_generated=narrative_generated,
+        narratives_failed=narrative_failed,
+        error=error,
+    )
 
     logger.info(
-        "Aggregation complete: %d tags processed, %d events closed",
+        "Aggregation %s: %d/%d usable articles, %d tags, %d events updated, %d events closed",
+        status,
+        len(usable_articles),
+        len(fresh_articles),
         len(tag_articles),
+        events_updated,
         len(expired),
     )
+    return result

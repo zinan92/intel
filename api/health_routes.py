@@ -337,8 +337,7 @@ def _build_processing_health(session) -> dict[str, dict[str, Any]]:
         .count()
     )
     if latest is None:
-        return {
-            "llm_tagger": {
+        tagger = {
                 "status": "no_data",
                 "attempted": 0,
                 "scored": 0,
@@ -349,9 +348,8 @@ def _build_processing_health(session) -> dict[str, dict[str, Any]]:
                 "last_error": None,
                 "last_run_at": None,
             }
-        }
-    return {
-        "llm_tagger": {
+    else:
+        tagger = {
             "status": latest.status,
             "attempted": latest.articles_fetched,
             "scored": latest.articles_saved,
@@ -362,6 +360,41 @@ def _build_processing_health(session) -> dict[str, dict[str, Any]]:
             "last_error": latest.error_message,
             "last_run_at": latest.completed_at.isoformat() if latest.completed_at else None,
         }
+
+    event_run = (
+        session.query(CollectorRun)
+        .filter(CollectorRun.source_type == "event_aggregation")
+        .order_by(CollectorRun.completed_at.desc())
+        .first()
+    )
+    if event_run is None:
+        event_aggregation = {
+            "status": "no_data",
+            "fresh_articles": 0,
+            "usable_articles": 0,
+            "events_updated": 0,
+            "failed": 0,
+            "provider": None,
+            "fallback_reason": None,
+            "last_error": None,
+            "last_run_at": None,
+        }
+    else:
+        event_aggregation = {
+            "status": event_run.status,
+            "fresh_articles": event_run.articles_fetched,
+            "usable_articles": event_run.articles_saved,
+            "events_updated": event_run.articles_duplicate,
+            "failed": event_run.articles_failed,
+            "provider": event_run.provider,
+            "fallback_reason": event_run.fallback_reason,
+            "last_error": event_run.error_message,
+            "last_run_at": event_run.completed_at.isoformat() if event_run.completed_at else None,
+        }
+
+    return {
+        "llm_tagger": tagger,
+        "event_aggregation": event_aggregation,
     }
 
 

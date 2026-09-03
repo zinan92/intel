@@ -48,12 +48,25 @@ def test_migration_adds_columns(engine):
         """))
         conn.commit()
 
+        conn.execute(text("DROP TABLE IF EXISTS events"))
+        conn.execute(text("""
+            CREATE TABLE events (
+                id INTEGER PRIMARY KEY,
+                narrative_tag VARCHAR NOT NULL,
+                window_start DATETIME NOT NULL,
+                window_end DATETIME NOT NULL,
+                status VARCHAR DEFAULT 'active'
+            )
+        """))
+        conn.commit()
+
     assert not _column_exists(engine, "articles", "relevance_score")
     assert not _column_exists(engine, "articles", "narrative_tags")
     assert not _column_exists(engine, "articles", "relevance_provider")
     assert not _column_exists(engine, "articles", "relevance_scored_at")
     assert not _column_exists(engine, "briefs", "provider")
     assert not _column_exists(engine, "briefs", "scoring_coverage")
+    assert not _column_exists(engine, "events", "narrative_provider")
 
     run_migrations(engine)
 
@@ -65,6 +78,7 @@ def test_migration_adds_columns(engine):
     assert _column_exists(engine, "briefs", "candidate_article_count")
     assert _column_exists(engine, "briefs", "scored_article_count")
     assert _column_exists(engine, "briefs", "scoring_coverage")
+    assert _column_exists(engine, "events", "narrative_provider")
 
 
 def test_migration_idempotent(engine):

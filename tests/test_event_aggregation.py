@@ -1,12 +1,14 @@
 """Tests for event aggregation logic."""
 import json
 from datetime import datetime, timedelta
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from db.models import Base, Article
+from db.models import Base, Article, CollectorRun
 from events.models import Event, EventArticle
 
 
@@ -17,6 +19,13 @@ def db_session():
     session = sessionmaker(bind=engine)()
     yield session
     session.close()
+
+
+@pytest.fixture(autouse=True)
+def _isolate_narrator():
+    result = SimpleNamespace(generated=0, failed=0, providers=(), fallback_reasons=())
+    with patch("events.narrator.generate_narratives", return_value=result):
+        yield
 
 
 def _make_article(
@@ -47,7 +56,7 @@ def test_aggregate_creates_event(db_session: Session):
     _make_article(db_session, "hackernews", ["nvidia-earnings"], relevance=4, hours_ago=2)
     _make_article(db_session, "reddit", ["nvidia-earnings"], relevance=5, hours_ago=1)
 
-    run_aggregation(db_session)
+    result = run_aggregation(db_session)
 
     events = db_session.query(Event).all()
     assert len(events) == 1
@@ -57,6 +66,10 @@ def test_aggregate_creates_event(db_session: Session):
     assert event.article_count == 2
     assert event.avg_relevance == 4.5
     assert event.signal_score == 9.0  # 2 sources * 4.5 avg
+    assert result.status == "ok"
+    assert result.fresh_articles == 2
+    assert result.usable_articles == 2
+    assert result.events_updated == 1
 
 
 def test_aggregate_updates_existing_event(db_session: Session):
@@ -212,7 +225,37 @@ def test_aggregate_ignores_articles_without_narrative_tags(db_session: Session):
     db_session.add(article)
     db_session.commit()
 
-    run_aggregation(db_session)
+    result = run_aggregation(db_session)
 
     events = db_session.query(Event).all()
     assert len(events) == 0
+    assert result.status == "degraded"
+    run = db_session.query(CollectorRun).filter_by(source_type="event_aggregation").one()
+    assert run.status == "degraded"
+    assert run.articles_fetched == 1
+    assert run.articles_saved == 0
+    assert "zero usable scored/tagged articles" in run.error_message
+
+
+def test_aggregate_rejects_invalid_scores_from_event_math(db_session: Session):
+    from events.aggregator import run_aggregation
+
+    _make_article(db_session, "rss", ["invalid-score"], relevance=0)
+    _make_article(db_session, "reddit", ["invalid-score"], relevance=9)
+
+    result = run_aggregation(db_session)
+
+    assert result.status == "degraded"
+    assert result.usable_articles == 0
+    assert db_session.query(Event).count() == 0
+
+
+def test_scheduler_propagates_degraded_aggregation():
+    import scheduler
+
+    session = SimpleNamespace(close=lambda: None)
+    result = SimpleNamespace(status="degraded", error="zero usable tags")
+    with patch("db.database.get_session", return_value=session), \
+         patch("events.aggregator.run_aggregation", return_value=result):
+        with pytest.raises(RuntimeError, match="zero usable tags"):
+            scheduler._run_event_aggregation()

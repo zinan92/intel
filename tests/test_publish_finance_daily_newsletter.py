@@ -97,6 +97,42 @@ def test_source_health_lines_are_grouped_by_type():
     assert "雪球/A股社交: 未启用" in text
 
 
+def test_source_health_text_separates_collection_scoring_and_events():
+    from scripts.publish_finance_daily_newsletter import _source_health_text
+
+    session = _session()
+    now = datetime.now(timezone.utc)
+    session.add_all([
+        CollectorRun(
+            source_type="llm_tagger",
+            source_key="llm_tagger:hourly",
+            status="ok",
+            articles_fetched=20,
+            articles_saved=20,
+            provider="codex-cli",
+            completed_at=now,
+        ),
+        CollectorRun(
+            source_type="event_aggregation",
+            source_key="event_aggregation:hourly",
+            status="degraded",
+            articles_fetched=20,
+            articles_saved=0,
+            articles_duplicate=0,
+            articles_failed=20,
+            error_message="zero usable tags",
+            completed_at=now,
+        ),
+    ])
+    session.commit()
+
+    text = _source_health_text(session)
+
+    assert "Source health unavailable" in text
+    assert "Article scoring: 正常; scored 20/20; provider=codex-cli" in text
+    assert "Event aggregation: 降级; usable 0/20; events updated 0" in text
+
+
 def test_send_to_feishu_can_be_skipped(monkeypatch):
     from scripts.publish_finance_daily_newsletter import send_to_feishu
 

@@ -361,6 +361,7 @@ class TestHealthSourcesEndpoint:
         assert isinstance(data["sources"], list)
         assert len(data["sources"]) == 3
         assert data["processing"]["llm_tagger"]["status"] == "error"
+        assert data["processing"]["event_aggregation"]["status"] == "no_data"
 
     def test_tagger_failure_is_visible(self, test_client):
         data = test_client.get("/api/health/sources").json()

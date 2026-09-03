@@ -533,9 +533,12 @@ def _run_event_aggregation() -> None:
 
     session = get_session()
     try:
-        run_aggregation(session)
+        result = run_aggregation(session)
+        if result.status == "degraded":
+            raise RuntimeError(result.error or "Event aggregation degraded")
     except Exception:
         logger.exception("Event aggregation failed")
+        raise
     finally:
         session.close()
 

@@ -140,7 +140,22 @@ def _source_health_lines(session) -> list[str]:
 def _source_health_text(session) -> str:
     lines = _source_health_lines(session)
     if not lines:
-        return "- Source health unavailable"
+        lines = ["- Source health unavailable"]
+
+    from api.health_routes import _build_processing_health
+
+    processing = _build_processing_health(session)
+    tagger = processing["llm_tagger"]
+    events = processing["event_aggregation"]
+    lines.extend([
+        "",
+        "Processing Status:",
+        f"- Article scoring: {STATUS_LABELS.get(tagger['status'], tagger['status'])}; "
+        f"scored {tagger['scored']}/{tagger['attempted']}; provider={tagger['provider'] or 'unknown'}",
+        f"- Event aggregation: {STATUS_LABELS.get(events['status'], events['status'])}; "
+        f"usable {events['usable_articles']}/{events['fresh_articles']}; "
+        f"events updated {events['events_updated']}; provider={events['provider'] or 'none'}",
+    ])
     return "\n".join(lines)
 
 

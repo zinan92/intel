@@ -238,6 +238,7 @@ def run_migrations(engine: Engine) -> None:
         ("collector_runs", "provider", "TEXT"),
         ("collector_runs", "fallback_reason", "TEXT"),
         ("events", "narrative_summary", "TEXT"),
+        ("events", "narrative_provider", "TEXT"),
         ("events", "prev_signal_score", "REAL"),
         ("events", "trading_play", "TEXT"),
         ("events", "outcome_data", "TEXT"),
