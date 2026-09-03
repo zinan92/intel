@@ -9,6 +9,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from db.models import Base, CollectorRun, SourceRegistry
+from api.time_contract import utc_rfc3339
 
 
 def _response(payload, status_code=200):
@@ -335,7 +336,7 @@ def test_sec_ui_health_uses_successful_poll_when_filings_are_duplicates(monkeypa
         "source": "sec_edgar",
         "count": 0,
         "last_seen_at": None,
-        "last_attempt_at": run.timestamp,
+        "last_attempt_at": utc_rfc3339(run.timestamp),
         "status": "ok",
     }]
     session.close()
@@ -380,7 +381,7 @@ def test_sec_ui_health_falls_back_to_persisted_provider_failure(monkeypatch):
         "source": "sec_edgar",
         "count": 0,
         "last_seen_at": None,
-        "last_attempt_at": attempted_at.isoformat(),
+        "last_attempt_at": utc_rfc3339(attempted_at),
         "status": "degraded",
     }]
     session.close()

@@ -1,5 +1,14 @@
 # Runtime Registry
 
+## 2026-09-03 · Realtime timestamp semantics made explicit
+
+- Issue #87 serializes product-facing realtime timestamps as RFC3339 UTC with
+  `Z`; UTC-naive SQLite values are no longer misread by browsers as local time.
+- Rolling News remains ordered by `collected_at DESC` and now presents received
+  time as primary. Source publication time is explicit secondary provenance.
+- High/Watch events expose latest evidence received time, while the header
+  shows latest collection and latest completed triage status independently.
+
 ## 2026-09-02 · Rolling News public surface deployed
 
 - PR #85 (closing issue #84) packages the real-time News Triage Desk at
