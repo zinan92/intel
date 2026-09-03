@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sqlite3
 import sys
 from dataclasses import asdict, dataclass
@@ -15,16 +16,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from config import DB_PATH
 from db.database import get_session, init_db
-from scripts.publish_finance_daily_newsletter import (
-    DeliveryResult,
-    publish_finance_daily_newsletter,
-)
+from scripts.publish_finance_daily_newsletter import publish_finance_daily_newsletter
 from scripts.publish_weekly_finance_newsletter import (
     DEFAULT_WEEKLY_ARCHIVE_DIR,
     WeeklyDeliveryResult,
     publish_weekly_finance_newsletter,
 )
-from scripts.run_llm_tagger import TaggerRunResult, run_tagger
+from scripts.run_llm_tagger import run_tagger
 from scripts.weekly_finance_newsletter import weekly_window
 
 
@@ -108,6 +106,55 @@ def _write_receipt(path: Path, payload: dict[str, object]) -> None:
     pending.replace(path)
 
 
+def _frontmatter_fields(path: Path) -> dict[str, str]:
+    lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+    if not lines or lines[0].strip() != "---":
+        return {}
+    result: dict[str, str] = {}
+    for line in lines[1:]:
+        if line.strip() == "---":
+            return result
+        key, separator, value = line.partition(":")
+        if separator:
+            result[key.strip()] = value.strip()
+    return {}
+
+
+def _existing_daily_recovery(day: date) -> DailyRecovery | None:
+    archive_dir = Path(os.getenv(
+        "OBSIDIAN_FINANCE_NEWSLETTER_DIR",
+        "/Users/wendy/park-io/007_finance daily newsletter",
+    )).expanduser()
+    path = archive_dir / f"{day.isoformat()}-finance-daily-newsletter.md"
+    if not path.exists():
+        return None
+    fields = _frontmatter_fields(path)
+    scored = fields.get("scored_articles", "").split("/", 1)
+    try:
+        coverage = float(fields.get("scoring_coverage", "").rstrip("%")) / 100
+        complete = coverage == 1.0 and len(scored) == 2 and int(scored[0]) == int(scored[1]) > 0
+        brief_id = int(fields["brief_id"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not complete or not (fields.get("provider") or fields.get("scoring_provider")):
+        return None
+    return DailyRecovery(
+        day=day.isoformat(),
+        tagger_status="preserved_existing",
+        tagger_attempted=0,
+        tagger_scored=0,
+        scoring_provider=fields.get("scoring_provider") or "unknown",
+        fallback_reason=None,
+        brief_id=brief_id,
+        archive_path=str(path),
+        synthesis_provider=fields.get("provider") or "legacy-existing",
+        candidate_articles=int(scored[1]),
+        scored_articles=int(scored[0]),
+        scoring_coverage=coverage,
+        feishu_sent=False,
+    )
+
+
 def recover_finance_newsletters(
     *,
     week_ending: date,
@@ -136,7 +183,7 @@ def recover_finance_newsletters(
     previous_daily = [
         DailyRecovery(**row)
         for row in previous.get("daily", [])
-        if isinstance(row, dict)
+        if isinstance(row, dict) and row.get("day", "") >= affected_start.isoformat()
     ]
     completed_days = {
         row.day
@@ -169,16 +216,20 @@ def recover_finance_newsletters(
                 continue
             if day.isoformat() in completed_days:
                 continue
+            existing = _existing_daily_recovery(day)
+            if existing is not None:
+                daily_rows.append(existing)
+                completed_days.add(day.isoformat())
+                receipt["daily"] = [asdict(row) for row in daily_rows]
+                _write_receipt(receipt_path, receipt)
+                continue
             window_end = datetime.combine(day, time.min)
-            if day >= affected_start:
-                tagger = run_tagger(
-                    limit=300,
-                    batch_size=batch_size,
-                    window_start=window_end - timedelta(hours=24),
-                    window_end=window_end,
-                )
-            else:
-                tagger = TaggerRunResult("not_needed", 0, 0, None, None)
+            tagger = run_tagger(
+                limit=300,
+                batch_size=batch_size,
+                window_start=window_end - timedelta(hours=24),
+                window_end=window_end,
+            )
 
             delivery = publish_finance_daily_newsletter(
                 archive_date=day,
@@ -229,7 +280,9 @@ def recover_finance_newsletters(
         receipt["status"] = "complete"
     except Exception as exc:
         receipt["status"] = "partial"
-        receipt["residual_gaps"] = [f"{type(exc).__name__}: {exc}"]
+        receipt["residual_gaps"] = list(dict.fromkeys(
+            [*_residual_gaps(), f"{type(exc).__name__}: {exc}"]
+        ))
         raise
     finally:
         receipt["completed_at"] = datetime.now().astimezone().isoformat(timespec="seconds")
@@ -239,6 +292,27 @@ def recover_finance_newsletters(
 
 
 def _weekly_receipt(result: WeeklyDeliveryResult) -> dict[str, object]:
+    if result.manifest_path.exists():
+        try:
+            revisions = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            revisions = []
+        if isinstance(revisions, list):
+            published = [
+                entry for entry in revisions
+                if entry.get("status") == "published"
+                and entry.get("revision_reason") == RECOVERY_REASON
+            ]
+            if published:
+                entry = published[-1]
+                return {
+                    "status": "published",
+                    "archive_path": str(result.archive_path),
+                    "manifest_path": str(result.manifest_path),
+                    "content_sha256": str(entry.get("content_sha256") or result.content_sha256),
+                    "feishu_sent": bool(entry.get("feishu_sent")),
+                    "source_status": dict(entry.get("source_status") or {}),
+                }
     return {
         "status": result.status,
         "archive_path": str(result.archive_path),

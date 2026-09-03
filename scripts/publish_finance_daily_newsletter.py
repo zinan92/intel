@@ -307,14 +307,32 @@ def _send_feishu_status(text: str) -> None:
         raise RuntimeError(f"Feishu bot send failed: {data}")
 
 
-def _record_scoring_failure(error: ScoringCoverageError, *, is_backfill: bool) -> Path:
+def _record_generation_failure(
+    error: Exception,
+    *,
+    is_backfill: bool,
+    archive_date: date | None = None,
+) -> Path:
     output_dir = _obsidian_dir() / ".delivery-manifests"
     output_dir.mkdir(parents=True, exist_ok=True)
-    window_end = error.window_end.replace(tzinfo=ZoneInfo("UTC"))
-    report_date = window_end.astimezone(BRIEF_TIMEZONE).date().isoformat()
+    if archive_date is not None:
+        report_date = archive_date.isoformat()
+    else:
+        window_end = getattr(error, "window_end", None)
+        if window_end is None:
+            report_date = datetime.now(BRIEF_TIMEZONE).date().isoformat()
+        else:
+            report_date = (
+                window_end.replace(tzinfo=ZoneInfo("UTC"))
+                .astimezone(BRIEF_TIMEZONE)
+                .date()
+                .isoformat()
+            )
+    is_scoring_failure = isinstance(error, ScoringCoverageError)
+    status = "blocked_scoring_coverage" if is_scoring_failure else "generation_failed"
     path = output_dir / f"{report_date}-daily.json"
     fingerprint = hashlib.sha256(
-        f"finance_daily_newsletter|{report_date}|blocked_scoring_coverage".encode("utf-8")
+        f"finance_daily_newsletter|{report_date}|{status}".encode("utf-8")
     ).hexdigest()
 
     previous: dict = {}
@@ -324,26 +342,39 @@ def _record_scoring_failure(error: ScoringCoverageError, *, is_backfill: bool) -
         except (OSError, ValueError):
             previous = {}
 
-    already_alerted = previous.get("fingerprint") == fingerprint and previous.get("alert_sent") is True
-    payload = {
+    already_alerted = (
+        previous.get("report_date") == report_date
+        and previous.get("alert_sent") is True
+    )
+    payload: dict[str, object] = {
         "report": "finance_daily_newsletter",
         "report_date": report_date,
-        "status": "blocked_scoring_coverage",
-        "window_start": error.window_start.isoformat(),
-        "window_end": error.window_end.isoformat(),
-        "eligible_count": error.eligible_count,
-        "scored_count": error.scored_count,
-        "scoring_coverage": error.coverage,
+        "status": status,
+        "failure_type": type(error).__name__,
+        "error_message": str(error)[:500],
         "fingerprint": fingerprint,
         "alert_sent": already_alerted,
         "updated_at": datetime.now(BRIEF_TIMEZONE).isoformat(),
     }
+    if is_scoring_failure:
+        payload.update({
+            "window_start": error.window_start.isoformat(),
+            "window_end": error.window_end.isoformat(),
+            "eligible_count": error.eligible_count,
+            "scored_count": error.scored_count,
+            "scoring_coverage": error.coverage,
+        })
 
     if not is_backfill and not already_alerted and os.getenv("PARK_INTEL_SKIP_FEISHU", "").strip() != "1":
         message = (
-            f"财经日报 | {report_date} | 生成已阻断\n"
-            f"评分覆盖率 {error.scored_count}/{error.eligible_count} ({error.coverage:.1%})，"
-            "不足以进行相关性排序。今天未发送旧日报或按时间倒序的替代内容。"
+            f"财经日报 | {report_date} | "
+            + (
+                f"生成已阻断\n评分覆盖率 {error.scored_count}/{error.eligible_count} "
+                f"({error.coverage:.1%})，不足以进行相关性排序。"
+                if is_scoring_failure
+                else "生成失败\n本次没有发布新日报，也没有使用旧日报替代。"
+            )
+            + "\n请查看 Obsidian delivery manifest。"
         )
         try:
             _send_feishu_status(message)
@@ -357,6 +388,19 @@ def _record_scoring_failure(error: ScoringCoverageError, *, is_backfill: bool) -
     temp_path.replace(path)
     logger.error("Daily publication blocked; scoring status saved to %s", path)
     return path
+
+
+def _record_scoring_failure(
+    error: ScoringCoverageError,
+    *,
+    is_backfill: bool,
+    archive_date: date | None = None,
+) -> Path:
+    return _record_generation_failure(
+        error,
+        is_backfill=is_backfill,
+        archive_date=archive_date,
+    )
 
 
 def publish_finance_daily_newsletter(
@@ -380,17 +424,25 @@ def publish_finance_daily_newsletter(
             else None
         )
     except ScoringCoverageError as exc:
-        _record_scoring_failure(exc, is_backfill=is_backfill)
+        _record_scoring_failure(exc, is_backfill=is_backfill, archive_date=archive_date)
+        return None
+    except Exception as exc:
+        _record_generation_failure(exc, is_backfill=is_backfill, archive_date=archive_date)
         return None
 
     session = get_session()
     try:
+        if generate and brief_id is None:
+            _record_generation_failure(
+                RuntimeError("generation returned no brief"),
+                is_backfill=is_backfill,
+                archive_date=archive_date,
+            )
+            logger.error("Brief generation failed; delivery skipped")
+            return None
         brief = _find_brief(session, brief_id) if brief_id is not None else _latest_published_brief(session)
         if brief is None:
             logger.error("No published brief available for finance newsletter delivery")
-            return None
-        if generate and brief_id is None:
-            logger.error("Brief generation failed; delivery skipped")
             return None
 
         source_health = _source_health_text(session)

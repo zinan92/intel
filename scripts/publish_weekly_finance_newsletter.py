@@ -100,6 +100,62 @@ def _send_to_feishu(markdown: str, archive_path: Path) -> bool:
     return True
 
 
+def _send_feishu_status(text: str) -> bool:
+    if os.getenv("PARK_INTEL_SKIP_FEISHU", "").strip() == "1":
+        return False
+    webhook = os.getenv("FEISHU_BOT_WEBHOOK", "").strip()
+    if not webhook:
+        raise WeeklyDeliveryError("FEISHU_BOT_WEBHOOK is not configured")
+    secret = os.getenv("FEISHU_BOT_SECRET", "").strip()
+    timestamp = str(int(time.time()))
+    payload = {
+        "timestamp": timestamp,
+        "msg_type": "text",
+        "content": {"text": text},
+    }
+    if secret:
+        payload["sign"] = _feishu_signature(secret, timestamp)
+    response = requests.post(webhook, json=payload, timeout=20)
+    response.raise_for_status()
+    data = response.json()
+    code = data.get("code", data.get("StatusCode", 0))
+    if code not in (0, "0"):
+        raise WeeklyDeliveryError(f"Feishu status send failed with code={code}")
+    return True
+
+
+def _record_weekly_generation_failure(
+    week_ending: date,
+    manifest_path: Path,
+    revisions: list[dict],
+    error: Exception,
+) -> None:
+    failure_key = hashlib.sha256(
+        f"weekly|{week_ending.isoformat()}|generation".encode("utf-8")
+    ).hexdigest()
+    if any(entry.get("failure_key") == failure_key for entry in revisions):
+        return
+    entry: dict[str, object] = {
+        "status": "failed",
+        "failure_stage": "generation",
+        "failure_key": failure_key,
+        "week_ending": week_ending.isoformat(),
+        "error": str(error)[:500],
+        "source_status": {},
+        "alert_sent": False,
+        "created_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+    }
+    if os.getenv("PARK_INTEL_SKIP_FEISHU", "").strip() != "1":
+        try:
+            entry["alert_sent"] = _send_feishu_status(
+                f"Weekly Finance Newsletter | {week_ending.isoformat()} | 生成失败\n"
+                "本周周报未发布，也没有使用旧周报替代。请查看 delivery manifest。"
+            )
+        except Exception as exc:
+            entry["alert_error"] = type(exc).__name__
+    _write_json_atomic(manifest_path, revisions + [entry])
+
+
 def publish_weekly_finance_newsletter(
     week_ending: date | str,
     *,
@@ -139,12 +195,17 @@ def publish_weekly_finance_newsletter(
             False,
             dict(previous.get("source_status") or {}),
         )
-    result = generate_weekly_dry_run(
-        window.week_ending,
-        archive_dir=Path(os.getenv("OBSIDIAN_FINANCE_NEWSLETTER_DIR", str(DEFAULT_ARCHIVE_DIR))),
-        include_calendar=True,
-        snapshot_dir=snapshot_dir,
-    )
+    try:
+        result = generate_weekly_dry_run(
+            window.week_ending,
+            archive_dir=Path(os.getenv("OBSIDIAN_FINANCE_NEWSLETTER_DIR", str(DEFAULT_ARCHIVE_DIR))),
+            include_calendar=True,
+            snapshot_dir=snapshot_dir,
+        )
+    except WeeklyGenerationError as exc:
+        if not dry_run:
+            _record_weekly_generation_failure(window.week_ending, manifest_path, revisions, exc)
+        raise
     content_hash = _sha256(result.markdown)
 
     if previous and previous.get("content_sha256") == content_hash and not force_resend:

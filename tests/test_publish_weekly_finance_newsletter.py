@@ -153,3 +153,24 @@ def test_weekly_publish_dry_run_has_no_user_facing_side_effects(tmp_path, monkey
     assert result.status == "dry_run"
     assert not list(tmp_path.glob("*finance-weekly-newsletter.md"))
     assert not list(tmp_path.glob(".delivery-manifests/*"))
+
+
+def test_weekly_generation_failure_writes_manifest_and_alerts_once(tmp_path, monkeypatch):
+    from scripts import publish_weekly_finance_newsletter as mod
+
+    monkeypatch.setattr(
+        mod,
+        "generate_weekly_dry_run",
+        lambda *args, **kwargs: (_ for _ in ()).throw(mod.WeeklyGenerationError("coverage missing")),
+    )
+    monkeypatch.setattr(mod, "_send_feishu_status", lambda text: True)
+    with pytest.raises(mod.WeeklyGenerationError, match="coverage missing"):
+        mod.publish_weekly_finance_newsletter(date(2026, 8, 23), archive_dir=tmp_path)
+    with pytest.raises(mod.WeeklyGenerationError, match="coverage missing"):
+        mod.publish_weekly_finance_newsletter(date(2026, 8, 23), archive_dir=tmp_path)
+
+    manifest = json.loads(next(tmp_path.glob(".delivery-manifests/*.json")).read_text(encoding="utf-8"))
+    assert len(manifest) == 1
+    assert manifest[0]["status"] == "failed"
+    assert manifest[0]["failure_stage"] == "generation"
+    assert manifest[0]["alert_sent"] is True

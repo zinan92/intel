@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 
 from scripts.publish_weekly_finance_newsletter import (
     WeeklyDeliveryError,
+    WeeklyGenerationError,
     publish_weekly_finance_newsletter,
 )
 
@@ -41,6 +42,6 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     try:
         print(f"weekly_scheduler: {run_scheduled_weekly()}")
-    except WeeklyDeliveryError:
+    except (WeeklyDeliveryError, WeeklyGenerationError):
         logger.exception("Weekly scheduled delivery failed")
         raise SystemExit(1)

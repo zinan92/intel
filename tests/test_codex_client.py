@@ -51,3 +51,31 @@ def test_codex_client_raises_on_nonzero_exit(monkeypatch):
 
     with pytest.raises(CodexCLIError, match="exit_2"):
         CodexCLIClient().complete("prompt")
+
+
+def test_codex_client_uses_stdout_jsonl_when_output_file_is_empty(monkeypatch):
+    from llm import codex as mod
+
+    def fake_run(command, **kwargs):
+        output_path = Path(command[command.index("--output-last-message") + 1])
+        output_path.write_text("", encoding="utf-8")
+        return SimpleNamespace(returncode=0, stdout='{"type":"message","text":"stdout result"}\n')
+
+    monkeypatch.setattr(mod, "_resolve_executable", lambda: "/opt/homebrew/bin/codex")
+    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+
+    assert CodexCLIClient().complete("prompt") == "stdout result"
+
+
+def test_codex_client_maps_timeout_and_os_error(monkeypatch):
+    from llm import codex as mod
+    import subprocess
+
+    monkeypatch.setattr(mod, "_resolve_executable", lambda: "/opt/homebrew/bin/codex")
+    monkeypatch.setattr(mod.subprocess, "run", lambda *args, **kwargs: (_ for _ in ()).throw(subprocess.TimeoutExpired("codex", 1)))
+    with pytest.raises(CodexCLIError, match="timeout"):
+        CodexCLIClient().complete("prompt")
+
+    monkeypatch.setattr(mod.subprocess, "run", lambda *args, **kwargs: (_ for _ in ()).throw(OSError("missing")))
+    with pytest.raises(CodexCLIError, match="executable_unavailable"):
+        CodexCLIClient().complete("prompt")
