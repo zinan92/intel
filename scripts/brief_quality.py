@@ -33,6 +33,19 @@ _STALE_GOLD_PATTERNS: list[re.Pattern[str]] = [
 _PRICE_TARGET_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"预测|预计|目标价?|情景|forecast|target|could|may", re.I),
 ]
+_MARKET_NUMBER_PATTERN = re.compile(
+    r"(?:[$¥€]\s*\d[\d,]*(?:\.\d+)?(?:[KMBT])?)"
+    r"|(?:\d[\d,]*(?:\.\d+)?\s*%)"
+    r"|(?:\d[\d,]*(?:\.\d+)?\s*(?:美元|美金|亿元|万亿元))",
+    re.I,
+)
+
+
+def _market_numbers(content: str) -> set[str]:
+    return {
+        re.sub(r"[\s,]", "", match.group(0)).upper()
+        for match in _MARKET_NUMBER_PATTERN.finditer(content)
+    }
 
 
 def _numbered_titles(content: str) -> list[str]:
@@ -60,7 +73,7 @@ def _contains_stale_gold_breakout_fact(content: str) -> bool:
     )
 
 
-def validate_published_brief(content: str) -> BriefValidation:
+def validate_published_brief(content: str, evidence_text: str | None = None) -> BriefValidation:
     """Validate that a generated brief is safe to publish to traders."""
     issues: list[str] = []
     stripped = content.strip()
@@ -79,6 +92,13 @@ def validate_published_brief(content: str) -> BriefValidation:
 
     if _contains_stale_gold_breakout_fact(stripped):
         issues.append("gold appears to be described as a $5,000 breakout/record fact")
+
+    if evidence_text is not None:
+        ungrounded = sorted(_market_numbers(stripped) - _market_numbers(evidence_text))
+        if ungrounded:
+            issues.append(
+                "ungrounded market numbers: " + ", ".join(ungrounded[:8])
+            )
 
     required_sections = [
         (re.compile(r"今日交易地图"), "今日交易地图"),

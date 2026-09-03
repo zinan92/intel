@@ -9,7 +9,8 @@ import pytest
 def _write_daily_archive(directory, day: str, body: str = ""):
     path = directory / f"{day}-finance-daily-newsletter.md"
     path.write_text(
-        f"---\ntitle: 财经日报 {day}\nbrief_id: daily-{day}\n---\n\n"
+        f"---\ntitle: 财经日报 {day}\nbrief_id: daily-{day}\n"
+        f"provider: codex-cli\nscoring_coverage: 100.0%\nscored_articles: 100/100\n---\n\n"
         f"## 今日交易地图\n\n{body or '## 过去24小时发生了什么\n\n市场观察。'}\n",
         encoding="utf-8",
     )
@@ -98,6 +99,22 @@ def test_weekly_coverage_degrades_and_fails_closed(tmp_path):
     result = mod.load_weekly_archives(date(2026, 8, 23), insufficient_dir)
     assert result.coverage_status == "insufficient"
     assert result.daily_count == 4
+
+
+def test_weekly_rejects_archive_without_verified_scoring_metadata(tmp_path):
+    from scripts import weekly_finance_newsletter as mod
+
+    _seed_week(tmp_path)
+    invalid = tmp_path / "2026-08-20-finance-daily-newsletter.md"
+    invalid.write_text("---\ntitle: legacy\n---\n\nlegacy", encoding="utf-8")
+
+    bundle = mod.load_weekly_archives(date(2026, 8, 23), tmp_path)
+
+    assert bundle.coverage_status == "degraded"
+    assert bundle.daily_count == 6
+    assert date(2026, 8, 20) in bundle.invalid_days
+    with pytest.raises(mod.WeeklyGenerationError, match="complete validated Daily coverage"):
+        mod.generate_weekly_dry_run(date(2026, 8, 23), tmp_path)
 
 
 def test_weekly_quality_rejects_unreferenced_claims():

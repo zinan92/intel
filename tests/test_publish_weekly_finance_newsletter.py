@@ -99,6 +99,35 @@ def test_weekly_publish_force_resend_creates_a_new_revision(tmp_path, monkeypatc
     assert revisions[0]["content_sha256"] != revisions[1]["content_sha256"]
 
 
+def test_weekly_recovery_revision_is_idempotent(tmp_path, monkeypatch):
+    from scripts import publish_weekly_finance_newsletter as mod
+
+    responses = [_result("# Weekly Finance Newsletter | bad\n"), _result("# Weekly Finance Newsletter | recovered\n")]
+    monkeypatch.setattr(mod, "generate_weekly_dry_run", lambda *args, **kwargs: responses.pop(0))
+    sends = []
+    monkeypatch.setattr(mod, "_send_to_feishu", lambda markdown, archive_path: sends.append(markdown) or True)
+
+    mod.publish_weekly_finance_newsletter(date(2026, 8, 30), archive_dir=tmp_path)
+    recovered = mod.publish_weekly_finance_newsletter(
+        date(2026, 8, 30),
+        archive_dir=tmp_path,
+        force_resend=True,
+        revision_reason="score-coverage-recovery-94",
+    )
+    replay = mod.publish_weekly_finance_newsletter(
+        date(2026, 8, 30),
+        archive_dir=tmp_path,
+        force_resend=True,
+        revision_reason="score-coverage-recovery-94",
+    )
+
+    assert recovered.status == "published"
+    assert replay.status == "noop"
+    assert len(sends) == 2
+    revisions = json.loads(recovered.manifest_path.read_text(encoding="utf-8"))
+    assert revisions[-1]["revision_reason"] == "score-coverage-recovery-94"
+
+
 def test_weekly_publish_feishu_failure_does_not_leave_published_archive(tmp_path, monkeypatch):
     from scripts import publish_weekly_finance_newsletter as mod
 

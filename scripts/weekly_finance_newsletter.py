@@ -53,6 +53,7 @@ class WeeklyArchives:
     window: WeeklyWindow
     archives: tuple[DailyArchive, ...]
     missing_days: tuple[date, ...]
+    invalid_days: tuple[date, ...]
     coverage_status: str
 
     @property
@@ -107,24 +108,54 @@ def load_weekly_archives(week_ending: date | str, archive_dir: Path = DEFAULT_AR
     window = weekly_window(week_ending)
     archives: list[DailyArchive] = []
     missing: list[date] = []
+    invalid: list[date] = []
     for offset in range(7):
         day = window.lookback_start + timedelta(days=offset)
         path = archive_dir / f"{day.isoformat()}-finance-daily-newsletter.md"
         if not path.exists():
             missing.append(day)
             continue
+        content = path.read_text(encoding="utf-8")
+        fields = _frontmatter_fields(content)
+        coverage = fields.get("scoring_coverage", "").rstrip("%")
+        scored = fields.get("scored_articles", "").split("/", 1)
+        try:
+            complete_scoring = (
+                float(coverage) == 100.0
+                and len(scored) == 2
+                and int(scored[0]) == int(scored[1]) > 0
+            )
+        except ValueError:
+            complete_scoring = False
+        if not complete_scoring or not (fields.get("provider") or fields.get("scoring_provider")):
+            invalid.append(day)
+            continue
         archives.append(
             DailyArchive(
                 day=day,
                 path=path,
                 input_id=f"daily:{day.isoformat()}",
-                content=path.read_text(encoding="utf-8"),
+                content=content,
             )
         )
 
     count = len(archives)
     status = "complete" if count == 7 else "degraded" if count >= 5 else "insufficient"
-    return WeeklyArchives(window, tuple(archives), tuple(missing), status)
+    return WeeklyArchives(window, tuple(archives), tuple(missing), tuple(invalid), status)
+
+
+def _frontmatter_fields(content: str) -> dict[str, str]:
+    lines = content.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return {}
+    fields: dict[str, str] = {}
+    for line in lines[1:]:
+        if line.strip() == "---":
+            return fields
+        key, separator, value = line.partition(":")
+        if separator:
+            fields[key.strip()] = value.strip()
+    return {}
 
 
 def _prompt(bundle: WeeklyArchives, calendar_bundle: Any = None) -> str:
@@ -476,7 +507,7 @@ def render_weekly_markdown(draft: dict[str, Any], bundle: WeeklyArchives, calend
             "- Source status: " + "; ".join(f"{key}={value}" for key, value in sorted(calendar_bundle.source_status.items())) + ".",
         ])
     source_status.extend([
-        "- Synthesis: bounded DeepSeek draft, with Codex CLI fallback only on DeepSeek quota exhaustion; weekly facts are rendered from validated inputs.",
+        "- Synthesis: bounded DeepSeek draft, with Codex CLI fallback whenever DeepSeek is unusable; weekly facts are rendered from validated inputs.",
         "",
         "This is a trading research brief, not investment advice.",
     ])
@@ -493,9 +524,11 @@ def generate_weekly_dry_run(
     official_schedules: tuple[Any, ...] = (),
 ) -> WeeklyDryRunResult:
     bundle = load_weekly_archives(week_ending, archive_dir)
-    if bundle.coverage_status == "insufficient":
+    if bundle.coverage_status != "complete":
         raise WeeklyGenerationError(
-            f"insufficient Daily Newsletter coverage: {bundle.daily_count}/7"
+            "Weekly requires complete validated Daily coverage: "
+            f"{bundle.daily_count}/7; missing={len(bundle.missing_days)}; "
+            f"invalid={len(bundle.invalid_days)}"
         )
     if include_calendar and calendar_bundle is None:
         from scripts.weekly_calendar_sources import (

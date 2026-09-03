@@ -1,0 +1,73 @@
+"""Tests for bounded Finance Daily/Weekly recovery orchestration."""
+
+from datetime import date
+from pathlib import Path
+from types import SimpleNamespace
+
+
+def test_recovery_rescores_only_affected_days_and_replay_is_noop(tmp_path, monkeypatch):
+    from scripts import recover_finance_newsletters as mod
+
+    tagged_days = []
+    daily_days = []
+    weekly_calls = []
+    monkeypatch.setattr(mod, "backup_database", lambda _path: tmp_path / "backup.db")
+    monkeypatch.setattr(mod, "init_db", lambda: None)
+
+    def fake_tagger(**kwargs):
+        tagged_days.append(kwargs["window_end"].date())
+        return SimpleNamespace(
+            status="ok",
+            attempted=300,
+            scored=300,
+            provider="codex-cli",
+            fallback_reason="DeepSeekError",
+        )
+
+    def fake_daily(*, archive_date, replace_archive):
+        assert replace_archive is True
+        daily_days.append(archive_date)
+        return SimpleNamespace(
+            brief_id=len(daily_days),
+            obsidian_path=tmp_path / f"{archive_date}.md",
+            feishu_sent=False,
+        )
+
+    def fake_weekly(*args, **kwargs):
+        weekly_calls.append(kwargs)
+        status = "published" if len(weekly_calls) == 1 else "noop"
+        return SimpleNamespace(
+            status=status,
+            archive_path=Path("weekly.md"),
+            manifest_path=Path("manifest.json"),
+            content_sha256="abc",
+            feishu_sent=status == "published",
+            source_status={"calendar": "ok"},
+        )
+
+    monkeypatch.setattr(mod, "run_tagger", fake_tagger)
+    monkeypatch.setattr(mod, "publish_finance_daily_newsletter", fake_daily)
+    monkeypatch.setattr(mod, "publish_weekly_finance_newsletter", fake_weekly)
+    monkeypatch.setattr(mod, "_brief_metadata", lambda _brief_id: {
+        "synthesis_provider": "codex-cli",
+        "candidate_articles": 300,
+        "scored_articles": 300,
+        "scoring_coverage": 1.0,
+    })
+
+    receipt_path = tmp_path / "receipt.json"
+    receipt = mod.recover_finance_newsletters(
+        week_ending=date(2026, 8, 30),
+        affected_start=date(2026, 8, 26),
+        receipt_path=receipt_path,
+    )
+
+    assert tagged_days == [date(2026, 8, day) for day in range(26, 31)]
+    assert daily_days == [date(2026, 8, day) for day in range(26, 31)]
+    assert all(row["feishu_sent"] is False for row in receipt["daily"])
+    assert weekly_calls[0]["revision_reason"] == mod.RECOVERY_REASON
+    assert weekly_calls[1]["revision_reason"] == mod.RECOVERY_REASON
+    assert receipt["weekly"]["feishu_sent"] is True
+    assert receipt["replay_status"] == "noop"
+    assert receipt["status"] == "complete"
+    assert receipt_path.exists()

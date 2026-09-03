@@ -106,6 +106,7 @@ def publish_weekly_finance_newsletter(
     archive_dir: Path = DEFAULT_WEEKLY_ARCHIVE_DIR,
     force_resend: bool = False,
     dry_run: bool = False,
+    revision_reason: str | None = None,
 ) -> WeeklyDeliveryResult:
     from scripts.weekly_finance_newsletter import weekly_window
 
@@ -114,6 +115,20 @@ def publish_weekly_finance_newsletter(
     revisions = _read_revisions(manifest_path)
     published = [entry for entry in revisions if entry.get("status") == "published"]
     previous = published[-1] if published else None
+    recovered = next(
+        (entry for entry in published if revision_reason and entry.get("revision_reason") == revision_reason),
+        None,
+    )
+    if recovered and not dry_run:
+        return WeeklyDeliveryResult(
+            window.week_ending,
+            "noop",
+            archive_path,
+            manifest_path,
+            str(recovered.get("content_sha256") or ""),
+            False,
+            dict(recovered.get("source_status") or {}),
+        )
     if previous and not force_resend and not dry_run:
         return WeeklyDeliveryResult(
             window.week_ending,
@@ -186,6 +201,7 @@ def publish_weekly_finance_newsletter(
         "archive_path": str(archive_path),
         "feishu_sent": feishu_sent,
         "website_status": "not_attempted",
+        "revision_reason": revision_reason,
         "created_at": datetime.now().astimezone().isoformat(timespec="seconds"),
     }
     _write_json_atomic(manifest_path, revisions + [entry])

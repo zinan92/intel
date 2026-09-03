@@ -347,6 +347,27 @@ def test_generate_brief_rejects_invalid_output_without_publishing():
     assert rows[0].status == "rejected"
 
 
+def test_generate_brief_repairs_ungrounded_numbers_once():
+    from scripts import generate_narrative_signal as mod
+
+    session = _session()
+    _seed_articles(session)
+    invalid = VALID_BRIEF + "\n- Gold 当前 $5,000。\n"
+    responses = [(invalid, "codex-cli"), (VALID_BRIEF, "codex-cli")]
+
+    with patch.object(mod, "init_db", return_value=None), \
+         patch.object(mod, "get_session", return_value=session), \
+         patch.object(mod, "_call_llm", side_effect=responses) as llm:
+        brief_id = mod.generate_brief(limit=10)
+
+    assert brief_id is not None
+    assert llm.call_count == 2
+    assert "ungrounded market numbers" in llm.call_args.args[0]
+    brief = session.get(Brief, brief_id)
+    assert brief.status == "published"
+    assert brief.provider == "codex-cli+repair:codex-cli"
+
+
 def test_generate_brief_publishes_only_after_quality_passes():
     from scripts import generate_narrative_signal as mod
 

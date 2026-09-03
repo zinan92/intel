@@ -3,6 +3,7 @@ from unittest.mock import Mock
 import pytest
 
 from llm.deepseek import DeepSeekError
+from llm.codex import CodexCLIError
 from tagging.llm import LLMTagger, TaggingError
 
 
@@ -68,3 +69,19 @@ def test_tagger_rejects_partial_result_set():
 
     with pytest.raises(TaggingError, match="both providers failed"):
         LLMTagger(client=client, fallback_client=fallback).tag_batch(_articles())
+
+
+def test_tagger_retries_codex_once_after_empty_response():
+    client = Mock()
+    client.complete.side_effect = DeepSeekError("quota")
+    fallback = Mock()
+    fallback.complete.side_effect = [
+        CodexCLIError("empty_response"),
+        '{"results":[{"id":7,"relevance_score":4,"narrative_tags":["fed-policy"]}]}',
+    ]
+
+    result = LLMTagger(client=client, fallback_client=fallback).tag_batch(_articles())
+
+    assert result.provider == "codex-cli"
+    assert result.items[0]["relevance_score"] == 4
+    assert fallback.complete.call_count == 2

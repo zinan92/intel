@@ -234,7 +234,21 @@ python scripts/backfill_tickers.py
 
 # Publish Finance Daily Newsletter
 python scripts/publish_finance_daily_newsletter.py
+
+# Run a bounded recovery for one Weekly lookback (historical Daily is archive-only)
+python scripts/recover_finance_newsletters.py \
+  --week-ending 2026-08-30 \
+  --affected-start 2026-08-26
 ```
+
+Daily publication fails closed when any deduplicated candidate lacks a valid
+1-5 relevance score. The failure is recorded under the Obsidian newsletter
+directory's `.delivery-manifests/` and does not reuse the previous published
+brief. DeepSeek failures use the isolated Codex CLI fallback, with provider and
+coverage recorded in the Daily archive. Weekly publication requires seven
+validated Daily archives; the recovery command preserves the SQLite backup,
+rescoring window, archive replacements, Weekly Feishu delivery, replay result,
+and residual gaps in a JSON receipt under `docs/`.
 
 ## Project Structure
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import Mock, patch
 
 import pytest
@@ -94,4 +94,54 @@ def test_run_tagger_records_failure_and_raises_when_scoring_fails():
     assert run.articles_saved == 0
     assert run.articles_failed == 1
     assert run.error_message == "both providers failed"
+    session.close()
+
+
+def test_run_tagger_limits_recovery_to_explicit_window():
+    from scripts import run_llm_tagger as mod
+
+    Session = _database()
+    session = Session()
+    window_end = datetime(2026, 8, 30, 0, 0)
+    inside = Article(
+        source="rss",
+        source_id="inside-window",
+        title="Inside",
+        collected_at=window_end - timedelta(hours=1),
+        collection_lane="hourly",
+    )
+    outside = Article(
+        source="rss",
+        source_id="outside-window",
+        title="Outside",
+        collected_at=window_end - timedelta(days=2),
+        collection_lane="hourly",
+    )
+    session.add_all([inside, outside])
+    session.commit()
+    inside_id = inside.id
+    outside_id = outside.id
+    session.close()
+
+    tagger = Mock()
+    tagger.batches_processed = 1
+    tagger.tag_batch.side_effect = lambda rows: TagBatchResult(
+        tuple({"id": row["id"], "relevance_score": 4, "narrative_tags": ["bounded"]} for row in rows),
+        "codex-cli",
+        "DeepSeekError",
+    )
+
+    with patch.object(mod, "init_db", return_value=None), \
+         patch.object(mod, "get_session", side_effect=Session):
+        result = mod.run_tagger(
+            limit=300,
+            window_start=window_end - timedelta(hours=24),
+            window_end=window_end,
+            tagger=tagger,
+        )
+
+    session = Session()
+    assert result.scored == 1
+    assert session.get(Article, inside_id).relevance_score == 4
+    assert session.get(Article, outside_id).relevance_score is None
     session.close()

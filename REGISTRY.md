@@ -1,5 +1,17 @@
 # Runtime Registry
 
+## 2026-09-03 · Finance Daily/Weekly recovery completed with bounded scope
+
+- Issue #94 preserved the existing `2026-08-24` and `2026-08-25` Daily bodies
+  after database coverage audit, and rebuilt only the affected `2026-08-26`
+  through `2026-08-30` canonical archives from valid scored inputs.
+- Historical Daily archives were archive-only (`feishu_sent=false`). The
+  corrected `2026-08-30` Weekly was delivered once with revision key
+  `score-coverage-recovery-94`; an immediate replay returned `noop`.
+- The recovery receipt records the SQLite backup, per-day counts/providers,
+  source status, and `30,602` remaining hourly rows outside this bounded scope:
+  [`docs/finance-newsletter-recovery-2026-08-30.json`](docs/finance-newsletter-recovery-2026-08-30.json).
+
 ## 2026-09-03 · Realtime exposure gate uses the approved 16-asset universe
 
 - Issue #97 adds the versioned `macro-assets-v3` deterministic exposure table;
