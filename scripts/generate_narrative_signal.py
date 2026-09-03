@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import sys
+from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -55,6 +56,39 @@ _last_deepseek_failure = "not_attempted"
 _last_codex_failure = "not_attempted"
 
 
+@dataclass(frozen=True)
+class ArticleSelection:
+    articles: list[Article]
+    eligible_count: int
+    scored_count: int
+
+    @property
+    def coverage(self) -> float:
+        return self.scored_count / self.eligible_count if self.eligible_count else 0.0
+
+
+class ScoringCoverageError(RuntimeError):
+    """Raised when a Daily window cannot support relevance-ranked publication."""
+
+    def __init__(
+        self,
+        *,
+        eligible_count: int,
+        scored_count: int,
+        window_start: datetime,
+        window_end: datetime,
+    ) -> None:
+        self.eligible_count = eligible_count
+        self.scored_count = scored_count
+        self.coverage = scored_count / eligible_count if eligible_count else 0.0
+        self.window_start = window_start
+        self.window_end = window_end
+        super().__init__(
+            "Daily scoring coverage insufficient: "
+            f"{scored_count}/{eligible_count} ({self.coverage:.1%})"
+        )
+
+
 def current_brief_window(now: datetime | None = None) -> tuple[datetime, datetime, str]:
     """Return the rolling 24h brief window in UTC-naive datetimes."""
     utc_end = now or datetime.utcnow()
@@ -102,8 +136,39 @@ def _is_publishable_article(article: Article, window_start: datetime, window_end
     return not any(pattern.search(title) for pattern in _NOISE_TITLE_PATTERNS)
 
 
+def _has_valid_relevance_score(article: Article) -> bool:
+    return article.relevance_score is not None and 1 <= article.relevance_score <= 5
+
+
 def _article_rank(article: Article) -> tuple[int, datetime]:
-    return (article.relevance_score or 0, _article_timestamp(article))
+    if not _has_valid_relevance_score(article):
+        raise ValueError("Cannot relevance-rank an article without a valid score")
+    return (article.relevance_score, _article_timestamp(article))
+
+
+def _select_articles_with_coverage(
+    articles: list[Article],
+    window_start: datetime,
+    window_end: datetime,
+    limit: int,
+) -> ArticleSelection:
+    eligible_by_key: dict[str, list[Article]] = {}
+    for article in articles:
+        if _is_publishable_article(article, window_start, window_end):
+            eligible_by_key.setdefault(_article_dedup_key(article), []).append(article)
+
+    scored: list[Article] = []
+    for duplicates in eligible_by_key.values():
+        valid = [article for article in duplicates if _has_valid_relevance_score(article)]
+        if valid:
+            scored.append(max(valid, key=_article_rank))
+
+    ranked = sorted(scored, key=_article_rank, reverse=True)
+    return ArticleSelection(
+        articles=ranked[:limit],
+        eligible_count=len(eligible_by_key),
+        scored_count=len(scored),
+    )
 
 
 def _select_publishable_articles(
@@ -112,16 +177,7 @@ def _select_publishable_articles(
     window_end: datetime,
     limit: int,
 ) -> list[Article]:
-    best_by_key: dict[str, Article] = {}
-    for article in articles:
-        if not _is_publishable_article(article, window_start, window_end):
-            continue
-        key = _article_dedup_key(article)
-        previous = best_by_key.get(key)
-        if previous is None or _article_rank(article) > _article_rank(previous):
-            best_by_key[key] = article
-
-    return sorted(best_by_key.values(), key=_article_rank, reverse=True)[:limit]
+    return _select_articles_with_coverage(articles, window_start, window_end, limit).articles
 
 
 def _source_health_summary(session, window_start: datetime, window_end: datetime) -> str:
@@ -397,7 +453,16 @@ def generate_brief(
             .limit(max(limit * 3, 300))
             .all()
         )
-        articles = _select_publishable_articles(candidates, window_start, window_end, limit)
+        selection = _select_articles_with_coverage(candidates, window_start, window_end, limit)
+        articles = selection.articles
+
+        if selection.scored_count < selection.eligible_count:
+            raise ScoringCoverageError(
+                eligible_count=selection.eligible_count,
+                scored_count=selection.scored_count,
+                window_start=window_start,
+                window_end=window_end,
+            )
 
         if len(articles) < 5:
             logger.warning(
@@ -439,6 +504,9 @@ def generate_brief(
                 signal_count=0,
                 status="rejected",
                 provider=provider,
+                candidate_article_count=selection.eligible_count,
+                scored_article_count=selection.scored_count,
+                scoring_coverage=selection.coverage,
                 created_at=now,
             )
             session.add(rejected)
@@ -465,6 +533,9 @@ def generate_brief(
             signal_count=max(signal_count, 1),
             status="published" if publish_current else "archived",
             provider=provider,
+            candidate_article_count=selection.eligible_count,
+            scored_article_count=selection.scored_count,
+            scoring_coverage=selection.coverage,
             created_at=now,
         )
         session.add(brief)
