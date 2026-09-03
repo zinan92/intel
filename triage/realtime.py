@@ -11,6 +11,7 @@ from llm.deepseek import DeepSeekClient, DeepSeekError
 BUCKETS = frozenset({"high_impact", "watch", "noise", "unknown"})
 DIRECTIONS = frozenset({"bullish", "bearish", "unclear"})
 ASSET_IMPACTS = frozenset({"up", "down", "unclear"})
+_HIGH_IMPACT_LEAD_CHARS = 320
 _HIGH_IMPACT_RE = re.compile(
     r"\b(?:fomc|cpi|pce|nfp|nonfarm payroll|jackson hole|fed decision|rate decision|"
     r"emergency rate|(?:fed|ecb|boj|central bank) (?:rate )?decision)\b|"
@@ -98,7 +99,10 @@ def _normalize_watch_for(value: Any) -> list[str]:
 
 
 def _has_high_impact_floor(article: dict[str, Any]) -> bool:
-    text = f"{article.get('title') or ''} {article.get('content') or ''}"
+    text = (
+        f"{article.get('title') or ''} "
+        f"{(article.get('content') or '')[:_HIGH_IMPACT_LEAD_CHARS]}"
+    )
     return bool(_HIGH_IMPACT_RE.search(text))
 
 
