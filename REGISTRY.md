@@ -1,5 +1,14 @@
 # Runtime Registry
 
+## 2026-09-03 · Scheduled realtime previews remain visible
+
+- Issue #96 accepts common Chinese future-event forms such as `明晚来袭`,
+  `有望`, `据悉可能`, `决议前`, and `周日会议` for scheduled High Impact
+  results with an honest `unclear` direction.
+- Deterministic contract failures are retained as `complete + unknown` with a
+  manual-review reason; they no longer consume repair calls or scheduler retry
+  attempts and remain visible in raw feed/operational health.
+
 ## 2026-09-03 · Finance article scoring gains explicit provider fallback
 
 - Issue #91 routes Finance article scoring through DeepSeek first and one
@@ -11,7 +20,6 @@
 - A pending batch that neither provider can score now raises to the scheduler
   and appears under processing health; it can no longer finish as a successful
   zero-score run.
-
 ## 2026-09-03 · Production Rolling News time display aligned
 
 - Issue #89 applies the received-time contract to the tracked production page:

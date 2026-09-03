@@ -21,6 +21,11 @@ _HIGH_IMPACT_RE = re.compile(
 _SCHEDULED_CATALYST_RE = re.compile(
     r"预告|重点关注(?:财经事件|经济数据)?|今(?:夜|晚).{0,12}公布|"
     r"即将.{0,12}(?:公布|发布)|将于.{0,20}(?:公布|发布|举行)|"
+    r"(?:明(?:天|日|晚)|今晚|今夜).{0,20}(?:来袭|公布|发布|出炉|会议|决议)|"
+    r"(?:决议|会议|数据|报告).{0,12}前|"
+    r"(?:周[一二三四五六日天]|下周|本周末).{0,12}(?:会议|开会|决议|公布|发布)|"
+    r"(?:据悉可能|或将|可能|预计|预期|料将|有望|或).{0,24}"
+    r"(?:公布|发布|出炉|维持|上涨|下跌|少增|增加|召开|开会|会议|决议|产量|政策|CPI|非农|信贷|社融)|"
     r"\b(?:preview|scheduled|due (?:today|tonight)|will be released|ahead of)\b",
     re.IGNORECASE,
 )
@@ -42,6 +47,10 @@ direction 只能是 bullish、bearish、unclear，不允许 mixed。direction �
 - 只给一个明确判断及传导理由，不要输出 bull/bear 两套 if 情景。
 
 只返回 JSON object：{"results":[{"id":整数,"bucket":"...","direction":"...","rationale":"...","affected_assets":[{"symbol":"...","name":"...","impact":"up/down/unclear"}],"watch_for":["..."]}]}。不要输出 Markdown 或额外解释。"""
+
+
+class DeterministicValidationError(ValueError):
+    """A contract failure that cannot be improved by another model call."""
 
 
 def _extract_results(text: str) -> list[dict[str, Any]]:
@@ -148,7 +157,10 @@ def _normalize_result(
         if direction not in {"bullish", "bearish"} and not (
             direction == "unclear" and scheduled
         ):
-            raise ValueError("high_impact direction must be bullish or bearish")
+            error = "high_impact direction must be bullish or bearish"
+            if _has_high_impact_floor(article):
+                raise ValueError(error)
+            raise DeterministicValidationError(error)
         if not assets:
             raise ValueError("high_impact affected_assets must be non-empty")
         if any(asset.get("impact") not in ASSET_IMPACTS for asset in assets):
@@ -182,14 +194,22 @@ def _normalize_result(
 
 
 def _isolated_failure(article: dict[str, Any], error: Exception) -> dict[str, Any]:
+    deterministic = isinstance(error, DeterministicValidationError)
     return {
         "id": article["id"],
         "bucket": "unknown",
         "direction": "unclear",
-        "rationale": "AI output failed the decision contract and is queued for retry.",
+        "rationale": (
+            "AI output could not be verified by the deterministic decision contract; "
+            "kept visible for manual review."
+            if deterministic
+            else "AI output failed the decision contract and is queued for retry."
+        ),
         "affected_assets": [],
-        "watch_for": ["retry analysis"],
+        "watch_for": ["manual review" if deterministic else "retry analysis"],
         "validation_error": str(error)[:300],
+        "failure_kind": "deterministic_validation" if deterministic else "contract_validation",
+        "retryable": not deterministic,
     }
 
 
@@ -255,6 +275,8 @@ class RealtimeTriage:
                     article,
                     by_id.get(article["id"]),
                 )
+            except DeterministicValidationError as exc:
+                normalized_by_id[article["id"]] = _isolated_failure(article, exc)
             except Exception as exc:
                 invalid.append((article, exc))
 
@@ -262,7 +284,8 @@ class RealtimeTriage:
             repair_prompt = (
                 "修复以下不符合 decision contract 的结果。必须逐条返回；"
                 "已发生的 High Impact 必须 bullish/bearish 且 affected_assets 非空；"
-                "预告型 High Impact 可 unclear，但 assets impact 必须 unclear 且 watch_for 非空；"
+                "预告型 High Impact（包括明天/明晚、决议前、周日会议、据悉可能、有望等表述）"
+                "可 unclear，但 assets impact 必须 unclear 且 watch_for 非空；"
                 "Watch 必须有 affected_assets，Watch+unclear 的 assets impact 必须 unclear 且 watch_for 非空；"
                 "不得输出 mixed 或双情景。\n\n"
                 + "\n---\n".join(
@@ -280,6 +303,11 @@ class RealtimeTriage:
                     normalized_by_id[article["id"]] = _normalize_result(
                         article,
                         repair_by_id.get(article["id"]),
+                    )
+                except DeterministicValidationError as repair_error:
+                    normalized_by_id[article["id"]] = _isolated_failure(
+                        article,
+                        repair_error,
                     )
                 except Exception as repair_error:
                     normalized_by_id[article["id"]] = _isolated_failure(

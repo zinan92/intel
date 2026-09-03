@@ -463,8 +463,14 @@ def _run_realtime_triage() -> None:
         for article in candidates:
             result = by_id[article.id]
             validation_error = result.get("validation_error")
+            terminal_unknown = (
+                bool(validation_error)
+                and result.get("retryable", True) is False
+            )
             article.triage_bucket = "unknown" if validation_error else result["bucket"]
-            article.triage_status = "failed" if validation_error else "complete"
+            article.triage_status = "complete" if terminal_unknown else (
+                "failed" if validation_error else "complete"
+            )
             article.triage_direction = result["direction"]
             article.triage_rationale = result["rationale"]
             article.triage_assets = json.dumps(result["affected_assets"], ensure_ascii=False)
@@ -474,7 +480,7 @@ def _run_realtime_triage() -> None:
             article.triage_model = triage.model_name
             article.triage_error = validation_error
             article.triaged_at = now
-            if validation_error:
+            if article.triage_status == "failed":
                 failed += 1
             else:
                 completed += 1
