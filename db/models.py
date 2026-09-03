@@ -56,6 +56,8 @@ class Article(Base):
     score: Mapped[int] = mapped_column(Integer, default=0)
     relevance_score: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 1-5 LLM rating
     narrative_tags: Mapped[str | None] = mapped_column(String, nullable=True)  # JSON array from LLM
+    relevance_provider: Mapped[str | None] = mapped_column(String, nullable=True)
+    relevance_scored_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     tickers: Mapped[str | None] = mapped_column(String, nullable=True)  # JSON array
     published_at: Mapped[datetime | None] = mapped_column(DateTime)
     collected_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -114,6 +116,8 @@ class CollectorRun(Base):
     duration_ms: Mapped[int] = mapped_column(Integer, default=0)
     error_message: Mapped[str | None] = mapped_column(Text)
     error_category: Mapped[str | None] = mapped_column(String)  # transient/auth/parse/config
+    provider: Mapped[str | None] = mapped_column(String)
+    fallback_reason: Mapped[str | None] = mapped_column(String)
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
     completed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 

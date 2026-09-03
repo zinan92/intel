@@ -50,12 +50,16 @@ def test_migration_adds_columns(engine):
 
     assert not _column_exists(engine, "articles", "relevance_score")
     assert not _column_exists(engine, "articles", "narrative_tags")
+    assert not _column_exists(engine, "articles", "relevance_provider")
+    assert not _column_exists(engine, "articles", "relevance_scored_at")
     assert not _column_exists(engine, "briefs", "provider")
 
     run_migrations(engine)
 
     assert _column_exists(engine, "articles", "relevance_score")
     assert _column_exists(engine, "articles", "narrative_tags")
+    assert _column_exists(engine, "articles", "relevance_provider")
+    assert _column_exists(engine, "articles", "relevance_scored_at")
     assert _column_exists(engine, "briefs", "provider")
 
 

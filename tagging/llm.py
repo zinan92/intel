@@ -3,8 +3,10 @@
 import json
 import logging
 import time
+from dataclasses import dataclass
 from typing import Any
 
+from llm.codex import CodexCLIClient
 from llm.deepseek import DeepSeekClient, DeepSeekError
 
 logger = logging.getLogger(__name__)
@@ -70,12 +72,29 @@ Respond ONLY with the JSON object, no other text."""
 _MIN_INTERVAL = 2.0
 
 
-class LLMTagger:
-    """Batch LLM tagger using the DeepSeek API."""
+class TaggingError(RuntimeError):
+    """Raised when neither provider returns a complete valid scoring batch."""
 
-    def __init__(self, batch_size: int = 10, client: DeepSeekClient | None = None) -> None:
+
+@dataclass(frozen=True)
+class TagBatchResult:
+    items: tuple[dict[str, Any], ...]
+    provider: str
+    fallback_reason: str | None = None
+
+
+class LLMTagger:
+    """Batch LLM tagger with DeepSeek primary and Codex fallback."""
+
+    def __init__(
+        self,
+        batch_size: int = 10,
+        client: DeepSeekClient | None = None,
+        fallback_client: CodexCLIClient | None = None,
+    ) -> None:
         self.batch_size = batch_size
         self.client = client or DeepSeekClient()
+        self.fallback_client = fallback_client or CodexCLIClient()
         self._last_call = 0.0
         self._batches_processed = 0
 
@@ -85,13 +104,44 @@ class LLMTagger:
             time.sleep(_MIN_INTERVAL - elapsed)
         self._last_call = time.time()
 
-    def tag_batch(self, articles: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    @staticmethod
+    def _validate(text: str, articles: list[dict[str, Any]]) -> tuple[dict[str, Any], ...]:
+        results = _extract_json_array(text)
+        expected_ids = {int(article["id"]) for article in articles}
+        valid: list[dict[str, Any]] = []
+        seen: set[int] = set()
+        for result in results:
+            if not isinstance(result, dict):
+                continue
+            article_id = result.get("id")
+            score = result.get("relevance_score")
+            tags = result.get("narrative_tags")
+            if not isinstance(article_id, int) or article_id not in expected_ids or article_id in seen:
+                continue
+            if not isinstance(score, int) or not 1 <= score <= 5:
+                continue
+            if not isinstance(tags, list) or not tags:
+                continue
+            clean_tags = [str(tag).strip() for tag in tags[:3] if str(tag).strip()]
+            if not clean_tags:
+                continue
+            seen.add(article_id)
+            valid.append({
+                "id": article_id,
+                "relevance_score": score,
+                "narrative_tags": clean_tags,
+            })
+        if seen != expected_ids:
+            raise TaggingError("provider returned an incomplete or invalid result set")
+        return tuple(valid)
+
+    def tag_batch(self, articles: list[dict[str, Any]]) -> TagBatchResult:
         """Tag a batch of articles. Each dict needs 'id', 'title', 'content'.
 
-        Returns list of {"id": int, "relevance_score": int, "narrative_tags": list[str]}.
+        Returns validated items plus provider provenance.
         """
         if not articles:
-            return []
+            return TagBatchResult((), "none")
 
         # Build prompt with articles
         parts = []
@@ -112,30 +162,29 @@ class LLMTagger:
                 timeout=120,
                 max_tokens=4096,
             )
-            results = _extract_json_array(text)
+            items = self._validate(text, articles)
             self._batches_processed += 1
+            return TagBatchResult(items, "deepseek")
+        except DeepSeekError as exc:
+            fallback_reason = type(exc).__name__
+            logger.warning("DeepSeek tagging failed; using Codex fallback (%s)", fallback_reason)
+        except (json.JSONDecodeError, TaggingError):
+            fallback_reason = "invalid_primary_output"
+            logger.warning("DeepSeek tagging output was invalid; using Codex fallback")
 
-            # Validate
-            valid = []
-            for r in results:
-                if isinstance(r, dict) and "id" in r and "relevance_score" in r:
-                    score = r["relevance_score"]
-                    if isinstance(score, int) and 1 <= score <= 5:
-                        tags = r.get("narrative_tags", [])
-                        if isinstance(tags, list):
-                            valid.append({
-                                "id": r["id"],
-                                "relevance_score": score,
-                                "narrative_tags": [str(t) for t in tags[:5]],
-                            })
-            return valid
-
-        except json.JSONDecodeError as e:
-            logger.error("Failed to parse LLM response: %s", e)
-            return []
-        except DeepSeekError as e:
-            logger.error("DeepSeek tagging failed: %s", e)
-            return []
+        try:
+            text = self.fallback_client.complete(
+                user_msg,
+                system_prompt=_SYSTEM_PROMPT,
+                json_mode=True,
+                timeout=300,
+                max_tokens=4096,
+            )
+            items = self._validate(text, articles)
+            self._batches_processed += 1
+            return TagBatchResult(items, "codex-cli", fallback_reason)
+        except Exception as exc:
+            raise TaggingError("both providers failed to return a valid scoring batch") from exc
 
     @property
     def batches_processed(self) -> int:

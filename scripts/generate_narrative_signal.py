@@ -1,18 +1,15 @@
 """Generate Narrative Signal briefs with the DeepSeek Chat Completions API."""
-import json
 import logging
 import os
 import re
-import shutil
-import subprocess
 import sys
-import tempfile
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import requests
 
+from llm.codex import CodexCLIClient, CodexCLIError
 from db.database import get_session, init_db
 from db.models import Article
 from events.models import Event
@@ -191,111 +188,23 @@ def _deepseek_api_key() -> str | None:
     return match.group(1)
 
 
-def _resolve_codex_executable() -> str:
-    """Resolve Codex under both an interactive shell and launchd's PATH."""
-
-    candidates = [
-        os.getenv("PARK_CODEX_CLI", "").strip(),
-        shutil.which("codex") or "",
-        "/opt/homebrew/bin/codex",
-        "/usr/local/bin/codex",
-    ]
-    for candidate in candidates:
-        if candidate and Path(candidate).is_file():
-            return str(Path(candidate).resolve())
-    return "codex"
-
-
-def _codex_text_from_stdout(stdout: str) -> str | None:
-    """Extract a final assistant text if the output file was not written."""
-
-    for line in reversed((stdout or "").splitlines()):
-        candidate = line.strip()
-        if not candidate:
-            continue
-        try:
-            event = json.loads(candidate)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(event, dict):
-            continue
-        for key in ("text", "content", "output", "message"):
-            value = event.get(key)
-            if isinstance(value, str) and value.strip():
-                return value.strip()
-            if isinstance(value, dict):
-                nested = value.get("content") or value.get("text")
-                if isinstance(nested, str) and nested.strip():
-                    return nested.strip()
-    return None
-
-
 def _call_codex(prompt: str) -> tuple[str | None, str | None]:
     """Run one isolated, read-only Codex fallback attempt."""
 
     global _last_codex_failure
     _last_codex_failure = "not_attempted"
-    executable = _resolve_codex_executable()
-    with tempfile.TemporaryDirectory(prefix="park-intel-codex-") as directory:
-        root = Path(directory)
-        output_path = root / "codex-output.txt"
-        command = [
-            executable,
-            "exec",
-            "--ephemeral",
-            "--sandbox",
-            "read-only",
-            "--skip-git-repo-check",
-            "--ignore-user-config",
-            "--color",
-            "never",
-            "--disable",
-            "shell_tool",
-            "--disable",
-            "browser_use",
-            "--disable",
-            "browser_use_external",
-            "--disable",
-            "computer_use",
-            "--disable",
-            "apps",
-            "--disable",
-            "unified_exec",
-            "--json",
-            "--output-last-message",
-            str(output_path),
-            "-C",
-            str(root),
-            "-",
-        ]
-        try:
-            completed = subprocess.run(
-                command,
-                cwd=str(root),
-                input=f"{CODEX_FALLBACK_PREFIX}\n原任务如下：\n{prompt}",
-                capture_output=True,
-                text=True,
-                timeout=CODEX_TIMEOUT_SECONDS,
-                check=False,
-            )
-        except subprocess.TimeoutExpired:
-            _last_codex_failure = "timeout"
-            logger.exception("Codex CLI fallback timed out")
-            return None, None
-        except OSError as exc:
-            _last_codex_failure = "executable_unavailable"
-            logger.error("Codex CLI fallback could not start: %s", type(exc).__name__)
-            return None, None
-
-        if completed.returncode != 0:
-            _last_codex_failure = f"exit_{completed.returncode}"
-            logger.error("Codex CLI fallback exited with code %s", completed.returncode)
-            return None, None
-        content = output_path.read_text(encoding="utf-8").strip() if output_path.is_file() else _codex_text_from_stdout(completed.stdout)
-        if not content:
-            _last_codex_failure = "empty_response"
-            logger.error("Codex CLI fallback returned no content")
-            return None, None
+    try:
+        content = CodexCLIClient().complete(
+            prompt,
+            system_prompt=CODEX_FALLBACK_PREFIX,
+            timeout=CODEX_TIMEOUT_SECONDS,
+            max_tokens=6000,
+        )
+    except CodexCLIError as exc:
+        _last_codex_failure = exc.reason
+        logger.error("Codex CLI fallback failed: %s", exc.reason)
+        return None, None
+    else:
         _last_codex_failure = "ok"
         return content, "codex-cli"
 

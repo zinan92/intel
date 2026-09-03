@@ -43,6 +43,7 @@ def _parse_json_list(raw: str | None) -> list[Any]:
 def health() -> dict[str, Any]:
     """Healthcheck endpoint for active sources (driven by source registry)."""
     from scheduler import get_last_results
+    from api.health_routes import _build_processing_health
     from config import realtime_lane_enabled
     from sources.registry import list_active_sources
 
@@ -50,6 +51,7 @@ def health() -> dict[str, Any]:
     try:
         now = datetime.utcnow()
         last_results = get_last_results()
+        processing = _build_processing_health(session)
 
         active = list_active_sources(session)
         # Group by source_type for health reporting
@@ -112,13 +114,18 @@ def health() -> dict[str, Any]:
 
         any_stale = any(s.get("status") == "stale" for s in sources_info.values())
         any_error = any(s.get("last_run_error") for s in sources_info.values())
-        overall = "degraded" if (any_stale or any_error) else "ok"
+        processing_error = any(
+            stage.get("status") in {"error", "degraded"}
+            for stage in processing.values()
+        )
+        overall = "degraded" if (any_stale or any_error or processing_error) else "ok"
 
         return {
             "status": overall,
             "service": "park-intel",
             "scheduler": "running",
             "sources": sources_info,
+            "processing": processing,
             "timestamp": now.isoformat(),
         }
     finally:

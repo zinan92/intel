@@ -1,8 +1,6 @@
 """Tests for narrative signal brief generation."""
 from datetime import datetime, timedelta
-from pathlib import Path
-from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -198,22 +196,13 @@ def test_call_deepseek_records_http_402(monkeypatch):
 def test_call_codex_uses_isolated_stdin_prompt(monkeypatch):
     from scripts import generate_narrative_signal as mod
 
-    captured = {}
-
-    def fake_run(command, **kwargs):
-        captured["command"] = command
-        captured["kwargs"] = kwargs
-        output_path = command[command.index("--output-last-message") + 1]
-        Path(output_path).write_text("codex brief", encoding="utf-8")
-        return SimpleNamespace(returncode=0, stdout="")
-
-    monkeypatch.setattr(mod, "_resolve_codex_executable", lambda: "/opt/homebrew/bin/codex")
-    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+    client = Mock()
+    client.complete.return_value = "codex brief"
+    monkeypatch.setattr(mod, "CodexCLIClient", lambda: client)
 
     assert mod._call_codex("frozen prompt") == ("codex brief", "codex-cli")
-    assert captured["command"][-1] == "-"
-    assert "--ignore-user-config" in captured["command"]
-    assert "frozen prompt" in captured["kwargs"]["input"]
+    assert client.complete.call_args.args == ("frozen prompt",)
+    assert client.complete.call_args.kwargs["system_prompt"] == mod.CODEX_FALLBACK_PREFIX
 
 
 def test_select_publishable_articles_filters_stale_noise_and_dedups():

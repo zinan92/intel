@@ -8,6 +8,9 @@ import argparse
 import json
 import logging
 import sys
+import time
+from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -15,8 +18,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from sqlalchemy import func
 
 from db.database import get_session, init_db
-from db.models import Article
-from tagging.llm import LLMTagger
+from db.models import Article, CollectorRun
+from tagging.llm import LLMTagger, TaggingError
 
 logging.basicConfig(
     level=logging.INFO,
@@ -26,20 +29,64 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+class TaggerRunError(RuntimeError):
+    """Raised when pending articles cannot be scored by either provider."""
+
+
+@dataclass(frozen=True)
+class TaggerRunResult:
+    status: str
+    attempted: int
+    scored: int
+    provider: str | None
+    fallback_reason: str | None
+
+
+def _record_run(
+    session,
+    *,
+    status: str,
+    attempted: int,
+    scored: int,
+    duration_ms: int,
+    provider: str | None,
+    fallback_reason: str | None,
+    error_message: str | None = None,
+) -> None:
+    session.add(CollectorRun(
+        source_type="llm_tagger",
+        source_key="finance:article-scoring",
+        status=status,
+        articles_fetched=attempted,
+        articles_saved=scored,
+        articles_failed=max(attempted - scored, 0),
+        duration_ms=duration_ms,
+        error_message=error_message,
+        error_category="provider" if error_message else None,
+        provider=provider,
+        fallback_reason=fallback_reason,
+        retry_count=0,
+        completed_at=datetime.utcnow(),
+    ))
+    session.commit()
+
+
 def run_tagger(
     backfill: bool = False,
     limit: int = 0,
     prefiltered: bool = False,
     batch_size: int = 10,
     include_realtime: bool = False,
-) -> None:
+    tagger: LLMTagger | None = None,
+) -> TaggerRunResult:
     """Run the LLM tagger programmatically (no argparse). Called by scheduler and main()."""
     if not backfill and limit <= 0 and not prefiltered:
         raise ValueError("Specify backfill=True, limit>0, or prefiltered=True")
 
     init_db()
     session = get_session()
-    tagger = LLMTagger(batch_size=batch_size)
+    tagger = tagger or LLMTagger(batch_size=batch_size)
+    started = time.monotonic()
 
     try:
         if prefiltered:
@@ -74,9 +121,21 @@ def run_tagger(
         logger.info("Found %d unscored articles to process", len(articles))
 
         if not articles:
-            return
+            result = TaggerRunResult("ok", 0, 0, None, None)
+            _record_run(
+                session,
+                status=result.status,
+                attempted=0,
+                scored=0,
+                duration_ms=round((time.monotonic() - started) * 1000),
+                provider=None,
+                fallback_reason=None,
+            )
+            return result
 
         scored = 0
+        providers: set[str] = set()
+        fallback_reasons: set[str] = set()
         for i in range(0, len(articles), batch_size):
             batch = articles[i : i + batch_size]
             batch_dicts = [
@@ -84,10 +143,26 @@ def run_tagger(
                 for a in batch
             ]
 
-            results = tagger.tag_batch(batch_dicts)
-            if not results:
-                logger.warning("Empty results for batch %d, stopping", i // batch_size + 1)
-                break
+            try:
+                batch_result = tagger.tag_batch(batch_dicts)
+            except TaggingError as exc:
+                message = str(exc)
+                _record_run(
+                    session,
+                    status="error",
+                    attempted=len(articles),
+                    scored=scored,
+                    duration_ms=round((time.monotonic() - started) * 1000),
+                    provider=",".join(sorted(providers)) or None,
+                    fallback_reason=",".join(sorted(fallback_reasons)) or None,
+                    error_message=message,
+                )
+                raise TaggerRunError(message) from exc
+
+            results = batch_result.items
+            providers.add(batch_result.provider)
+            if batch_result.fallback_reason:
+                fallback_reasons.add(batch_result.fallback_reason)
 
             result_map = {r["id"]: r for r in results}
             for a in batch:
@@ -95,6 +170,8 @@ def run_tagger(
                     r = result_map[a.id]
                     a.relevance_score = r["relevance_score"]
                     a.narrative_tags = json.dumps(r["narrative_tags"])
+                    a.relevance_provider = batch_result.provider
+                    a.relevance_scored_at = datetime.utcnow()
                     scored += 1
 
             session.commit()
@@ -116,6 +193,20 @@ def run_tagger(
         for score, count in sorted(rows, key=lambda x: (x[0] is None, x[0])):
             label = str(score) if score is not None else "unscored"
             logger.info("  relevance_score=%s: %d articles", label, count)
+
+        provider = ",".join(sorted(providers)) or None
+        fallback_reason = ",".join(sorted(fallback_reasons)) or None
+        result = TaggerRunResult("ok", len(articles), scored, provider, fallback_reason)
+        _record_run(
+            session,
+            status=result.status,
+            attempted=result.attempted,
+            scored=result.scored,
+            duration_ms=round((time.monotonic() - started) * 1000),
+            provider=provider,
+            fallback_reason=fallback_reason,
+        )
+        return result
 
     finally:
         session.close()
