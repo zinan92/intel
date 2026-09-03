@@ -31,6 +31,7 @@ def _scheduled_result(article_id: int) -> dict:
     "三因素有望推动8月份CPI同比温和上涨",
     "OPEC+据悉可能维持下月原油产量配额不变",
     "日本央行决议前交易员高度警惕干预风险",
+    "日本央行据悉倾向于本月加息25个基点",
     "8月份新增信贷、社融或同比少增",
 ])
 def test_chinese_scheduled_preview_is_accepted_without_repair_call(title):
