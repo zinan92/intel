@@ -24,6 +24,7 @@ from db.database import get_session
 from db.models import Article, CollectorRun
 from api.time_contract import utc_rfc3339
 from triage.event_match import normalize_headline, reports_match
+from triage.exposure import EXPOSURE_UNIVERSE_VERSION, match_article_exposure
 
 ui_router = APIRouter(prefix="/api/ui")
 
@@ -298,6 +299,10 @@ def _window_cutoff(window: str, now: datetime) -> datetime:
 def _feed_item(article: Article, priority: float, now: datetime, event_article_ids: set[int] = frozenset()) -> dict[str, Any]:
     content = article.content or ""
     summary = content[:300] if len(content) > 300 else content
+    exposure = match_article_exposure(article.title, content, article.tickers)
+    exposure_status = article.exposure_status or exposure.status
+    exposure_assets = _parse_json_list(article.exposure_assets)
+    exposure_reason = article.exposure_reason or exposure.reason
     return {
         "id": article.id,
         "title": article.title,
@@ -311,6 +316,10 @@ def _feed_item(article: Article, priority: float, now: datetime, event_article_i
         "tags": _parse_tags(article.tags),
         "narrative_tags": _parse_tags(article.narrative_tags),
         "collection_lane": article.collection_lane,
+        "exposure_universe_version": EXPOSURE_UNIVERSE_VERSION,
+        "exposure_status": exposure_status,
+        "exposure_assets": exposure_assets,
+        "exposure_reason": exposure_reason,
         "source_authority": article.source_authority,
         "corroboration_state": article.corroboration_state,
         "pin_eligibility": article.pin_eligibility,
@@ -660,6 +669,7 @@ def get_realtime_feed(
     window: str = Query(default="24h"),
     limit: int = Query(default=80, ge=1, le=200),
     include_backfill: bool = False,
+    include_unmatched: bool = False,
 ) -> dict[str, Any]:
     """Return realtime items plus their persisted AI triage buckets."""
     session = get_session()
@@ -675,19 +685,31 @@ def get_realtime_feed(
         )
         operational_query = base_query.filter(Article.is_backfill.is_(False))
         query = base_query if include_backfill else operational_query
+        exposure_excluded_window = operational_query.filter(
+            Article.exposure_status == "unmatched",
+        ).count()
+        exposure_unclassified_window = operational_query.filter(
+            Article.exposure_status.is_(None),
+        ).count()
+        operational_visible_query = operational_query
+        if not include_unmatched and not include_backfill:
+            query = query.filter(Article.exposure_status == "matched")
+            operational_visible_query = operational_query.filter(
+                Article.exposure_status == "matched",
+            )
         total = query.count()
-        complete_window = operational_query.filter(
+        complete_window = operational_visible_query.filter(
             Article.triage_status == "complete",
         ).count()
-        unknown_window = operational_query.filter(
+        unknown_window = operational_visible_query.filter(
             Article.triage_status == "complete",
             Article.triage_bucket == "unknown",
         ).count()
-        pending_window = operational_query.filter(or_(
+        pending_window = operational_visible_query.filter(or_(
             Article.triage_status.is_(None),
             Article.triage_status == "processing",
         )).count()
-        failed_window = operational_query.filter(
+        failed_window = operational_visible_query.filter(
             Article.triage_status == "failed",
         ).count()
         raw_unknown_rate = unknown_window / complete_window if complete_window else 0.0
@@ -732,6 +754,12 @@ def get_realtime_feed(
                 },
                 "pending": pending_window,
                 "failed": failed_window,
+                "exposure": {
+                    "universe_version": EXPOSURE_UNIVERSE_VERSION,
+                    "matched": total,
+                    "excluded": exposure_excluded_window,
+                    "unclassified": exposure_unclassified_window,
+                },
             },
             "stats": {
                 "total": total,
@@ -742,6 +770,8 @@ def get_realtime_feed(
                 "triaged": triaged_count,
                 "pending": pending_count,
                 "failed": failed_count,
+                "exposure_excluded": exposure_excluded_window,
+                "exposure_unclassified": exposure_unclassified_window,
                 "last_collected_at": utc_rfc3339(last_collected),
                 "last_triaged_at": utc_rfc3339(max(triaged_times) if triaged_times else None),
                 "refreshed_at": utc_rfc3339(now),

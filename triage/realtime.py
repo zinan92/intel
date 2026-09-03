@@ -116,6 +116,11 @@ def _article_prompt(article: dict[str, Any]) -> str:
         f"Content: {(article.get('content') or '')[:1800]}\n"
         f"Verified source tickers: {ticker_text}"
     )
+    exposure_assets = article.get("exposure_assets")
+    if isinstance(exposure_assets, list) and exposure_assets:
+        prompt += "\nApproved exposure matches: " + ", ".join(
+            str(value) for value in exposure_assets
+        )
     related = article.get("related_evidence")
     if isinstance(related, list) and related:
         lines = ["Supplemental evidence from related cross-source reports:"]

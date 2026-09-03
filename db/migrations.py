@@ -204,6 +204,9 @@ def run_migrations(engine: Engine) -> None:
         ("articles", "relevance_scored_at", "DATETIME"),
         ("articles", "tickers", "TEXT"),
         ("articles", "collection_lane", "TEXT"),
+        ("articles", "exposure_status", "TEXT"),
+        ("articles", "exposure_assets", "TEXT"),
+        ("articles", "exposure_reason", "TEXT"),
         ("articles", "triage_bucket", "TEXT"),
         ("articles", "triage_status", "TEXT"),
         ("articles", "triage_direction", "TEXT"),
@@ -344,5 +347,9 @@ def run_migrations(engine: Engine) -> None:
         conn.execute(text(
             "CREATE INDEX IF NOT EXISTS idx_articles_realtime_backfill_collected "
             "ON articles (collection_lane, is_backfill, collected_at)"
+        ))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_articles_realtime_exposure_collected "
+            "ON articles (collection_lane, is_backfill, exposure_status, collected_at)"
         ))
         conn.commit()

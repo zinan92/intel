@@ -62,6 +62,9 @@ class Article(Base):
     published_at: Mapped[datetime | None] = mapped_column(DateTime)
     collected_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     collection_lane: Mapped[str] = mapped_column(String, nullable=False, default="hourly")
+    exposure_status: Mapped[str | None] = mapped_column(String, nullable=True)
+    exposure_assets: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON canonical asset keys
+    exposure_reason: Mapped[str | None] = mapped_column(String, nullable=True)
     triage_bucket: Mapped[str | None] = mapped_column(String)
     triage_status: Mapped[str | None] = mapped_column(String)
     triage_direction: Mapped[str | None] = mapped_column(String)
@@ -92,6 +95,10 @@ class Article(Base):
         Index("idx_source", "source"),
         Index("idx_published", "published_at"),
         Index("idx_tags", "tags"),
+        Index(
+            "idx_realtime_exposure_collected",
+            "collection_lane", "is_backfill", "exposure_status", "collected_at",
+        ),
     )
 
     def __repr__(self) -> str:

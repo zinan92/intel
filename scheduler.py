@@ -412,6 +412,7 @@ def _run_realtime_triage() -> None:
             .filter(
                 Article.collection_lane == "realtime",
                 Article.is_backfill.is_(False),
+                Article.exposure_status == "matched",
                 or_(
                     Article.triage_status.is_(None),
                     Article.triage_status.in_(["failed", "processing"]),
@@ -449,6 +450,7 @@ def _run_realtime_triage() -> None:
                 "title": article.title,
                 "content": article.content,
                 "tickers": _tickers(article.tickers),
+                "exposure_assets": _tickers(article.exposure_assets),
                 "related_evidence": evidence_by_id.get(article.id, []),
             }
             for article in candidates

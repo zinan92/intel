@@ -88,6 +88,9 @@ def test_realtime_triage_excludes_backfill_candidates(monkeypatch):
             content="Current filing",
             collection_lane="realtime",
             is_backfill=False,
+            exposure_status="matched",
+            exposure_assets='["sp500"]',
+            exposure_reason="test_fixture",
             collected_at=datetime(2026, 9, 2, 12, 1),
         ),
     ])
@@ -152,6 +155,9 @@ def test_realtime_ui_hides_backfill_by_default_and_can_include_it(monkeypatch):
             content=title,
             collection_lane="realtime",
             is_backfill=is_backfill,
+            exposure_status="unmatched" if is_backfill else "matched",
+            exposure_assets="[]" if is_backfill else '["sp500"]',
+            exposure_reason="no_approved_exposure" if is_backfill else "test_fixture",
             backfill_reason="test-history" if is_backfill else None,
             collected_at=datetime.utcnow(),
         ))
