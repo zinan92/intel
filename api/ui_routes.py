@@ -303,6 +303,9 @@ def _feed_item(article: Article, priority: float, now: datetime, event_article_i
     exposure_status = article.exposure_status or exposure.status
     exposure_assets = _parse_json_list(article.exposure_assets)
     exposure_reason = article.exposure_reason or exposure.reason
+    exposure_targets = _parse_json_list(article.exposure_targets)
+    if not exposure_targets and exposure.targets:
+        exposure_targets = list(exposure.targets)
     return {
         "id": article.id,
         "title": article.title,
@@ -320,6 +323,7 @@ def _feed_item(article: Article, priority: float, now: datetime, event_article_i
         "exposure_status": exposure_status,
         "exposure_assets": exposure_assets,
         "exposure_reason": exposure_reason,
+        "exposure_targets": exposure_targets,
         "source_authority": article.source_authority,
         "corroboration_state": article.corroboration_state,
         "pin_eligibility": article.pin_eligibility,

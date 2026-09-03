@@ -1,4 +1,4 @@
-"""Deterministic exposure gate for the approved 16-asset realtime universe."""
+"""Deterministic exposure gate for the Park target registry."""
 
 import json
 from datetime import datetime
@@ -93,6 +93,7 @@ def test_realtime_api_excludes_unmatched_articles_but_can_show_audit_view():
         audit = ui.get_realtime_feed(window="24h", limit=20, include_unmatched=True)
 
     assert [item["title"] for item in visible["items"]] == ["BTC move"]
+    assert {target["id"] for target in visible["items"][0]["exposure_targets"]} >= {"bitcoin"}
     assert visible["stats"]["exposure_excluded"] == 1
     assert len(audit["items"]) == 2
     session.close()
@@ -140,6 +141,7 @@ def test_scheduler_only_sends_matched_articles_to_realtime_ai():
 
     assert len(seen) == 1
     assert seen[0]["exposure_assets"] == ["bitcoin"]
+    assert seen[0]["exposure_targets"] == []
     assert session.query(Article).filter_by(source_id="queue-matched").one().triage_status == "complete"
     assert session.query(Article).filter_by(source_id="queue-unmatched").one().triage_status is None
     session.close()
@@ -173,5 +175,7 @@ def test_realtime_collector_persists_exposure_match_before_triage(monkeypatch):
     saved = session.query(Article).filter_by(source_id="collector-exposure-1").one()
     assert saved.exposure_status == "matched"
     assert json.loads(saved.exposure_assets) == ["bitcoin"]
+    targets = json.loads(saved.exposure_targets)
+    assert {target["id"] for target in targets} >= {"bitcoin"}
     assert saved.exposure_reason.startswith("asset:bitcoin") or "text:bitcoin" in saved.exposure_reason
     session.close()

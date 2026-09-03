@@ -207,6 +207,7 @@ def run_migrations(engine: Engine) -> None:
         ("articles", "exposure_status", "TEXT"),
         ("articles", "exposure_assets", "TEXT"),
         ("articles", "exposure_reason", "TEXT"),
+        ("articles", "exposure_targets", "TEXT"),
         ("articles", "triage_bucket", "TEXT"),
         ("articles", "triage_status", "TEXT"),
         ("articles", "triage_direction", "TEXT"),

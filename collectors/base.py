@@ -95,6 +95,10 @@ class BaseCollector(ABC):
                         if exposure else None
                     ),
                     exposure_reason=exposure.reason if exposure else None,
+                    exposure_targets=(
+                        json.dumps(list(exposure.targets), ensure_ascii=False)
+                        if exposure else None
+                    ),
                     source_authority=data.get("source_authority"),
                     corroboration_state=data.get("corroboration_state"),
                     pin_eligibility=data.get("pin_eligibility"),

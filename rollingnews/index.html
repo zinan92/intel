@@ -577,7 +577,7 @@
   </div>
 
   <div class="footnote">
-      LIVE DATA：CLS + Eastmoney + SEC EDGAR + BlockBeats → 16-asset exposure gate → AI triage。页面每 15 秒刷新；旧 hourly digest / event / signal lane 保持隔离。AI 未完成时显示 Unknown，不伪造判断。
+      LIVE DATA：CLS + Eastmoney + SEC EDGAR + BlockBeats → Park target registry exposure gate → AI triage。页面每 15 秒刷新；旧 hourly digest / event / signal lane 保持隔离。AI 未完成时显示 Unknown，不伪造判断。
     <div id="sourceHealth" class="source-health-line">等待 source health…</div>
   </div>
 </div>
@@ -954,6 +954,35 @@
     parent.appendChild(row);
   }
 
+  function exposureTargetsOf(item) {
+    return Array.isArray(item.exposure_targets) ? item.exposure_targets : [];
+  }
+
+  function renderExposureTargets(parent, item) {
+    var targets = exposureTargetsOf(item);
+    if (!targets.length) return;
+    var row = document.createElement('div');
+    row.className = 'exposure-row';
+    text(row, '敞口目标:', 'e-label');
+    targets.slice(0, 12).forEach(function (target) {
+      if (!target || typeof target !== 'object') return;
+      var label = target.name || target.id || 'target';
+      if (target.type === 'company' && target.listed && target.id && target.id !== target.name) {
+        label += ' · ' + target.id;
+      }
+      if (Array.isArray(target.links_assets) && target.links_assets.length) {
+        label += ' → ' + target.links_assets.join(' / ');
+      }
+      text(row, label, 'ticker-chip');
+    });
+    parent.appendChild(row);
+  }
+
+  function renderExposure(parent, item) {
+    renderExposureTargets(parent, item);
+    renderAssets(parent, item);
+  }
+
   function renderEvidence(parent, item) {
     var event = item.event || {};
     var evidence = Array.isArray(event.evidence) ? event.evidence : [];
@@ -983,7 +1012,7 @@
     addHeadline(card, item, 'impact-headline');
     renderMeta(card, item);
     paragraph(card, triageOf(item).rationale || 'AI 已确认这是重大信息，但理由仍在补全。', 'triage-rationale');
-    renderAssets(card, item);
+    renderExposure(card, item);
     renderEvidence(card, item);
     parent.appendChild(card);
   }
@@ -999,7 +1028,7 @@
     list.className = 'watch-points';
     (points.length ? points : ['等待更多事实确认后再升级']).forEach(function (point) { listItem(list, point); });
     card.appendChild(list);
-    renderAssets(card, item);
+    renderExposure(card, item);
     renderEvidence(card, item);
     parent.appendChild(card);
   }

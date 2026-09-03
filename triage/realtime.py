@@ -121,6 +121,21 @@ def _article_prompt(article: dict[str, Any]) -> str:
         prompt += "\nApproved exposure matches: " + ", ".join(
             str(value) for value in exposure_assets
         )
+    exposure_targets = article.get("exposure_targets")
+    if isinstance(exposure_targets, list) and exposure_targets:
+        target_lines = []
+        for target in exposure_targets[:12]:
+            if not isinstance(target, dict):
+                continue
+            linked_assets = target.get("links_assets") or []
+            linked_text = f" -> assets={','.join(map(str, linked_assets))}" if linked_assets else ""
+            target_lines.append(
+                f"{target.get('type', 'target')}:{target.get('name', target.get('id', 'unknown'))}"
+                f" [{target.get('sector', 'n/a')} / {target.get('macro', 'n/a')}]"
+                f"{linked_text}"
+            )
+        if target_lines:
+            prompt += "\nApproved exposure targets: " + "; ".join(target_lines)
     related = article.get("related_evidence")
     if isinstance(related, list) and related:
         lines = ["Supplemental evidence from related cross-source reports:"]
