@@ -1,4 +1,4 @@
-"""Classify existing realtime Articles against the approved exposure universe."""
+"""Classify existing operational realtime Articles against Park's registry."""
 
 from __future__ import annotations
 
@@ -29,6 +29,7 @@ def classify_realtime_exposure(*, apply: bool = False) -> dict[str, int]:
     try:
         articles = session.query(Article).filter(
             Article.collection_lane == "realtime",
+            Article.is_backfill.is_(False),
         ).order_by(Article.id.asc()).all()
         for article in articles:
             match = match_article_exposure(
@@ -43,6 +44,9 @@ def classify_realtime_exposure(*, apply: bool = False) -> dict[str, int]:
                     list(match.asset_keys), ensure_ascii=False,
                 )
                 article.exposure_reason = match.reason
+                article.exposure_targets = json.dumps(
+                    list(match.targets), ensure_ascii=False,
+                )
         if apply:
             session.commit()
         return dict(counts)

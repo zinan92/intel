@@ -1,0 +1,355 @@
+# Pinned copy of zinan92/watchlist/watchlist.yaml.
+# Source commit: 29ce3c0ad6c6d5f822c860c42ae5ccd251c240d2 (2026-09-03)
+# Update this snapshot only as an explicit registry upgrade.
+# Park Exposure Registry
+#
+# 唯一权威名单。K 线/行情侧与新闻 exposure 侧都从这里取，不各自维护副本。
+# 结构：root -> macro(宏观主线) -> sector(中观赛道) -> target(微观标的)
+#
+# 修改规则：
+#   1. 每个 target 必须有 reason，写明它为什么在表里。无 reason 不入表。
+#   2. 未上市公司 listed: false，绝不分配市场代码。
+#   3. 允许多归属：一个 target 可出现在多个 sector 下（如 TSM）。
+#   4. assets 段是 Park 实际有行情/K 线的对象，与 targets 是两件事，不要混。
+
+version: 6
+updated: "2026-09-03"
+maintainer: park
+
+# ---------------------------------------------------------------------------
+# 有行情 / K 线的资产（16 个）。这是「看什么价格」，不是「新闻在讲什么」。
+# ---------------------------------------------------------------------------
+assets:
+  - {id: SPX,        name: 标普500指数,      market: US,     kind: index}
+  - {id: NDX,        name: 纳斯达克100指数,  market: US,     kind: index}
+  - {id: DXY,        name: 美元指数,         market: FX,     kind: index}
+  - {id: SCHD,       name: 美股红利ETF,      market: US,     kind: etf}
+  - {id: VIX,        name: 恐慌指数,         market: US,     kind: index}
+  - {id: BTC,        name: 比特币,           market: CRYPTO, kind: crypto}
+  - {id: ETH,        name: 以太坊,           market: CRYPTO, kind: crypto}
+  - {id: HYPE,       name: Hyperliquid HYPE, market: CRYPTO, kind: crypto}
+  - {id: SSE,        name: 上证指数,         market: CN,     kind: index}
+  - {id: STAR50,     name: 科创50,           market: CN,     kind: index}
+  - {id: SSE_DIV,    name: 上证红利,         market: CN,     kind: index}
+  - {id: N225,       name: 日经225,          market: JP,     kind: index}
+  - {id: KOSPI,      name: KOSPI,            market: KR,     kind: index}
+  - {id: WTI,        name: WTI原油,          market: COMDTY, kind: commodity}
+  - {id: XAU,        name: 黄金,             market: COMDTY, kind: commodity}
+  - {id: XAG,        name: 白银,             market: COMDTY, kind: commodity}
+
+# ---------------------------------------------------------------------------
+# 新闻 exposure 的确定性别名。只负责把新闻送进 AI triage，不决定 High /
+# Watch / Noise / Unknown。target 引用下面 sectors 中已有的 target id。
+# ---------------------------------------------------------------------------
+matching:
+  version: 1
+  content_chars: 2000
+  aliases:
+    - {id: ai_development, target: ai-development, terms: [AI, 人工智能, 大模型, 生成式AI, 生成式 AI, 算力, GPU, 数据中心, AI服务器, AI编程, AI模型, AI应用, Agent, 智能体, 模型训练, 模型推理, Token, 词元, Kimi, 商汤]}
+    - {id: ai_compute, target: ai-compute, terms: [GPU, HBM, AI芯片, 算力芯片, 半导体, 芯片]}
+    - {id: electronic_components, target: electronic-components, terms: [MLCC, 电子元件, 被动元件, 电容]}
+    - {id: optical_communication, target: optical-communication, terms: [光通信, 光模块, InP, CPO, NPO, 光纤]}
+    - {id: embodied_ai, target: embodied-ai, terms: [具身智能, 人形机器人]}
+    - {id: innovative_drugs, target: innovative-drugs, terms: [创新医药, 生物医药, 新药, 药物, 药品, 药业, 临床, 治疗, 医保, 肿瘤, 抗体, 疫苗, GLP-1, ADC, 制药, 药企, 病种]}
+    - {id: ai_generation, target: ai-generation, terms: [核电, 核能, 电力供应, AI发电, 数据中心用电]}
+    - {id: power_equipment, target: power-equipment, terms: [变压器, UPS, 开关柜, 电缆, 线缆, 电力设备]}
+    - {id: commercial_space, target: commercial-space, terms: [商业航天, 火箭, 卫星互联网]}
+    - {id: hormuz_strait, target: hormuz-strait, terms: [霍尔木兹, Hormuz]}
+    - {id: opec, target: opec, terms: [OPEC]}
+    - {id: russia_ukraine, target: russia-ukraine-war, terms: [俄乌, 俄罗斯, 乌克兰]}
+    - {id: geopolitical_crisis, target: geopolitical-crisis, terms: [地缘冲突, 地缘危机, 霍尔木兹, 伊朗, 以色列, 红海, 制裁, 关税, 导弹, 空袭, 油轮, 台海, 南海, 马岛]}
+    - {id: federal_reserve, target: federal-reserve, terms: [美联储, 联储, Fed, FOMC, 鲍威尔, Powell, NFP, 非农, CPI, PCE, 降息, 加息, 国债收益率, Treasury]}
+    - {id: bank_of_japan, target: bank-of-japan, terms: [日本央行, 日银, BOJ, 植田, YCC, 日债, 日元, 干预]}
+    - {id: platform_consumer, target: platform-consumer, terms: [拼多多, Pinduoduo, PDD, 腾讯, Tencent, 微信, 阿里巴巴, Alibaba, 阿里云, 天猫, 淘宝, Temu]}
+
+# ---------------------------------------------------------------------------
+# 宏观主线（6 条）
+# ---------------------------------------------------------------------------
+macros:
+  - id: rates
+    name: 货币与利率
+    note: Park 自述四件事中的美联储与日本央行两条，合并为政策路径一支
+  - id: geopolitics
+    name: 地缘与供应
+    note: Park 自述四件事之一
+  - id: ai_capex
+    name: AI 资本开支
+    note: Park 自述四件事之首；26 个赛道里占 11 个
+  - id: risk_crypto
+    name: 风险偏好与加密
+  - id: standalone_cycle
+    name: 独立产业周期
+    note: 由自身创新周期驱动、与宏观政策弱相关的赛道
+  - id: china_policy
+    name: 中国政策周期
+
+# ---------------------------------------------------------------------------
+# 中观赛道（26 个）与微观标的
+# ---------------------------------------------------------------------------
+sectors:
+
+  # ---- 货币与利率 ----
+  - id: fed_path
+    name: 美联储路径
+    macro: rates
+    targets:
+      - {type: macro, id: federal-reserve, name: 美联储, listed: false, reason: thesis, links_assets: [DXY, SPX, XAU]}
+
+  - id: boj_path
+    name: 日本央行路径
+    macro: rates
+    targets:
+      - {type: macro,   id: bank-of-japan, name: 日本央行, listed: false, reason: thesis, links_assets: [N225, XAU]}
+      - {type: company, id: "000660.KS", name: SK海力士, market: KR, listed: true, reason: 持仓关联KOSPI}
+
+  - id: dividend_defensive
+    name: 红利防守
+    macro: rates
+    targets:
+      - {type: company, id: JPM, name: 摩根大通, market: US, listed: true, reason: 持仓}
+      - {type: company, id: 长江电力, ticker: "600900", market: CN, listed: true, reason: A股红利标杆}
+      - {type: company, id: 工商银行, ticker: "601398", market: CN, listed: true, reason: A股红利标杆}
+
+  # ---- 地缘与供应 ----
+  - id: oil_chokepoint
+    name: 中东与原油通道
+    macro: geopolitics
+    targets:
+      - {type: macro,   id: hormuz-strait, name: 霍尔木兹海峡, listed: false, reason: thesis, links_assets: [WTI]}
+      - {type: macro,   id: opec,          name: OPEC,        listed: false, reason: thesis, links_assets: [WTI]}
+      - {type: company, id: XOM, name: 埃克森美孚, market: US, listed: true, reason: WTI的股票表达}
+      - {type: company, id: CVX, name: 雪佛龙,     market: US, listed: true, reason: WTI的股票表达}
+      - {type: company, id: 中国海油, ticker: "600938", market: CN, listed: true, reason: A股标杆}
+      - {type: company, id: 中国石油, ticker: "601857", market: CN, listed: true, reason: A股标杆}
+
+  - id: russia_ukraine
+    name: 俄乌战争
+    macro: geopolitics
+    targets:
+      - {type: macro,   id: russia-ukraine-war, name: 俄乌战争, listed: false, reason: thesis, links_assets: [WTI, XAU]}
+      - {type: company, id: LMT, name: 洛克希德马丁, market: US, listed: true, reason: 国防标杆}
+      - {type: company, id: RTX, name: 雷神,         market: US, listed: true, reason: 国防标杆}
+      - {type: company, id: 中航沈飞, ticker: "600760", market: CN, listed: true, reason: A股军工标杆}
+      - {type: company, id: 中兵红箭, ticker: "000519", market: CN, listed: true, reason: A股军工标杆}
+
+  - id: safe_haven_gold
+    name: 避险与央行购金
+    macro: geopolitics
+    targets:
+      - {type: company, id: NEM,  name: 纽蒙特,  market: US, listed: true, reason: 黄金的股票表达}
+      - {type: company, id: GOLD, name: 巴里克,  market: US, listed: true, reason: 黄金的股票表达}
+      - {type: company, id: 山东黄金, ticker: "600547", market: CN, listed: true, reason: A股标杆}
+      - {type: company, id: 紫金矿业, ticker: "601899", market: CN, listed: true, reason: A股标杆}
+
+  # ---- AI 资本开支 ----
+  - id: ai_compute_chips
+    name: AI 算力芯片
+    macro: ai_capex
+    targets:
+      - {type: theme, id: ai-compute, name: AI算力与基础设施, listed: false, reason: "Park指定；AI基础设施主线的通用主题入口"}
+      - {type: theme, id: electronic-components, name: 电子元件与被动件, listed: false, reason: "Park指定；MLCC等AI硬件供应链的主题入口"}
+      - {type: company, id: NVDA, name: 英伟达,   market: US, listed: true, reason: 赛道龙头, note: 体量足以自成板块}
+      - {type: company, id: AMD,  name: 美国超威, market: US, listed: true, reason: Park指定}
+      - {type: company, id: AVGO, name: 博通,     market: US, listed: true, reason: Park指定}
+      - {type: company, id: MRVL, name: 迈威尔,   market: US, listed: true, reason: Park指定}
+      - {type: company, id: 寒武纪, ticker: "688256",   market: CN, listed: true, reason: A股标杆}
+      - {type: company, id: 海光信息, ticker: "688041", market: CN, listed: true, reason: A股标杆}
+
+  - id: memory_hbm
+    name: 存储与 HBM
+    macro: ai_capex
+    targets:
+      - {type: company, id: MU,   name: 美光,     market: US, listed: true, reason: Park指定}
+      - {type: company, id: SNDK, name: 闪迪,     market: US, listed: true, reason: Park指定}
+      - {type: company, id: WDC,  name: 西部数据, market: US, listed: true, reason: Park指定}
+      - {type: company, id: "000660.KS", name: SK海力士, market: KR, listed: true, reason: HBM龙头}
+      - {type: company, id: 兆易创新, ticker: "603986", market: CN, listed: true, reason: A股标杆}
+
+  - id: cxmt_solo
+    name: 长鑫科技 · 单体
+    macro: ai_capex
+    note: 体量足以自成赛道，不作为存储赛道下的一个名字
+    targets:
+      - {type: company, id: "688825", name: 长鑫科技, market: CN, listed: true,
+         reason: "A股市值第一(3.31万亿)，DRAM全球第四；Park持有科创50，其权重使该股新闻≈科创50仓位新闻",
+         listed_at: "2026-07-27", links_assets: [STAR50]}
+
+  - id: fab_equipment
+    name: 晶圆制造与设备
+    macro: ai_capex
+    targets:
+      - {type: company, id: TSM,  name: 台积电,   market: US, listed: true, reason: Park指定, also_sector: []}
+      - {type: company, id: ASML, name: 阿斯麦,   market: US, listed: true, reason: Park指定}
+      - {type: company, id: LRCX, name: 拉姆研究, market: US, listed: true, reason: Park指定}
+      - {type: company, id: AMAT, name: 应用材料, market: US, listed: true, reason: Park指定}
+      - {type: company, id: INTC, name: 英特尔,   market: US, listed: true, reason: Park指定}
+      - {type: company, id: 中芯国际, ticker: "688981", market: CN, listed: true, reason: A股标杆}
+      - {type: company, id: 华虹公司, ticker: "688347", market: CN, listed: true, reason: A股标杆}
+      - {type: company, id: 北方华创, ticker: "002371", market: CN, listed: true, reason: A股设备标杆}
+      - {type: company, id: 中微公司, ticker: "688012", market: CN, listed: true, reason: A股设备标杆}
+
+  - id: hyperscaler_capex
+    name: 云厂商资本开支
+    macro: ai_capex
+    targets:
+      - {type: company, id: MSFT,  name: 微软,   market: US, listed: true, reason: Park指定}
+      - {type: company, id: GOOGL, name: 谷歌,   market: US, listed: true, reason: Park指定}
+      - {type: company, id: AMZN,  name: 亚马逊, market: US, listed: true, reason: Park指定}
+      - {type: company, id: META,  name: Meta,   market: US, listed: true, reason: Park指定}
+      - {type: company, id: ORCL,  name: 甲骨文, market: US, listed: true, reason: Park指定}
+      - {type: company, id: 浪潮信息, ticker: "000977", market: CN, listed: true, reason: A股服务器标杆}
+      - {type: company, id: 中科曙光, ticker: "603019", market: CN, listed: true, reason: A股服务器标杆}
+
+  - id: ai_generation
+    name: AI 发电
+    macro: ai_capex
+    note: 驱动=长约锁定电价+核电稀缺性(容量因子92%)，与设备侧的订单量逻辑不同
+    targets:
+      - {type: theme, id: ai-generation, name: AI发电, listed: false, reason: "Park指定；区分AI算力增长带来的发电需求"}
+      - {type: company, id: CEG, name: Constellation, market: US, listed: true, reason: "22GW核电，供电微软/Meta 20年1.1GW长约"}
+      - {type: company, id: VST, name: Vistra,        market: US, listed: true, reason: "2026-01与Meta签20年2.1GW+核电长约"}
+      - {type: company, id: TLN, name: Talen,         market: US, listed: true, reason: "亚马逊Susquehanna长约至2042年，最高1920MW"}
+      - {type: company, id: 中国核电, ticker: "601985", market: CN, listed: true, reason: A股核电标杆}
+      - {type: company, id: 长江电力, ticker: "600900", market: CN, listed: true, reason: A股水电标杆}
+
+  - id: power_equipment
+    name: 电力设备与线缆
+    macro: ai_capex
+    note: 驱动=资本开支周期订单量；超大规模厂商2026年AI capex约7500亿美元
+    targets:
+      - {type: theme, id: power-equipment, name: 电力设备与线缆, listed: false, reason: "Park指定；区分发电侧与输配电设备侧"}
+      - {type: company, id: ETN,  name: 伊顿,     market: US, listed: true, reason: "变压器/开关柜/UPS/液冷，FY2026有机增长指引上调至10%"}
+      - {type: company, id: VRT,  name: Vertiv,   market: US, listed: true, reason: "UPS+精密冷却，在手订单超150亿美元"}
+      - {type: company, id: NVT,  name: nVent,    market: US, listed: true, reason: 电气保护}
+      - {type: company, id: ATKR, name: Atkore,   market: US, listed: true, reason: "线管/桥架/支架，最贴近电缆层"}
+      - {type: company, id: GEV,  name: GE Vernova, market: US, listed: true, reason: 燃机与电网设备}
+      - {type: company, id: 特变电工, ticker: "600089", market: CN, listed: true, reason: A股变压器标杆}
+      - {type: company, id: 平高电气, ticker: "600312", market: CN, listed: true, reason: A股开关标杆}
+      - {type: company, id: 中天科技, ticker: "600522", market: CN, listed: true, reason: A股线缆标杆}
+
+  - id: optical_interconnect
+    name: 光通信与互连
+    macro: ai_capex
+    note: 解决「数据在机柜之间怎么传」，与电力(「电从哪来」)是不同瓶颈
+    targets:
+      - {type: theme,   id: optical-communication, name: 光通信, listed: false, reason: thesis}
+      - {type: company, id: GLW,  name: 康宁,   market: US, listed: true, reason: Park指定，光纤}
+      - {type: company, id: MRVL, name: 迈威尔, market: US, listed: true, reason: Park指定，光DSP}
+      - {type: company, id: COHR, name: Coherent, market: US, listed: true, reason: 光模块标杆}
+      - {type: company, id: 中际旭创, ticker: "300308", market: CN, listed: true, reason: A股光模块标杆}
+      - {type: company, id: 新易盛, ticker: "300502",   market: CN, listed: true, reason: A股光模块标杆}
+      - {type: company, id: 天孚通信, ticker: "300394", market: CN, listed: true, reason: A股光器件标杆}
+
+  - id: edge_consumer
+    name: 端侧与消费电子
+    macro: ai_capex
+    targets:
+      - {type: company, id: AAPL, name: 苹果, market: US, listed: true, reason: Park指定}
+      - {type: company, id: QCOM, name: 高通, market: US, listed: true, reason: Park指定}
+      - {type: company, id: 立讯精密, ticker: "002475", market: CN, listed: true, reason: A股标杆}
+      - {type: company, id: 歌尔股份, ticker: "002241", market: CN, listed: true, reason: A股标杆}
+
+  - id: model_application
+    name: 模型与应用层
+    macro: ai_capex
+    targets:
+      - {type: theme, id: ai-development, name: AI发展, listed: false, reason: "Park指定；AI发展是Park四件事之首，承接不点名具体公司的AI新闻"}
+      - {type: company, id: PLTR, name: Palantir, market: US, listed: true, reason: Park指定}
+      - {type: company, id: openai,    name: OpenAI,    listed: false, reason: "AI发展是Park四件事之首；未上市，不分配代码"}
+      - {type: company, id: anthropic, name: Anthropic, listed: false, reason: "同上"}
+      - {type: company, id: "00100", name: MiniMax, market: HK, listed: true, reason: "Park指定；AI模型与应用层重要观察对象"}
+      - {type: company, id: "02513", name: 智谱, market: HK, listed: true, reason: "Park指定；AI模型与应用层重要观察对象"}
+      - {type: company, id: github, name: GitHub, listed: false, reason: "Park指定；开发者与AI生态基础设施观察对象；非独立上市公司"}
+      - {type: company, id: 科大讯飞, ticker: "002230", market: CN, listed: true, reason: A股标杆}
+      - {type: company, id: 金山办公, ticker: "688111", market: CN, listed: true, reason: A股标杆}
+
+  - id: robotics_embodied
+    name: 机器人与具身智能
+    macro: ai_capex
+    targets:
+      - {type: theme,   id: embodied-ai, name: 具身智能, listed: false, reason: thesis}
+      - {type: company, id: TSLA,   name: 特斯拉, market: US, listed: true, reason: Park指定}
+      - {type: company, id: figure, name: Figure,  listed: false, reason: 人形机器人标杆，未上市}
+      - {type: company, id: "688836", name: 宇树科技, market: CN, listed: true,
+         reason: A股人形机器人龙头, listed_at: "2026-08-19"}
+      - {type: company, id: 汇川技术, ticker: "300124", market: CN, listed: true, reason: A股运控标杆}
+      - {type: company, id: 绿的谐波, ticker: "688017", market: CN, listed: true, reason: A股谐波减速器标杆}
+
+  # ---- 风险偏好与加密 ----
+  - id: crypto_core
+    name: 加密核心资产
+    macro: risk_crypto
+    targets:
+      - {type: asset, id: BTC, reason: 持仓}
+      - {type: asset, id: ETH, reason: 持仓}
+
+  - id: crypto_equity_proxy
+    name: 加密股权代理
+    macro: risk_crypto
+    targets:
+      - {type: company, id: COIN, name: Coinbase,   market: US, listed: true, reason: BTC的股票表达}
+      - {type: company, id: MSTR, name: MicroStrategy, market: US, listed: true, reason: BTC的股票表达}
+      - {type: company, id: HOOD, name: Robinhood,  market: US, listed: true, reason: Park指定，零售资金流代理}
+
+  - id: onchain_perp
+    name: 链上与永续
+    macro: risk_crypto
+    targets:
+      - {type: asset,   id: HYPE, reason: 持仓}
+      - {type: company, id: hyperliquid, name: Hyperliquid, listed: false, reason: 协议本身，非上市主体}
+
+  # ---- 独立产业周期 ----
+  - id: innovative_drugs
+    name: 创新药
+    macro: standalone_cycle
+    targets:
+      - {type: theme,   id: innovative-drugs, name: 创新药, listed: false, reason: Park指定赛道}
+      - {type: company, id: LLY,  name: 礼来,     market: US, listed: true, reason: GLP-1龙头}
+      - {type: company, id: NVO,  name: 诺和诺德, market: US, listed: true, reason: GLP-1龙头}
+      - {type: company, id: VRTX, name: 福泰,     market: US, listed: true, reason: 创新药标杆}
+      - {type: company, id: REGN, name: 再生元,   market: US, listed: true, reason: 创新药标杆}
+      - {type: company, id: 恒瑞医药, ticker: "600276", market: CN, listed: true, reason: A股标杆}
+      - {type: company, id: 百济神州, ticker: "688235", market: CN, listed: true, reason: A股标杆}
+      - {type: company, id: 药明康德, ticker: "603259", market: CN, listed: true, reason: A股CXO标杆}
+
+  - id: platform_consumer
+    name: 大消费与平台
+    macro: standalone_cycle
+    targets:
+      - {type: theme, id: platform-consumer, name: 大消费与平台, listed: false, reason: "Park指定；不点名单一公司的平台与消费行业新闻入口"}
+      - {type: company, id: PDD, name: 拼多多, market: US, listed: true, reason: "Park指定；纳斯达克上市的大消费与平台经济观察对象"}
+      - {type: company, id: "00700", name: 腾讯, market: HK, listed: true, reason: "Park指定；港股平台、消费与AI生态观察对象"}
+      - {type: company, id: "09988", name: 阿里巴巴, market: HK, listed: true, reason: "Park指定；港股平台、消费与云业务观察对象"}
+
+  - id: geopolitical_crisis
+    name: 地缘冲突
+    macro: geopolitics
+    targets:
+      - {type: macro, id: geopolitical-crisis, name: 地缘冲突, listed: false, reason: "Park指定；承接不局限于中东或俄乌的地缘事件", links_assets: [WTI, XAU]}
+
+  - id: commercial_space
+    name: 商业航天
+    macro: standalone_cycle
+    targets:
+      - {type: theme,   id: commercial-space, name: 商业航天, listed: false, reason: Park指定赛道}
+      - {type: company, id: RKLB, name: Rocket Lab, market: US, listed: true, reason: 赛道标杆}
+      - {type: company, id: ASTS, name: AST SpaceMobile, market: US, listed: true, reason: 赛道标杆}
+      - {type: company, id: spacex, name: SpaceX, listed: false, reason: 赛道龙头，未上市}
+      - {type: company, id: 中国卫星, ticker: "600118", market: CN, listed: true, reason: A股标杆}
+      - {type: company, id: 航天电子, ticker: "600879", market: CN, listed: true, reason: A股标杆}
+      - {type: company, id: 上海瀚讯, ticker: "300762", market: CN, listed: true, reason: A股标杆}
+
+  # ---- 中国政策周期 ----
+  - id: cn_policy_liquidity
+    name: 政策与流动性
+    macro: china_policy
+    targets:
+      - {type: macro, id: pboc,        name: 中国人民银行, listed: false, reason: thesis, links_assets: [SSE, STAR50]}
+      - {type: macro, id: cn-fiscal,   name: 财政与专项债, listed: false, reason: thesis, links_assets: [SSE]}
+
+  - id: cn_localization
+    name: 国产替代
+    macro: china_policy
+    note: 横向驱动力，作用于本表全部 A 股标的，不单独持有标的
+    targets:
+      - {type: theme, id: domestic-substitution, name: 国产替代, listed: false, reason: thesis}

@@ -268,6 +268,7 @@ events/                  # Event aggregation (48h clustering, narratives)
 tagging/                 # Keyword tagger, LLM tagger, ticker extractor
 users/                   # User profiles and topic weights
 bridge/                  # Quant bridge (price impact from external service)
+config/                  # Pinned Park Exposure Registry snapshot
 api/                     # REST API routes
 db/                      # SQLAlchemy models, migrations, database init
 frontend/                # React + TypeScript + Vite frontend

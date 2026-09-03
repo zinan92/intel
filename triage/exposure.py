@@ -1,18 +1,38 @@
-"""Deterministic exposure matching for the approved realtime asset universe."""
+"""Deterministic realtime exposure matching backed by Park's target registry."""
 
 from __future__ import annotations
 
 import json
 import re
 from dataclasses import dataclass
-from typing import Any, Iterable
+from pathlib import Path
+from typing import Any, Iterable, Mapping
+
+import yaml
 
 
-EXPOSURE_UNIVERSE_VERSION = "macro-assets-v3"
+REGISTRY_PATH = Path(__file__).resolve().parents[1] / "config" / "park-exposure-registry.yaml"
 
-# Keep this order stable.  It is the same 16-asset universe used by the
-# Human K-line Review / Daily K-line products; it is deliberately local here so
-# realtime News Liquid does not import another product's runtime.
+
+def _load_registry() -> dict[str, Any]:
+    with REGISTRY_PATH.open(encoding="utf-8") as handle:
+        registry = yaml.safe_load(handle)
+    if not isinstance(registry, dict):
+        raise ValueError(f"Exposure registry must be a mapping: {REGISTRY_PATH}")
+    if not isinstance(registry.get("sectors"), list):
+        raise ValueError(f"Exposure registry has no sectors: {REGISTRY_PATH}")
+    if not isinstance(registry.get("matching", {}).get("aliases", []), list):
+        raise ValueError(f"Exposure registry aliases must be a list: {REGISTRY_PATH}")
+    return registry
+
+
+_REGISTRY = _load_registry()
+EXPOSURE_UNIVERSE_VERSION = f"park-exposure-registry-v{_REGISTRY['version']}"
+
+
+# Keep this order stable. It is the same 16-asset universe used by the Human
+# K-line Review / Daily K-line products. The legacy asset matcher below is
+# intentionally preserved so this registry migration is additive.
 APPROVED_ASSET_KEYS = (
     "dxy", "sp500", "nasdaq", "us_dividend", "vix",
     "bitcoin", "ethereum", "hype",
@@ -29,6 +49,7 @@ class ExposureMatch:
     asset_keys: tuple[str, ...]
     matched_by: tuple[str, ...]
     reason: str
+    targets: tuple[dict[str, Any], ...] = ()
 
 
 _ASSET_ALIASES: dict[str, tuple[str, ...]] = {
@@ -54,9 +75,10 @@ _ASSET_ALIASES: dict[str, tuple[str, ...]] = {
     "silver": ("SIL 2612", "SILZ26.CMX", "SI=F", "XAGUSD", "XAG", "silver", "白银", "银价"),
 }
 
-# Company stories are exposure to the index/asset that the user actually
-# reviews, not new assets in the universe.  These are explicit table entries,
-# not an LLM inference.
+
+# Company stories remain linked to the same market assets as before. This map
+# is retained verbatim from macro-assets-v3 so the registry migration cannot
+# silently change the existing 16-asset gate.
 _CONSTITUENT_TICKER_ASSETS: dict[str, tuple[str, ...]] = {
     "NVDA": ("sp500", "nasdaq"), "NVIDIA": ("sp500", "nasdaq"), "英伟达": ("sp500", "nasdaq"),
     "MU": ("sp500", "nasdaq"), "MICRON": ("sp500", "nasdaq"), "美光": ("sp500", "nasdaq"),
@@ -76,6 +98,9 @@ _CONSTITUENT_TICKER_ASSETS: dict[str, tuple[str, ...]] = {
     "MSTR": ("sp500", "bitcoin"), "MICROSTRATEGY": ("sp500", "bitcoin"),
 }
 
+
+# Existing macro-to-asset behavior is deliberately unchanged. Registry aliases
+# add structured target identities alongside these canonical asset keys.
 _MACRO_RULES: tuple[tuple[str, re.Pattern[str], tuple[str, ...]], ...] = (
     (
         "us_macro",
@@ -133,53 +158,176 @@ def _iter_tickers(value: Any) -> Iterable[str]:
                 yield str(item).strip()
 
 
+def _target_record(raw: Mapping[str, Any], sector: Mapping[str, Any]) -> dict[str, Any]:
+    record: dict[str, Any] = {
+        "type": str(raw["type"]),
+        "id": str(raw["id"]),
+        "name": str(raw.get("name", raw["id"])),
+        "sector": str(sector["name"]),
+        "macro": str(sector["macro"]),
+    }
+    for field in ("market", "ticker", "listed", "reason", "links_assets", "listed_at"):
+        if field in raw:
+            record[field] = raw[field]
+    if (
+        record.get("market") == "CN"
+        and "ticker" not in record
+        and re.fullmatch(r"\d{6}", record["id"])
+    ):
+        record["ticker"] = record["id"]
+    return record
+
+
+def _build_registry_targets() -> tuple[dict[str, Any], ...]:
+    records: list[dict[str, Any]] = []
+    for sector in _REGISTRY["sectors"]:
+        for raw in sector.get("targets", []):
+            records.append(_target_record(raw, sector))
+    return tuple(records)
+
+
+_REGISTRY_TARGETS = _build_registry_targets()
+_TARGETS_BY_ID: dict[str, tuple[dict[str, Any], ...]] = {}
+for _record in _REGISTRY_TARGETS:
+    _TARGETS_BY_ID.setdefault(_record["id"], tuple())
+    _TARGETS_BY_ID[_record["id"]] += (_record,)
+
+
+def _asset_registry_targets() -> dict[str, dict[str, Any]]:
+    raw_assets = {str(asset["id"]): asset for asset in _REGISTRY.get("assets", [])}
+    registry_ids = {
+        "dxy": "DXY", "sp500": "SPX", "nasdaq": "NDX", "us_dividend": "SCHD", "vix": "VIX",
+        "bitcoin": "BTC", "ethereum": "ETH", "hype": "HYPE", "shanghai": "SSE", "star50": "STAR50",
+        "china_dividend": "SSE_DIV", "nikkei": "N225", "kospi": "KOSPI", "wti": "WTI", "gold": "XAU", "silver": "XAG",
+    }
+    result: dict[str, dict[str, Any]] = {}
+    for key, registry_id in registry_ids.items():
+        raw = raw_assets.get(registry_id, {})
+        result[key] = {
+            "type": "asset",
+            "id": key,
+            "name": raw.get("name", key),
+            "market": raw.get("market"),
+            "kind": raw.get("kind"),
+        }
+    return result
+
+
+_ASSET_TARGETS = _asset_registry_targets()
+
+def _alias_rules() -> tuple[tuple[str, tuple[str, ...], tuple[dict[str, Any], ...]], ...]:
+    rules: list[tuple[str, tuple[str, ...], tuple[dict[str, Any], ...]]] = []
+    for raw in _REGISTRY.get("matching", {}).get("aliases", []):
+        rule_id = str(raw["id"])
+        terms = tuple(str(term) for term in raw.get("terms", []))
+        target_ids = raw.get("targets", raw.get("target", []))
+        if isinstance(target_ids, str):
+            target_ids = [target_ids]
+        records = tuple(
+            record
+            for target_id in target_ids
+            for record in _TARGETS_BY_ID.get(str(target_id), ())
+        )
+        if not records:
+            raise ValueError(f"Registry alias {rule_id!r} points to no target")
+        rules.append((rule_id, terms, records))
+    return tuple(rules)
+
+
+_ALIAS_RULES = _alias_rules()
+_CONTENT_CHARS = int(_REGISTRY.get("matching", {}).get("content_chars", 2000))
+
+
+def _record_key(record: Mapping[str, Any]) -> tuple[str, str, str, str]:
+    return (
+        str(record["type"]),
+        str(record["id"]),
+        str(record.get("sector", "")),
+        str(record.get("macro", "")),
+    )
+
+
+def _append_target(targets: dict[tuple[str, str, str, str], dict[str, Any]], record: Mapping[str, Any]) -> None:
+    key = _record_key(record)
+    if key not in targets:
+        targets[key] = dict(record)
+
+
+def _match_registry_targets(
+    text: str,
+    targets: dict[tuple[str, str, str, str], dict[str, Any]],
+    matched_by: set[str],
+) -> None:
+    for record in _REGISTRY_TARGETS:
+        candidates = (record["id"], record["name"], record.get("ticker", ""))
+        if any(_contains_alias(text, candidate) for candidate in candidates if candidate):
+            _append_target(targets, record)
+            matched_by.add(f"target:{record['id']}")
+
+    for rule_id, terms, records in _ALIAS_RULES:
+        matched_terms = [term for term in terms if _contains_alias(text, term)]
+        if not matched_terms:
+            continue
+        for record in records:
+            _append_target(targets, record)
+        matched_by.add(f"alias:{rule_id}:{'|'.join(matched_terms)}")
+
+
 def match_article_exposure(
     title: str | None,
     content: str | None,
     tickers: Any = None,
 ) -> ExposureMatch:
-    """Match an article to approved assets using only explicit lookup rules."""
-    text = f"{title or ''}\n{(content or '')[:2000]}"
-    found: set[str] = set()
+    """Match an article to legacy assets and v6 registry targets deterministically."""
+    text = f"{title or ''}\n{(content or '')[:_CONTENT_CHARS]}"
+    ticker_values = tuple(_iter_tickers(tickers))
+    lookup_text = text + ("\n" + " ".join(ticker_values) if ticker_values else "")
+    found_assets: set[str] = set()
     matched_by: set[str] = set()
+    targets: dict[tuple[str, str, str, str], dict[str, Any]] = {}
 
-    for raw_ticker in _iter_tickers(tickers):
+    for raw_ticker in ticker_values:
         normalized = raw_ticker.strip().upper()
         for key, aliases in _ASSET_ALIASES.items():
             if any(normalized == alias.upper() for alias in aliases):
-                found.add(key)
+                found_assets.add(key)
                 matched_by.add(f"asset:{key}")
-        for alias, assets in _CONSTITUENT_TICKER_ASSETS.items():
-            if normalized == alias.upper():
-                found.update(assets)
-                matched_by.add(f"constituent:{alias}")
 
     for key, aliases in _ASSET_ALIASES.items():
-        if any(_contains_alias(text, alias) for alias in aliases):
-            found.add(key)
+        if any(_contains_alias(lookup_text, alias) for alias in aliases):
+            found_assets.add(key)
             matched_by.add(f"text:{key}")
 
-    for alias, assets in _CONSTITUENT_TICKER_ASSETS.items():
-        if _contains_alias(text, alias):
-            found.update(assets)
-            matched_by.add(f"constituent:{alias}")
-
     for rule_name, pattern, assets in _MACRO_RULES:
-        if pattern.search(text):
-            found.update(assets)
+        if pattern.search(lookup_text):
+            found_assets.update(assets)
             matched_by.add(f"macro:{rule_name}")
 
-    asset_keys = tuple(key for key in APPROVED_ASSET_KEYS if key in found)
-    if not asset_keys:
+    _match_registry_targets(lookup_text, targets, matched_by)
+
+    for alias, assets in _CONSTITUENT_TICKER_ASSETS.items():
+        if _contains_alias(lookup_text, alias):
+            found_assets.update(assets)
+            matched_by.add(f"constituent:{alias}")
+
+    for key in APPROVED_ASSET_KEYS:
+        if key in found_assets:
+            _append_target(targets, _ASSET_TARGETS[key])
+
+    asset_keys = tuple(key for key in APPROVED_ASSET_KEYS if key in found_assets)
+    target_values = tuple(targets.values())
+    if not asset_keys and not target_values:
         return ExposureMatch(
             status="unmatched",
             asset_keys=(),
             matched_by=(),
             reason="no_approved_exposure",
+            targets=(),
         )
     return ExposureMatch(
         status="matched",
         asset_keys=asset_keys,
         matched_by=tuple(sorted(matched_by)),
         reason=";".join(sorted(matched_by)),
+        targets=target_values,
     )

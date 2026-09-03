@@ -65,6 +65,7 @@ class Article(Base):
     exposure_status: Mapped[str | None] = mapped_column(String, nullable=True)
     exposure_assets: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON canonical asset keys
     exposure_reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    exposure_targets: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON structured registry targets
     triage_bucket: Mapped[str | None] = mapped_column(String)
     triage_status: Mapped[str | None] = mapped_column(String)
     triage_direction: Mapped[str | None] = mapped_column(String)

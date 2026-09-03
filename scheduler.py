@@ -405,6 +405,15 @@ def _run_realtime_triage() -> None:
             return []
         return [str(item) for item in value] if isinstance(value, list) else []
 
+    def _targets(raw: str | None) -> list[dict[str, Any]]:
+        if not raw:
+            return []
+        try:
+            value = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return []
+        return [item for item in value if isinstance(item, dict)] if isinstance(value, list) else []
+
     session = get_session()
     try:
         candidates = (
@@ -451,6 +460,7 @@ def _run_realtime_triage() -> None:
                 "content": article.content,
                 "tickers": _tickers(article.tickers),
                 "exposure_assets": _tickers(article.exposure_assets),
+                "exposure_targets": _targets(article.exposure_targets),
                 "related_evidence": evidence_by_id.get(article.id, []),
             }
             for article in candidates

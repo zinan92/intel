@@ -26,9 +26,12 @@ def test_rollingnews_page_displays_received_time_as_primary_provenance():
     assert "renderPipelineTimes(data.stats)" in page
     assert 'id="pendingHealth"' in page
     assert 'id="failedHealth"' in page
-    assert "16-asset exposure gate" in page
+    assert "Park target registry exposure gate" in page
     assert "exposed + ' exposed" in page
     assert "filtered" in page
+    assert "exposure_targets" in page
+    assert "renderExposureTargets" in page
+    assert "target.links_assets" in page
 
 
 def test_rollingnews_launch_surface_is_scoped_to_static_directory():

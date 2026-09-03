@@ -1,5 +1,18 @@
 # Runtime Registry
 
+## 2026-09-03 · Realtime exposure uses Park Exposure Registry v6
+
+- The realtime gate reads the pinned `config/park-exposure-registry.yaml`
+  snapshot from `zinan92/watchlist` commit `29ce3c0`.
+- Registry targets preserve company, theme, macro, and asset identity. The
+  matching aliases are configuration-backed and only decide whether an item
+  enters AI triage; they do not assign High / Watch / Noise / Unknown.
+- Existing `macro-assets-v3` asset aliases remain unchanged for compatibility;
+  `exposure_targets` stores the structured target list and `exposure_assets`
+  remains the legacy canonical-asset field.
+- Backfill is operational-realtime-only. Hourly data and SEC backfill rows are
+  excluded from the registry backfill.
+
 ## 2026-09-03 · Finance delivery review gaps closed
 
 - Issue #104 records all Daily and Weekly generation failures, including
