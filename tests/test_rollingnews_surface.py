@@ -39,6 +39,5 @@ def test_rollingnews_launch_surface_is_scoped_to_static_directory():
         encoding="utf-8"
     )
 
-    assert "--bind 127.0.0.1" in service
-    assert "--directory \"$PWD/rollingnews\"" in service
-    assert "8787" in service
+    assert '"$PWD/scripts/serve_rollingnews.py"' in service
+    assert "http.server" not in service
