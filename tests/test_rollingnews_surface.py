@@ -50,3 +50,15 @@ def test_rollingnews_cold_load_has_bounded_timeout_and_retry():
     assert "var FETCH_RETRY_DELAYS_MS = [1000, 2500];" in page
     assert "function fetchRealtime" in page
     assert "AbortController" in page
+
+
+def test_rollingnews_rate_uses_server_metric_and_distinguishes_unavailable():
+    page = (ROOT / "rollingnews" / "index.html").read_text(encoding="utf-8")
+
+    assert 'id="rate">rate unavailable<' in page
+    assert "function renderIngestRate" in page
+    assert "stats.ingest_rate" in page
+    assert "headlines_per_minute" in page
+    assert "window_minutes" in page
+    assert "rate unavailable" in page
+    assert "state.arrivalTimes" not in page

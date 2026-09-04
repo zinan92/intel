@@ -510,7 +510,7 @@
       <span id="lastReceived">RECEIVED --</span>
       <span id="lastTriaged">TRIAGED --</span>
       <span id="clock">--:--:--</span>
-      <span id="rate">0 headlines/min</span>
+      <span id="rate">rate unavailable</span>
     </div>
   </div>
 
@@ -790,7 +790,6 @@
     bootstrapped: false,
     known: {},
     items: [],
-    arrivalTimes: [],
     refreshInFlight: false
   };
   var refs = {
@@ -1080,12 +1079,6 @@
     });
   }
 
-  function updateRate() {
-    var cutoff = Date.now() - 60000;
-    state.arrivalTimes = state.arrivalTimes.filter(function (value) { return value > cutoff; });
-    refs.rate.textContent = state.arrivalTimes.length + ' headlines/min';
-  }
-
   function setConnection(label, className) {
     refs.connection.textContent = label;
     refs.connection.className = 'connection-state ' + (className || '');
@@ -1095,6 +1088,25 @@
     stats = stats || {};
     refs.lastReceived.textContent = 'RECEIVED ' + timeLabel(stats.last_collected_at);
     refs.lastTriaged.textContent = 'TRIAGED ' + timeLabel(stats.last_triaged_at);
+  }
+
+  function renderIngestRate(stats) {
+    var ingestRate = stats && stats.ingest_rate;
+    var value = ingestRate && Number(ingestRate.headlines_per_minute);
+    var windowMinutes = ingestRate && Number(ingestRate.window_minutes);
+    if (
+      !ingestRate ||
+      ingestRate.status !== 'ok' ||
+      !Number.isFinite(value) ||
+      !Number.isFinite(windowMinutes)
+    ) {
+      refs.rate.textContent = 'rate unavailable';
+      refs.rate.title = 'Ingest-rate calculation unavailable';
+      return;
+    }
+    refs.rate.textContent = value.toFixed(1) + ' headlines/min · ' + windowMinutes + 'm';
+    refs.rate.title = Number(ingestRate.article_count || 0) +
+      ' operational realtime articles received in the last ' + windowMinutes + ' minutes';
   }
 
   function fetchRealtime(attempt) {
@@ -1135,7 +1147,6 @@
           items.forEach(function (item) {
             if (!state.known[item.id]) {
               newIds[item.id] = true;
-              state.arrivalTimes.push(Date.now());
             }
           });
         }
@@ -1151,11 +1162,12 @@
         renderBuckets(data);
         renderHealth(data.source_health);
         renderPipelineTimes(data.stats);
-        updateRate();
+        renderIngestRate(data.stats);
         setConnection('SYNCED', 'ok');
       })
       .catch(function (error) {
         setConnection('OFFLINE', 'error');
+        renderIngestRate(null);
         refs.health.textContent = 'SOURCE HEALTH  API unavailable · ' + error.message;
       })
       .finally(function () {
