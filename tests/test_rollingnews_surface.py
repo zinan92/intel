@@ -47,7 +47,7 @@ def test_rollingnews_cold_load_has_bounded_timeout_and_retry():
     page = (ROOT / "rollingnews" / "index.html").read_text(encoding="utf-8")
 
     assert "var FETCH_TIMEOUT_MS = 20000;" in page
-    assert "var FETCH_RETRY_DELAYS_MS = [1000, 2500];" in page
+    assert "var FETCH_RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 15000];" in page
     assert "function fetchRealtime" in page
     assert "AbortController" in page
 

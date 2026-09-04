@@ -785,7 +785,9 @@
   var API_BASE = (window.NEWS_API_BASE || '').replace(/\/$/, '');
   var POLL_MS = 15000;
   var FETCH_TIMEOUT_MS = 20000;
-  var FETCH_RETRY_DELAYS_MS = [1000, 2500];
+  // launchd may need about 10 seconds to replace and initialize the API.
+  // Keep initial load in CONNECTING through a 30-second retry horizon.
+  var FETCH_RETRY_DELAYS_MS = [1000, 2000, 4000, 8000, 15000];
   var state = {
     bootstrapped: false,
     known: {},
