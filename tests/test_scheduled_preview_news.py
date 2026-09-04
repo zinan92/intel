@@ -194,7 +194,9 @@ def test_deterministic_validation_fallback_is_persisted_as_visible_complete_unkn
     assert saved.triage_error == "high_impact direction must be bullish or bearish"
     with patch.object(ui, "get_session", return_value=session), \
          patch("scheduler.get_last_results", return_value={}):
-        response = ui.get_realtime_feed(window="24h", limit=20)
+        # Keep the fixed historical fixture visible; this assertion is about
+        # deterministic-failure fallback rather than recency filtering.
+        response = ui.get_realtime_feed(window="36500d", limit=20)
 
     assert response["items"][0]["triage"]["bucket"] == "unknown"
     assert response["operational"]["unknown"]["count"] == 1

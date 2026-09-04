@@ -81,7 +81,8 @@ def test_realtime_api_uses_utc_rfc3339_and_orders_by_received_time(monkeypatch):
     monkeypatch.setattr(ui, "get_session", lambda: session)
     monkeypatch.setattr(scheduler, "get_last_results", lambda: {})
 
-    result = ui.get_realtime_feed(window="24h", limit=20)
+    # This test validates wire timestamps and ordering, not a moving 24h cutoff.
+    result = ui.get_realtime_feed(window="36500d", limit=20)
 
     assert [item["title"] for item in result["items"]] == [
         "Published earlier but received later",

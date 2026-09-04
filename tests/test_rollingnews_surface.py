@@ -41,3 +41,12 @@ def test_rollingnews_launch_surface_is_scoped_to_static_directory():
 
     assert '"$PWD/scripts/serve_rollingnews.py"' in service
     assert "http.server" not in service
+
+
+def test_rollingnews_cold_load_has_bounded_timeout_and_retry():
+    page = (ROOT / "rollingnews" / "index.html").read_text(encoding="utf-8")
+
+    assert "var FETCH_TIMEOUT_MS = 20000;" in page
+    assert "var FETCH_RETRY_DELAYS_MS = [1000, 2500];" in page
+    assert "function fetchRealtime" in page
+    assert "AbortController" in page

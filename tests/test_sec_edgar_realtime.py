@@ -5,7 +5,7 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
 from db.models import Base, CollectorRun, SourceRegistry
@@ -385,3 +385,64 @@ def test_sec_ui_health_falls_back_to_persisted_provider_failure(monkeypatch):
         "status": "degraded",
     }]
     session.close()
+
+
+def test_ui_source_health_latest_run_lookup_avoids_full_history_group_scan(monkeypatch):
+    """The rolling-news read path must stay index-bounded as run history grows."""
+    import api.ui_routes as ui
+    import scheduler
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session = Session(engine)
+    older_at = datetime(2026, 9, 4, 1, 0, 0)
+    latest_at = datetime(2026, 9, 4, 2, 0, 0)
+    session.add(SourceRegistry(
+        source_key="sec_edgar:watchlist",
+        source_type="sec_edgar",
+        display_name="SEC EDGAR Watchlist",
+        config_json="{}",
+        is_active=1,
+        lane="realtime",
+        schedule_seconds=60,
+    ))
+    session.add_all([
+        CollectorRun(
+            source_type="sec_edgar",
+            source_key="sec_edgar:watchlist",
+            status="error",
+            articles_fetched=0,
+            articles_saved=0,
+            duration_ms=500,
+            error_message="older failure",
+            completed_at=older_at,
+        ),
+        CollectorRun(
+            source_type="sec_edgar",
+            source_key="sec_edgar:watchlist",
+            status="ok",
+            articles_fetched=12,
+            articles_saved=0,
+            duration_ms=100,
+            completed_at=latest_at,
+        ),
+    ])
+    session.commit()
+    monkeypatch.setattr(scheduler, "get_last_results", lambda: {})
+
+    statements: list[str] = []
+
+    def record_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(statement.lower())
+
+    event.listen(engine, "before_cursor_execute", record_sql)
+    try:
+        health = ui._build_source_health(session)
+    finally:
+        event.remove(engine, "before_cursor_execute", record_sql)
+        session.close()
+
+    assert health[0]["last_attempt_at"] == utc_rfc3339(latest_at)
+    collector_run_queries = [sql for sql in statements if "collector_runs" in sql]
+    assert collector_run_queries
+    assert all("group by" not in sql for sql in collector_run_queries)
