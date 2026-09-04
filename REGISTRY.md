@@ -5,6 +5,10 @@
 - PR #118 replaces the 3.3-million-row collector-run history aggregation on
   every UI refresh with index-bounded latest-run lookups. A post-restart
   browser cold-open reached `SYNCED` with real news in 2.181 seconds.
+- A follow-up cold-start acceptance found that an API-only launchd replacement
+  can take about 10 seconds before port 8001 is ready. Initial browser retries
+  now span 30 seconds and remain `CONNECTING` rather than declaring a false
+  `OFFLINE` state during that bounded startup interval.
 - Issue #117 defines `headlines/min` as all non-backfill realtime Articles
   received in a fixed trailing 10-minute window, divided by 10. The API
   publishes the count, window, rate, timestamps, and availability state; the
