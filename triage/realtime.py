@@ -12,6 +12,11 @@ BUCKETS = frozenset({"high_impact", "watch", "noise", "unknown"})
 DIRECTIONS = frozenset({"bullish", "bearish", "unclear"})
 ASSET_IMPACTS = frozenset({"up", "down", "unclear"})
 _HIGH_IMPACT_LEAD_CHARS = 320
+_HIGH_IMPACT_ADVOCACY_RE = re.compile(r"敦促|呼吁|建议|应该|希望|要求")
+_HIGH_IMPACT_CONFIRMED_DECISION_RE = re.compile(
+    r"\bFOMC\b|利率决议|利率决定|(?:宣布|决定).{0,12}(?:加息|降息)",
+    re.IGNORECASE,
+)
 _HIGH_IMPACT_RE = re.compile(
     r"\b(?:fomc|cpi|pce|nfp|nonfarm payroll|jackson hole|fed decision|rate decision|"
     r"emergency rate|(?:fed|ecb|boj|central bank) (?:rate )?decision)\b|"
@@ -24,6 +29,9 @@ _SCHEDULED_CATALYST_RE = re.compile(
     r"即将.{0,12}(?:公布|发布)|将于.{0,20}(?:公布|发布|举行)|"
     r"(?:明(?:天|日|晚)|今晚|今夜).{0,20}(?:来袭|公布|发布|出炉|会议|决议)|"
     r"(?:决议|会议|数据|报告).{0,12}前|"
+    r"(?:美联储|FOMC|欧洲央行|日本央行|央行).{0,20}"
+    r"(?:加息|降息|维持利率|按兵不动).{0,12}(?:概率|预期|定价)|"
+    r"距离.{0,20}(?:FOMC|央行).{0,12}(?:会议|决议).{0,12}(?:还有|剩余)|"
     r"(?:周[一二三四五六日天]|下周|本周末).{0,12}(?:会议|开会|决议|公布|发布)|"
     r"(?:据悉可能|据悉倾向|倾向于|或将|可能|预计|预期|料将|有望|或).{0,24}"
     r"(?:公布|发布|出炉|维持|上涨|下跌|少增|增加|召开|开会|会议|决议|产量|政策|加息|降息|CPI|非农|信贷|社融)|"
@@ -99,8 +107,14 @@ def _normalize_watch_for(value: Any) -> list[str]:
 
 
 def _has_high_impact_floor(article: dict[str, Any]) -> bool:
+    title = article.get("title") or ""
+    if (
+        _HIGH_IMPACT_ADVOCACY_RE.search(title)
+        and not _HIGH_IMPACT_CONFIRMED_DECISION_RE.search(title)
+    ):
+        return False
     text = (
-        f"{article.get('title') or ''} "
+        f"{title} "
         f"{(article.get('content') or '')[:_HIGH_IMPACT_LEAD_CHARS]}"
     )
     return bool(_HIGH_IMPACT_RE.search(text))
