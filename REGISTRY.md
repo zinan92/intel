@@ -1,5 +1,16 @@
 # Runtime Registry
 
+## 2026-09-04 · Daily publication runs a frozen-window scoring preflight
+
+- Issue #114 fixes the 08:00 launchd race: when the current rolling window has
+  incomplete scoring, the publisher runs a bounded tagger preflight and retries
+  synthesis against the same frozen UTC window.
+- A preflight/provider failure remains visible in the Daily delivery manifest;
+  it never falls back to yesterday's Brief. A later successful delivery marks
+  the prior failure as resolved while retaining its original evidence.
+- The direct Daily CLI now bootstraps the repo root itself, so manual recovery
+  uses the same import/runtime path as launchd.
+
 ## 2026-09-04 · Local Rolling News serves a same-origin API
 
 - `com.park-intel.rollingnews-static` now runs
