@@ -200,6 +200,125 @@ def test_generation_failure_without_previous_brief_still_writes_manifest(monkeyp
     manifest_dir.cleanup()
 
 
+def test_current_publish_runs_scoring_preflight_then_retries_same_window(monkeypatch):
+    from scripts import publish_finance_daily_newsletter as mod
+    from scripts.generate_narrative_signal import ScoringCoverageError
+
+    session = _session()
+    session.add(Brief(
+        id=42,
+        content="new brief",
+        article_count=100,
+        signal_count=3,
+        status="published",
+        provider="codex-cli",
+        candidate_article_count=300,
+        scored_article_count=300,
+        scoring_coverage=1.0,
+        created_at=datetime(2026, 9, 4, 0, 0, 0),
+    ))
+    session.commit()
+    failure = ScoringCoverageError(
+        eligible_count=276,
+        scored_count=174,
+        window_start=datetime(2026, 9, 3, 0, 0),
+        window_end=datetime(2026, 9, 4, 0, 0),
+    )
+    generate_calls = []
+
+    def fake_generate(**kwargs):
+        generate_calls.append(kwargs)
+        if len(generate_calls) == 1:
+            raise failure
+        return 42
+
+    with patch.object(mod, "generate_brief", side_effect=fake_generate), \
+         patch.object(mod, "current_brief_window", return_value=(failure.window_start, failure.window_end, "rolling_24h")), \
+         patch.object(mod, "run_tagger") as tagger, \
+         patch.object(mod, "get_session", return_value=session), \
+         patch.object(mod, "save_to_obsidian", return_value=Path("/tmp/today.md")), \
+         patch.object(mod, "send_to_feishu", return_value=False):
+        result = mod.publish_finance_daily_newsletter()
+
+    assert result is not None
+    assert result.brief_id == 42
+    assert len(generate_calls) == 2
+    assert generate_calls[0]["window_end"] == failure.window_end
+    assert generate_calls[1]["window_end"] == failure.window_end
+    assert tagger.call_args.kwargs["window_start"] == failure.window_start
+    assert tagger.call_args.kwargs["window_end"] == failure.window_end
+
+
+def test_current_publish_exposes_scoring_preflight_failure(tmp_path, monkeypatch):
+    from scripts import publish_finance_daily_newsletter as mod
+    from scripts.generate_narrative_signal import ScoringCoverageError
+
+    monkeypatch.setenv("OBSIDIAN_FINANCE_NEWSLETTER_DIR", str(tmp_path))
+    monkeypatch.setenv("PARK_INTEL_SKIP_FEISHU", "1")
+    failure = ScoringCoverageError(
+        eligible_count=276,
+        scored_count=174,
+        window_start=datetime(2026, 9, 3, 0, 0),
+        window_end=datetime(2026, 9, 4, 0, 0),
+    )
+    with patch.object(mod, "generate_brief", side_effect=failure), \
+         patch.object(mod, "run_tagger", side_effect=RuntimeError("tagger unavailable")):
+        assert mod.publish_finance_daily_newsletter() is None
+
+    manifest = json.loads(
+        (tmp_path / ".delivery-manifests" / "2026-09-04-daily.json").read_text(encoding="utf-8")
+    )
+    assert manifest["status"] == "generation_failed"
+    assert manifest["failure_type"] == "RuntimeError"
+
+
+def test_successful_delivery_marks_previous_failure_manifest_resolved(tmp_path, monkeypatch):
+    from scripts import publish_finance_daily_newsletter as mod
+
+    monkeypatch.setenv("OBSIDIAN_FINANCE_NEWSLETTER_DIR", str(tmp_path))
+    manifest_dir = tmp_path / ".delivery-manifests"
+    manifest_dir.mkdir()
+    (manifest_dir / "2026-09-04-daily.json").write_text(
+        json.dumps({
+            "report": "finance_daily_newsletter",
+            "report_date": "2026-09-04",
+            "status": "blocked_scoring_coverage",
+            "alert_sent": True,
+        }),
+        encoding="utf-8",
+    )
+    session = _session()
+    session.add(Brief(
+        id=43,
+        content="new brief",
+        article_count=100,
+        signal_count=3,
+        status="published",
+        provider="codex-cli",
+        candidate_article_count=300,
+        scored_article_count=300,
+        scoring_coverage=1.0,
+        created_at=datetime(2026, 9, 4, 0, 0, 0),
+    ))
+    session.commit()
+
+    with patch.object(mod, "generate_brief", return_value=43), \
+         patch.object(mod, "current_brief_window", return_value=(
+             datetime(2026, 9, 3, 0, 0), datetime(2026, 9, 4, 0, 0), "rolling_24h",
+         )), \
+         patch.object(mod, "get_session", return_value=session), \
+         patch.object(mod, "save_to_obsidian", return_value=Path("/tmp/today.md")), \
+         patch.object(mod, "send_to_feishu", return_value=True):
+        result = mod.publish_finance_daily_newsletter()
+
+    assert result is not None
+    payload = json.loads((manifest_dir / "2026-09-04-daily.json").read_text(encoding="utf-8"))
+    assert payload["status"] == "published"
+    assert payload["resolved"] is True
+    assert payload["previous_failure_status"] == "blocked_scoring_coverage"
+    assert payload["resolved_brief_id"] == 43
+
+
 def test_generation_failure_writes_manifest_and_alerts_once(tmp_path, monkeypatch):
     from scripts import publish_finance_daily_newsletter as mod
 

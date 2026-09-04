@@ -9,11 +9,14 @@ import logging
 import os
 import re
 import shutil
+import sys
 import time
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import requests
 from dotenv import load_dotenv
@@ -22,9 +25,11 @@ from briefs.models import Brief
 from db.database import get_session
 from scripts.generate_narrative_signal import (
     ScoringCoverageError,
+    current_brief_window,
     generate_brief,
     window_end_for_archive_date,
 )
+from scripts.run_llm_tagger import run_tagger
 
 logger = logging.getLogger(__name__)
 
@@ -403,6 +408,60 @@ def _record_scoring_failure(
     )
 
 
+def _mark_daily_delivery_resolved(
+    brief: Brief,
+    obsidian_path: Path,
+    feishu_sent: bool,
+    *,
+    is_backfill: bool,
+) -> None:
+    """Close a same-day failure manifest without discarding its evidence."""
+    created = brief.created_at
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=ZoneInfo("UTC"))
+    report_date = created.astimezone(BRIEF_TIMEZONE).date().isoformat()
+    path = _obsidian_dir() / ".delivery-manifests" / f"{report_date}-daily.json"
+    if not path.exists():
+        return
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    if not isinstance(payload, dict) or payload.get("status") not in {
+        "blocked_scoring_coverage",
+        "generation_failed",
+    }:
+        return
+    previous_status = payload["status"]
+    payload.update({
+        "status": "archived" if is_backfill else "published",
+        "previous_failure_status": previous_status,
+        "resolved": True,
+        "resolved_brief_id": brief.id,
+        "resolved_archive_path": str(obsidian_path),
+        "feishu_sent": feishu_sent,
+        "updated_at": datetime.now(BRIEF_TIMEZONE).isoformat(),
+    })
+    temp_path = path.with_suffix(".tmp")
+    temp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    temp_path.replace(path)
+
+
+def _generate_current_brief_with_preflight(limit: int) -> int | None:
+    """Generate against one frozen window, filling missing scores first."""
+    _, frozen_end, _ = current_brief_window()
+    try:
+        return generate_brief(limit=limit, window_end=frozen_end, publish_current=True)
+    except ScoringCoverageError as coverage_error:
+        run_tagger(
+            limit=max(limit * 3, 300),
+            batch_size=20,
+            window_start=coverage_error.window_start,
+            window_end=coverage_error.window_end,
+        )
+        return generate_brief(limit=limit, window_end=frozen_end, publish_current=True)
+
+
 def publish_finance_daily_newsletter(
     limit: int = 100,
     *,
@@ -415,10 +474,12 @@ def publish_finance_daily_newsletter(
     is_backfill = archive_date is not None
     try:
         brief_id = (
-            generate_brief(
+            _generate_current_brief_with_preflight(limit)
+            if not is_backfill
+            else generate_brief(
                 limit=limit,
-                window_end=window_end_for_archive_date(archive_date) if archive_date else None,
-                publish_current=not is_backfill,
+                window_end=window_end_for_archive_date(archive_date),
+                publish_current=False,
             )
             if generate
             else None
@@ -456,6 +517,12 @@ def publish_finance_daily_newsletter(
             feishu_sent = False
         else:
             feishu_sent = send_to_feishu(brief, obsidian_path, source_health)
+        _mark_daily_delivery_resolved(
+            brief,
+            obsidian_path,
+            feishu_sent,
+            is_backfill=is_backfill,
+        )
         return DeliveryResult(
             brief_id=brief.id,
             obsidian_path=obsidian_path,

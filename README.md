@@ -244,7 +244,8 @@ python scripts/recover_finance_newsletters.py \
 Daily publication fails closed when any deduplicated candidate lacks a valid
 1-5 relevance score. The failure is recorded under the Obsidian newsletter
 directory's `.delivery-manifests/` and does not reuse the previous published
-brief. DeepSeek failures use the isolated Codex CLI fallback, with provider and
+brief. Before current publication, incomplete scoring triggers a bounded
+same-window preflight; DeepSeek failures use the isolated Codex CLI fallback, with provider and
 coverage recorded in the Daily archive. Weekly publication requires seven
 validated Daily archives; the recovery command preserves the SQLite backup,
 rescoring window, archive replacements, Weekly Feishu delivery, replay result,
