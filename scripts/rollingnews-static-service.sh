@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# Serve only the packaged Rolling News read-only surface.  The Cloudflare
-# tunnel routes /api/ui/realtime separately to the existing Park Intel API.
+# Serve the packaged Rolling News surface and proxy read-only /api/ requests
+# to the existing Park Intel API so localhost and the tunnel share one origin.
 cd "$(dirname "$0")/.."
-exec /usr/bin/python3 -m http.server 8787 --bind 127.0.0.1 --directory "$PWD/rollingnews"
+exec /usr/bin/python3 "$PWD/scripts/serve_rollingnews.py"
