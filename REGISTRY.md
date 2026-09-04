@@ -1,5 +1,17 @@
 # Runtime Registry
 
+## 2026-09-04 · Local Rolling News serves a same-origin API
+
+- `com.park-intel.rollingnews-static` now runs
+  `scripts/serve_rollingnews.py`: static assets stay on `127.0.0.1:8787`, and
+  read-only GET/HEAD `/api/` requests proxy to the Park Intel API on port 8001.
+- The old `python -m http.server` runtime returned HTTP 404 for
+  `/api/ui/realtime`, so the visible page could load while remaining OFFLINE.
+- Production-browser acceptance on `http://127.0.0.1:8787/` now shows SYNCED,
+  real Rolling Feed data, PENDING 0, FAILED 0, and all four realtime sources OK.
+- FOMC probability updates are scheduled catalysts; outsider requests that the
+  Fed cut rates no longer impersonate a central-bank decision floor.
+
 ## 2026-09-03 · Realtime AI provider outages defer instead of exhausting retries
 
 - When both DeepSeek and the Codex CLI fallback are unavailable, claimed
