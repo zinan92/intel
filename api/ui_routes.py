@@ -55,6 +55,7 @@ def _source_kind(source: str) -> str:
 
 
 _BUCKET_RANK = {"unknown": 0, "noise": 1, "watch": 2, "high_impact": 3}
+_INGEST_RATE_WINDOW_MINUTES = 10
 
 
 def _same_event(
@@ -683,6 +684,20 @@ def get_realtime_feed(
             )
         )
         operational_query = base_query.filter(Article.is_backfill.is_(False))
+        ingest_rate_window_start = now - timedelta(
+            minutes=_INGEST_RATE_WINDOW_MINUTES,
+        )
+        ingest_rate_count = (
+            session.query(func.count(Article.id))
+            .filter(
+                Article.collection_lane == "realtime",
+                Article.is_backfill.is_(False),
+                Article.collected_at >= ingest_rate_window_start,
+                Article.collected_at <= now,
+            )
+            .scalar()
+            or 0
+        )
         query = base_query if include_backfill else operational_query
         exposure_excluded_window = operational_query.filter(
             Article.exposure_status == "unmatched",
@@ -774,6 +789,17 @@ def get_realtime_feed(
                 "last_collected_at": utc_rfc3339(last_collected),
                 "last_triaged_at": utc_rfc3339(max(triaged_times) if triaged_times else None),
                 "refreshed_at": utc_rfc3339(now),
+                "ingest_rate": {
+                    "status": "ok",
+                    "window_minutes": _INGEST_RATE_WINDOW_MINUTES,
+                    "article_count": ingest_rate_count,
+                    "headlines_per_minute": round(
+                        ingest_rate_count / _INGEST_RATE_WINDOW_MINUTES,
+                        2,
+                    ),
+                    "window_started_at": utc_rfc3339(ingest_rate_window_start),
+                    "window_ended_at": utc_rfc3339(now),
+                },
             },
             "source_health": [
                 health for health in _build_source_health(session)

@@ -1,5 +1,17 @@
 # Runtime Registry
 
+## 2026-09-04 · Rolling News cold reads and ingest telemetry corrected
+
+- PR #118 replaces the 3.3-million-row collector-run history aggregation on
+  every UI refresh with index-bounded latest-run lookups. A post-restart
+  browser cold-open reached `SYNCED` with real news in 2.181 seconds.
+- Issue #117 defines `headlines/min` as all non-backfill realtime Articles
+  received in a fixed trailing 10-minute window, divided by 10. The API
+  publishes the count, window, rate, timestamps, and availability state; the
+  browser no longer substitutes tab-local observations for ingest throughput.
+- A true quiet window displays `0.0`; a missing or failed calculation displays
+  `rate unavailable`, so telemetry failure cannot impersonate source silence.
+
 ## 2026-09-04 · Daily publication runs a frozen-window scoring preflight
 
 - Issue #114 fixes the 08:00 launchd race: when the current rolling window has
@@ -375,8 +387,8 @@
 - Automated article scoring, event narratives, and narrative-signal briefs use the DeepSeek Chat Completions API.
 - The realtime lane polls CLS Telegraph and Eastmoney 7x24 from the latest
   provider windows every 60 seconds, persists unique News Items, and exposes
-  them through the local News Triage Desk; its throughput measurement remains
-  provisional until a clean observation window completes.
+  them through the local News Triage Desk. Rolling News reports a database-backed
+  trailing 10-minute operational ingest rate rather than a browser-local count.
 - The BlockBeats official Pro API source is implemented at 300-second baseline
   cadence; temporary 60-second event windows are isolated in issue #68.
 - The SEC EDGAR watchlist source is implemented behind the same realtime opt-in
