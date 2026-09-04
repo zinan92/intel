@@ -101,6 +101,47 @@ def test_incidental_macro_reference_late_in_body_does_not_force_high_impact_floo
     assert client.complete.call_count == 1
 
 
+def test_fomc_probability_update_is_a_scheduled_high_impact_event():
+    from triage.realtime import RealtimeTriage
+
+    client = MagicMock()
+    client.complete.return_value = json.dumps({"results": [
+        _scheduled_result(4),
+    ]})
+
+    result = RealtimeTriage(client=client).triage_batch([{
+        "id": 4,
+        "title": "美联储9月加息概率回落至50%",
+        "content": "距离下一次FOMC会议还有约12天，CME显示加息概率为50.2%。",
+        "source": "blockbeats_newsflash",
+    }])
+
+    assert result[0]["bucket"] == "high_impact"
+    assert result[0]["direction"] == "unclear"
+    assert client.complete.call_count == 1
+
+
+def test_outsider_urging_a_rate_cut_does_not_trigger_central_bank_floor():
+    from triage.realtime import RealtimeTriage
+
+    client = MagicMock()
+    client.complete.return_value = json.dumps({"results": [
+        _scheduled_result(5),
+    ]})
+
+    result = RealtimeTriage(client=client).triage_batch([{
+        "id": 5,
+        "title": "万斯敦促美联储降息，帮点忙就好了",
+        "content": "美国副总统在记者会上表示，美联储应该降息。",
+        "source": "eastmoney_global_news",
+    }])
+
+    assert result[0]["bucket"] == "unknown"
+    assert result[0]["retryable"] is False
+    assert result[0]["failure_kind"] == "deterministic_validation"
+    assert client.complete.call_count == 1
+
+
 def test_deterministic_validation_fallback_is_persisted_as_visible_complete_unknown():
     import api.ui_routes as ui
     import scheduler
