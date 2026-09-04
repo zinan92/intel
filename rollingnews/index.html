@@ -784,7 +784,15 @@
   // A caller may override it for local development with NEWS_API_BASE.
   var API_BASE = (window.NEWS_API_BASE || '').replace(/\/$/, '');
   var POLL_MS = 15000;
-  var state = { bootstrapped: false, known: {}, items: [], arrivalTimes: [] };
+  var FETCH_TIMEOUT_MS = 20000;
+  var FETCH_RETRY_DELAYS_MS = [1000, 2500];
+  var state = {
+    bootstrapped: false,
+    known: {},
+    items: [],
+    arrivalTimes: [],
+    refreshInFlight: false
+  };
   var refs = {
     ticker: document.getElementById('tickerList'),
     feedCount: document.getElementById('feedCount'),
@@ -1089,12 +1097,37 @@
     refs.lastTriaged.textContent = 'TRIAGED ' + timeLabel(stats.last_triaged_at);
   }
 
-  function refresh() {
-    fetch(API_BASE + '/api/ui/realtime?window=24h&limit=120', { cache: 'no-store' })
+  function fetchRealtime(attempt) {
+    var controller = typeof AbortController === 'function' ? new AbortController() : null;
+    var options = { cache: 'no-store' };
+    var timeoutId = null;
+    if (controller) {
+      options.signal = controller.signal;
+      timeoutId = setTimeout(function () { controller.abort(); }, FETCH_TIMEOUT_MS);
+    }
+
+    return fetch(API_BASE + '/api/ui/realtime?window=24h&limit=120', options)
       .then(function (response) {
+        if (timeoutId !== null) clearTimeout(timeoutId);
         if (!response.ok) throw new Error('HTTP ' + response.status);
         return response.json();
+      }, function (error) {
+        if (timeoutId !== null) clearTimeout(timeoutId);
+        throw error;
       })
+      .catch(function (error) {
+        if (attempt >= FETCH_RETRY_DELAYS_MS.length) throw error;
+        setConnection(state.bootstrapped ? 'RETRYING' : 'CONNECTING', '');
+        return new Promise(function (resolve) {
+          setTimeout(resolve, FETCH_RETRY_DELAYS_MS[attempt]);
+        }).then(function () { return fetchRealtime(attempt + 1); });
+      });
+  }
+
+  function refresh() {
+    if (state.refreshInFlight) return;
+    state.refreshInFlight = true;
+    fetchRealtime(0)
       .then(function (data) {
         var items = Array.isArray(data.items) ? data.items : [];
         var newIds = {};
@@ -1124,6 +1157,9 @@
       .catch(function (error) {
         setConnection('OFFLINE', 'error');
         refs.health.textContent = 'SOURCE HEALTH  API unavailable · ' + error.message;
+      })
+      .finally(function () {
+        state.refreshInFlight = false;
       });
   }
 

@@ -401,25 +401,20 @@ def _build_source_health(session: Any) -> list[dict[str, Any]]:
         .all()
     )
     db_map = {row[0]: (row[1], row[2]) for row in db_rows}
-    latest_run_subquery = (
-        session.query(
-            CollectorRun.source_type,
-            func.max(CollectorRun.completed_at).label("max_completed_at"),
+    # Resolve one latest row per active type through
+    # idx_collector_runs_type_time.  The former grouped MAX subquery scanned
+    # the full collector_runs history on every 15-second UI refresh; the
+    # production table has millions of rows, so a cold read took 6-8 seconds.
+    persisted_by_source: dict[str, CollectorRun] = {}
+    for source_type in active_types:
+        persisted_run = (
+            session.query(CollectorRun)
+            .filter(CollectorRun.source_type == source_type)
+            .order_by(CollectorRun.completed_at.desc())
+            .first()
         )
-        .filter(CollectorRun.source_type.in_(active_types))
-        .group_by(CollectorRun.source_type)
-        .subquery()
-    )
-    persisted_runs = (
-        session.query(CollectorRun)
-        .join(
-            latest_run_subquery,
-            (CollectorRun.source_type == latest_run_subquery.c.source_type)
-            & (CollectorRun.completed_at == latest_run_subquery.c.max_completed_at),
-        )
-        .all()
-    )
-    persisted_by_source = {run.source_type: run for run in persisted_runs}
+        if persisted_run is not None:
+            persisted_by_source[source_type] = persisted_run
 
     result = []
     for source_type in active_types:
