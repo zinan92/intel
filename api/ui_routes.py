@@ -25,6 +25,7 @@ from db.models import Article, CollectorRun
 from api.time_contract import utc_rfc3339
 from triage.event_match import normalize_headline, reports_match
 from triage.exposure import EXPOSURE_UNIVERSE_VERSION, match_article_exposure
+from llm.deepseek import provider_health
 
 ui_router = APIRouter(prefix="/api/ui")
 
@@ -397,7 +398,7 @@ def _build_source_health(session: Any) -> list[dict[str, Any]]:
             func.count(Article.id),
             func.max(Article.collected_at),
         )
-        .filter(Article.source.in_(active_types))
+        .filter(Article.source.in_(active_types), Article.is_backfill.is_(False))
         .group_by(Article.source)
         .all()
     )
@@ -758,6 +759,7 @@ def get_realtime_feed(
         return {
             "items": items,
             "buckets": buckets,
+            "providers": {"deepseek": provider_health()},
             "operational": {
                 "unknown": {
                     "count": unknown_window,

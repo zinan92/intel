@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import os
+import time
+from threading import Lock
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -11,10 +14,30 @@ import requests
 DEFAULT_KEY_FILE = Path("/Users/wendy/park-hands/_secrets/deepseek-key")
 DEFAULT_BASE_URL = "https://api.deepseek.com"
 DEFAULT_MODEL = "deepseek-v4-flash"
+_BILLING_COOLDOWN_SECONDS = 900
+_billing_until: dict[tuple, float] = {}
+_provider_lock = Lock()
+_provider_state: dict[str, Any] = {"status": "not_observed"}
+
+
+def provider_health() -> dict[str, Any]:
+    """Return observed status only; never issue a paid probe from health reads."""
+    with _provider_lock:
+        return dict(_provider_state)
+
+
+def _record_status(status: str, **details: Any) -> None:
+    with _provider_lock:
+        _provider_state.clear()
+        _provider_state.update(status=status, observed_at=datetime.now(timezone.utc).isoformat(), **details)
 
 
 class DeepSeekError(RuntimeError):
     """Raised when a DeepSeek request cannot produce usable content."""
+
+
+class DeepSeekBillingError(DeepSeekError):
+    """HTTP 402: operator must restore balance; callers may use their fallback."""
 
 
 def _read_api_key(path: Path) -> str:
@@ -52,6 +75,17 @@ class DeepSeekClient:
         max_tokens: int = 4096,
         temperature: float = 0.2,
     ) -> str:
+        # Key replacement bypasses a previous billing pause. No credential is
+        # stored in telemetry or cache keys.
+        try:
+            stamp = self.key_file.stat().st_mtime_ns
+        except OSError:
+            stamp = None
+        billing_key = (str(self.key_file), stamp, self.base_url)
+        with _provider_lock:
+            blocked_until = _billing_until.get(billing_key, 0)
+        if time.monotonic() < blocked_until:
+            raise DeepSeekBillingError('DeepSeek HTTP 402 insufficient_balance; retry paused for up to 15 minutes')
         messages: list[dict[str, str]] = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
@@ -82,10 +116,25 @@ class DeepSeekClient:
             data = response.json()
             content = data["choices"][0]["message"]["content"]
         except requests.Timeout as exc:
+            _record_status('timeout')
             raise DeepSeekError("DeepSeek request timed out") from exc
+        except requests.HTTPError as exc:
+            status = exc.response.status_code if exc.response is not None else None
+            if status == 402:
+                with _provider_lock:
+                    _billing_until[billing_key] = time.monotonic() + _BILLING_COOLDOWN_SECONDS
+                _record_status('insufficient_balance', http_status=402, retry_after_seconds=_BILLING_COOLDOWN_SECONDS)
+                raise DeepSeekBillingError('DeepSeek HTTP 402 insufficient_balance') from exc
+            _record_status('http_error', http_status=status)
+            raise DeepSeekError(f'DeepSeek request failed (HTTP {status or "unknown"})') from exc
         except (requests.RequestException, ValueError, KeyError, IndexError, TypeError) as exc:
+            _record_status('request_failed')
             raise DeepSeekError("DeepSeek request failed or returned an invalid response") from exc
 
         if not isinstance(content, str) or not content.strip():
+            _record_status('empty_response')
             raise DeepSeekError("DeepSeek returned empty content")
+        with _provider_lock:
+            _billing_until.pop(billing_key, None)
+        _record_status('ok', model=self.model)
         return content.strip()

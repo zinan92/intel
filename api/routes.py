@@ -46,6 +46,8 @@ def health() -> dict[str, Any]:
     from api.health_routes import _build_processing_health
     from config import realtime_lane_enabled
     from sources.registry import list_active_sources
+    from api.ui_routes import _build_source_health
+    from llm.deepseek import provider_health
 
     session = get_session()
     try:
@@ -54,6 +56,7 @@ def health() -> dict[str, Any]:
         processing = _build_processing_health(session)
 
         active = list_active_sources(session)
+        realtime_health = {item['source']: item for item in _build_source_health(session)}
         # Group by source_type for health reporting
         active_types = sorted({s.source_type for s in active})
 
@@ -99,6 +102,9 @@ def health() -> dict[str, Any]:
             source_lanes = [s for s in active if s.source_type == source_type]
             if any(getattr(source, "lane", "hourly") == "realtime" for source in source_lanes):
                 sources_info[source_type]["lane"] = "realtime"
+                sources_info[source_type]["freshness_status"] = status
+                sources_info[source_type]["status"] = realtime_health.get(source_type, {}).get('status', status)
+                sources_info[source_type]["last_poll_at"] = realtime_health.get(source_type, {}).get('last_attempt_at')
                 if not realtime_lane_enabled():
                     sources_info[source_type]["status"] = "disabled"
                     sources_info[source_type]["disabled_reason"] = (
@@ -118,7 +124,9 @@ def health() -> dict[str, Any]:
             stage.get("status") in {"error", "degraded"}
             for stage in processing.values()
         )
-        overall = "degraded" if (any_stale or any_error or processing_error) else "ok"
+        deepseek_health = provider_health()
+        provider_error = deepseek_health['status'] not in {'ok', 'not_observed'}
+        overall = "degraded" if (any_stale or any_error or processing_error or provider_error) else "ok"
 
         return {
             "status": overall,
@@ -126,6 +134,7 @@ def health() -> dict[str, Any]:
             "scheduler": "running",
             "sources": sources_info,
             "processing": processing,
+            "providers": {"deepseek": deepseek_health},
             "timestamp": now.isoformat(),
         }
     finally:

@@ -176,6 +176,9 @@ def run_aggregation(session: Session) -> AggregationResult:
         active_event.updated_at = now
         events_updated += 1
 
+    # Release event/link writes before any external price lookup.
+    session.commit()
+
     # 4. Snapshot price outcomes for events closed at the start of this run.
     for event in expired:
         if event.outcome_data is not None:
@@ -198,7 +201,9 @@ def run_aggregation(session: Session) -> AggregationResult:
             if tickers:
                 import asyncio
                 from bridge.quant import get_price_impacts
-                impacts = asyncio.run(get_price_impacts(list(tickers)[:5], event.window_start))
+                window_start = event.window_start
+                session.commit()
+                impacts = asyncio.run(get_price_impacts(list(tickers)[:5], window_start))
                 if impacts:
                     outcome = {
                         "tickers": {
@@ -208,6 +213,7 @@ def run_aggregation(session: Session) -> AggregationResult:
                         "captured_at": now.isoformat(),
                     }
                     event.outcome_data = json.dumps(outcome)
+                    session.commit()
         except Exception:
             logger.warning("[aggregator] Failed outcome for '%s'", event.narrative_tag, exc_info=True)
 

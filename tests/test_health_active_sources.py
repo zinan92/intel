@@ -5,6 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from db.models import Base, SourceRegistry
 from sources.registry import upsert_source
@@ -13,7 +14,8 @@ from sources.registry import upsert_source
 @pytest.fixture
 def _seed_test_registry():
     """Seed a minimal in-memory registry for health tests."""
-    engine = create_engine("sqlite:///:memory:")
+    engine = create_engine("sqlite:///:memory:", poolclass=StaticPool,
+                           connect_args={"check_same_thread": False})
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine)
     session = factory()
@@ -43,6 +45,7 @@ def client(_seed_test_registry):
     with patch("main.CollectorScheduler.start"), \
          patch("main.CollectorScheduler.shutdown"), \
          patch("db.database.get_engine", return_value=engine), \
+         patch("api.routes.get_session", side_effect=lambda: factory()), \
          patch("db.database.get_session", side_effect=lambda: factory()):
         from main import app
         with TestClient(app) as test_client:
