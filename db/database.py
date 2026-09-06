@@ -3,6 +3,8 @@
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
+from threading import RLock
+from weakref import WeakSet
 
 from config import DATA_DIR, DB_PATH
 from db.models import Base
@@ -12,6 +14,8 @@ import users.models  # noqa: F401 — register UserProfile with Base.metadata
 
 _engine: Engine | None = None
 _SessionFactory: sessionmaker[Session] | None = None
+_initialized_engines: WeakSet = WeakSet()
+_init_lock = RLock()
 
 
 def _set_sqlite_pragma(dbapi_connection, connection_record):
@@ -44,14 +48,18 @@ def get_session() -> Session:
 
 
 def init_db() -> None:
-    """Create all tables if they don't exist, then run migrations and seed."""
+    """Initialize each engine once, never run migrations on every collector tick."""
     from db.migrations import run_migrations
 
     engine = get_engine()
-    Base.metadata.create_all(engine)
-    run_migrations(engine)
-    _seed_registry_if_needed()
-    _canonicalize_article_sources()
+    with _init_lock:
+        if engine in _initialized_engines:
+            return
+        Base.metadata.create_all(engine)
+        run_migrations(engine)
+        _seed_registry_if_needed()
+        _canonicalize_article_sources()
+        _initialized_engines.add(engine)
 
 
 def _canonicalize_article_sources() -> None:

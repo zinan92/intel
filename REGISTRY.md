@@ -1,5 +1,22 @@
 # Runtime Registry
 
+## 2026-09-06 · Storage contention and provider failure repair
+
+- Narrative generation releases its SQLite transaction before model requests
+  and commits each result; event aggregation releases writes before price calls.
+  Initialization runs once per engine, so ordinary collector ticks no longer
+  execute schema/default updates. Scoring and source schedules are unchanged.
+- A live DeepSeek probe confirmed HTTP 402 `Insufficient Balance`. The shared
+  client reports `insufficient_balance` in health and pauses billing retries for
+  15 minutes while existing Codex fallback continues. Restoring DeepSeek requires
+  operator funding; no payment or credential change was performed.
+- Official SEC reconciliation checked 20 companies and 2,915 approved filings:
+  one recent filing, none missing locally. Core health now exposes content
+  freshness separately and agrees with UI polling health, with archives excluded.
+- Future diplomatic meetings, announced repo operations, and IPO schedule
+  changes receive the existing scheduled-event validation exemption. This does
+  not assign buckets or directions; assets and watch conditions remain required.
+
 ## 2026-09-04 · Rolling News cold reads and ingest telemetry corrected
 
 - PR #118 replaces the 3.3-million-row collector-run history aggregation on
@@ -388,15 +405,16 @@
 
 ## 现在在哪里
 
-- Automated article scoring, event narratives, and narrative-signal briefs use the DeepSeek Chat Completions API.
+- DeepSeek is configured first but currently returns HTTP 402 insufficient balance;
+  Codex CLI is serving the existing fallback paths.
 - The realtime lane polls CLS Telegraph and Eastmoney 7x24 from the latest
   provider windows every 60 seconds, persists unique News Items, and exposes
   them through the local News Triage Desk. Rolling News reports a database-backed
   trailing 10-minute operational ingest rate rather than a browser-local count.
 - The BlockBeats official Pro API source is implemented at 300-second baseline
   cadence; temporary 60-second event windows are isolated in issue #68.
-- The SEC EDGAR watchlist source is implemented behind the same realtime opt-in
-  but is not live-verified on this host while the official endpoints return 403.
+- The SEC EDGAR watchlist has been reconciled with the official feed on September 6;
+  no recent filings were missing. Quiet content is reported separately from poll health.
 - Telegram ingestion is permanently retired; historical registry rows and
   Articles remain stored, while no collector or scheduler path can activate it.
 - The Daily Finance Newsletter archive and delivery contract is available on `main`.
@@ -415,6 +433,10 @@
   sending a duplicate.
 
 ## 下一步
+
+- Restore DeepSeek account balance and verify automatic recovery after the billing
+  cooldown. Continue the scheduled v6 observation, recording this runtime repair
+  as an intervention; exposure aliases and filtering thresholds are unchanged.
 
 - Decide the long-term Unknown presentation under issue #73 and measure the
   24-hour BlockBeats increment/overlap under issue #65.

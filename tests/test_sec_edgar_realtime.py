@@ -22,6 +22,14 @@ def _response(payload, status_code=200):
 
 def test_sec_adapter_resolves_ticker_and_normalizes_approved_filing(monkeypatch):
     from sources.adapters import collect_from_source
+    import collectors.sec_edgar as sec
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 9, 2, 15, 0, tzinfo=tz)
+
+    monkeypatch.setattr(sec, 'datetime', Clock)
 
     monkeypatch.setenv("SEC_EDGAR_USER_AGENT", "Park Intel park@example.com")
     company_tickers = {

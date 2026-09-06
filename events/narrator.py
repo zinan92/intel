@@ -147,6 +147,8 @@ def generate_narratives(session: Session) -> NarrativeRunResult:
             continue
 
         prompt = _build_prompt(event, articles)
+        # End the read transaction before waiting on an external provider.
+        session.commit()
         narrative, provider, fallback_reason = _call_llm(prompt)
 
         if narrative:
@@ -166,6 +168,9 @@ def generate_narratives(session: Session) -> NarrativeRunResult:
                 fallback_reasons.add(fallback_reason)
             logger.warning("[narrator] Failed to generate for '%s'", event.narrative_tag)
 
+        # Persist each result before the next query can autoflush it and hold
+        # SQLite's single writer lock across the next model call.
+        session.commit()
         if event is not events[-1]:
             time.sleep(_RATE_LIMIT_SECONDS)
 

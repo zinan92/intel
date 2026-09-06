@@ -33,6 +33,9 @@ def _scheduled_result(article_id: int) -> dict:
     "日本央行决议前交易员高度警惕干预风险",
     "日本央行据悉倾向于本月加息25个基点",
     "8月份新增信贷、社融或同比少增",
+    "俄罗斯总统普京将于周六（9月5日）与到访莫斯科的美国总统特使威特科夫和库什纳举行会晤",
+    "央行：9月7日将开展5000亿元买断式逆回购操作",
+    "Anthropic IPO或推迟至10月中旬，拟冲击2万亿美元估值",
 ])
 def test_chinese_scheduled_preview_is_accepted_without_repair_call(title):
     from triage.realtime import RealtimeTriage
@@ -73,6 +76,14 @@ def test_unclear_high_impact_without_scheduled_evidence_isolated_without_repair(
     assert result[0]["retryable"] is False
     assert result[0]["failure_kind"] == "deterministic_validation"
     assert client.complete.call_count == 1
+
+
+def test_completed_diplomatic_meeting_is_not_a_scheduled_exemption():
+    from triage.realtime import _is_scheduled_catalyst
+    assert not _is_scheduled_catalyst({
+        'title': '普京已经与美国特使举行会晤', 'content': '会晤结束，未宣布协议。',
+    })
+    assert not _is_scheduled_catalyst({'title': '特朗普称可能很快打击伊朗', 'content': ''})
 
 
 def test_incidental_macro_reference_late_in_body_does_not_force_high_impact_floor():

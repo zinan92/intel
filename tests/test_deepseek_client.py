@@ -54,3 +54,26 @@ def test_complete_handles_http_error_without_response_body(mock_post, tmp_path):
 def test_complete_handles_timeout(_mock_post, tmp_path):
     with pytest.raises(DeepSeekError, match="timed out"):
         _client(tmp_path).complete("hello")
+
+
+@patch('llm.deepseek.requests.post')
+def test_billing_failure_pauses_repeated_requests_and_recovers(mock_post, tmp_path, monkeypatch):
+    import llm.deepseek as mod
+    clock = [100.0]
+    monkeypatch.setattr(mod.time, 'monotonic', lambda: clock[0])
+    client = _client(tmp_path)
+    response = requests.Response()
+    response.status_code = 402
+    mock_post.return_value = response
+    with pytest.raises(mod.DeepSeekBillingError, match='402'):
+        client.complete('probe')
+    with pytest.raises(mod.DeepSeekBillingError, match='paused'):
+        client.complete('probe')
+    assert mock_post.call_count == 1
+    assert mod.provider_health()['status'] == 'insufficient_balance'
+    clock[0] += 901
+    ok = Mock()
+    ok.json.return_value = {'choices': [{'message': {'content': 'ok'}}]}
+    mock_post.return_value = ok
+    assert client.complete('probe') == 'ok'
+    assert mod.provider_health()['status'] == 'ok'

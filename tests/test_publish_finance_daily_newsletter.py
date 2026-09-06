@@ -253,6 +253,13 @@ def test_current_publish_exposes_scoring_preflight_failure(tmp_path, monkeypatch
     from scripts import publish_finance_daily_newsletter as mod
     from scripts.generate_narrative_signal import ScoringCoverageError
 
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 9, 4, 8, 0, tzinfo=tz)
+
+    monkeypatch.setattr(mod, 'datetime', Clock)
+
     monkeypatch.setenv("OBSIDIAN_FINANCE_NEWSLETTER_DIR", str(tmp_path))
     monkeypatch.setenv("PARK_INTEL_SKIP_FEISHU", "1")
     failure = ScoringCoverageError(
