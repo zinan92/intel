@@ -606,3 +606,67 @@ def test_realtime_endpoint_exposes_real_buckets(monkeypatch):
     assert "scenario_bull" not in response["items"][0]["triage"]
     assert "scenario_bear" not in response["items"][0]["triage"]
     assert response["items"][0]["collection_lane"] == "realtime"
+
+
+def test_repair_exhausted_failure_is_terminal_and_visible():
+    """A floor item the repair round cannot fix must stay visible, not vanish.
+
+    Regression for 2026-09-06/07: three real articles (a 非农/CPI preview and a
+    brokerage note) hit the high-impact floor, failed the direction contract,
+    failed the repair round too, and were marked retryable. The scheduler then
+    retried them to the attempt cap and left them at triage_status="failed",
+    which renders in no bucket at all -- the reader never saw them.
+
+    Once repair has failed, the model has had two attempts against an unchanged
+    deterministic rule, so the outcome must be terminal: complete + unknown.
+    """
+    from triage.realtime import RealtimeTriage
+
+    unfixable = json.dumps({
+        "results": [{
+            "id": 9,
+            "bucket": "high_impact",
+            "direction": "unclear",
+            "rationale": "Direction cannot be established.",
+            "affected_assets": [],
+            "watch_for": [],
+        }]
+    })
+    client = MagicMock()
+    # first pass and repair pass both return the same invalid payload
+    client.complete.side_effect = [unfixable, unfixable]
+
+    result = RealtimeTriage(client=client).triage_batch([{
+        "id": 9,
+        "title": "美国非农数据总量强劲与结构裂痕并存 美联储9月加息悬念留待CPI揭晓",
+        "content": "美联储9月议息会议前，市场等待CPI数据揭晓。",
+        "source": "eastmoney_global_news",
+    }])
+
+    assert result[0]["bucket"] == "unknown"
+    assert result[0]["retryable"] is False, "repair-exhausted items must not be retried"
+    assert result[0]["failure_kind"] in {"repair_exhausted", "deterministic_validation"}
+    assert result[0]["validation_error"]
+
+
+def test_chinese_pending_phrasing_is_recognised_as_scheduled():
+    """悬念留待…揭晓 / 静待…公布 are forward-looking and must allow unclear."""
+    from triage.realtime import _is_scheduled_catalyst
+
+    assert _is_scheduled_catalyst({
+        "title": "美联储9月加息悬念留待CPI揭晓",
+        "content": "",
+    })
+    assert _is_scheduled_catalyst({
+        "title": "市场静待非农数据公布",
+        "content": "",
+    })
+    # counterexamples: already-happened events must not be treated as scheduled
+    assert not _is_scheduled_catalyst({
+        "title": "伊朗称已击落50架美军MQ-9无人机",
+        "content": "",
+    })
+    assert not _is_scheduled_catalyst({
+        "title": "1—8月全国二手房交易网签面积同比增长10.6%",
+        "content": "",
+    })

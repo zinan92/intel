@@ -36,6 +36,8 @@ _SCHEDULED_CATALYST_RE = re.compile(
     r"(?:加息|降息|维持利率|按兵不动).{0,12}(?:概率|预期|定价)|"
     r"距离.{0,20}(?:FOMC|央行).{0,12}(?:会议|决议).{0,12}(?:还有|剩余)|"
     r"(?:周[一二三四五六日天]|下周|本周末).{0,12}(?:会议|开会|决议|公布|发布)|"
+    r"悬念.{0,16}(?:留待|揭晓|待定|取决)|"
+    r"(?:留待|静待|静候|等待).{0,16}(?:揭晓|公布|发布|出炉|确认|指引)|"
     r"(?:据悉可能|据悉倾向|倾向于|或将|可能|预计|预期|料将|有望|或).{0,24}"
     r"(?:公布|发布|出炉|维持|上涨|下跌|少增|增加|召开|开会|会议|决议|产量|政策|加息|降息|CPI|非农|信贷|社融)|"
     r"\b(?:preview|scheduled|due (?:today|tonight)|will be released|ahead of)\b",
@@ -235,8 +237,21 @@ def _normalize_result(
     }
 
 
-def _isolated_failure(article: dict[str, Any], error: Exception) -> dict[str, Any]:
-    deterministic = isinstance(error, DeterministicValidationError)
+def _isolated_failure(
+    article: dict[str, Any],
+    error: Exception,
+    *,
+    terminal: bool = False,
+) -> dict[str, Any]:
+    """Build a visible fallback result for an article that failed validation.
+
+    ``terminal`` marks an outcome that must never be retried again. It is set
+    once the repair round-trip has also failed: at that point the model has had
+    two attempts against an unchanged deterministic rule, so a later retry can
+    only fail identically -- and a retryable failure is invisible to the reader
+    (triage_status stays "failed" and the item shows in no bucket at all).
+    """
+    deterministic = isinstance(error, DeterministicValidationError) or terminal
     return {
         "id": article["id"],
         "bucket": "unknown",
@@ -250,7 +265,11 @@ def _isolated_failure(article: dict[str, Any], error: Exception) -> dict[str, An
         "affected_assets": [],
         "watch_for": ["manual review" if deterministic else "retry analysis"],
         "validation_error": str(error)[:300],
-        "failure_kind": "deterministic_validation" if deterministic else "contract_validation",
+        "failure_kind": (
+            "deterministic_validation"
+            if isinstance(error, DeterministicValidationError)
+            else "repair_exhausted" if terminal else "contract_validation"
+        ),
         "retryable": not deterministic,
     }
 
@@ -350,11 +369,13 @@ class RealtimeTriage:
                     normalized_by_id[article["id"]] = _isolated_failure(
                         article,
                         repair_error,
+                        terminal=True,
                     )
                 except Exception as repair_error:
                     normalized_by_id[article["id"]] = _isolated_failure(
                         article,
                         repair_error if repair_by_id else first_error,
+                        terminal=True,
                     )
 
         return [normalized_by_id[article["id"]] for article in articles]
