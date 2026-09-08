@@ -48,6 +48,27 @@ def _market_numbers(content: str) -> set[str]:
     }
 
 
+def _number_core(token: str) -> str:
+    """'$987M' → '987', '3.52%' → '3.52', '12亿元' → '12'."""
+    match = re.search(r"\d+(?:\.\d+)?", token.replace(",", ""))
+    return match.group(0) if match else ""
+
+
+def _number_core_in_evidence(token: str, evidence_text: str) -> bool:
+    """Accept a number whose bare value appears verbatim in the evidence.
+
+    Briefs and sources spell the same figure differently ('$987 million' vs
+    '$987M', '$3.52 billion' vs '3.52 billion'). Only the numeric core is
+    compared, and very short cores are not trusted to avoid matching digits
+    inside unrelated numbers.
+    """
+    core = _number_core(token)
+    if not core or (len(core) < 2 and "." not in core):
+        return False
+    haystack = evidence_text.replace(",", "")
+    return re.search(rf"(?<![\d.]){re.escape(core)}(?![\d])", haystack) is not None
+
+
 def _numbered_titles(content: str) -> list[str]:
     titles: list[str] = []
     for line in content.splitlines():
@@ -94,7 +115,11 @@ def validate_published_brief(content: str, evidence_text: str | None = None) -> 
         issues.append("gold appears to be described as a $5,000 breakout/record fact")
 
     if evidence_text is not None:
-        ungrounded = sorted(_market_numbers(stripped) - _market_numbers(evidence_text))
+        ungrounded = sorted(
+            number
+            for number in _market_numbers(stripped) - _market_numbers(evidence_text)
+            if not _number_core_in_evidence(number, evidence_text)
+        )
         if ungrounded:
             issues.append(
                 "ungrounded market numbers: " + ", ".join(ungrounded[:8])
