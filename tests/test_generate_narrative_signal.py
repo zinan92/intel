@@ -151,7 +151,7 @@ def test_call_llm_reports_both_provider_failure_without_content(monkeypatch, cap
     monkeypatch.setattr(mod, "_call_codex", fail_codex)
 
     assert mod._call_llm("write a brief") == (None, None)
-    assert "Both DeepSeek and Codex CLI failed" in caplog.text
+    assert "Both providers failed" in caplog.text
     assert "deepseek=http_402" in caplog.text
     assert "codex=timeout" in caplog.text
 
@@ -173,8 +173,10 @@ def test_call_llm_falls_back_for_non_quota_deepseek_failure(monkeypatch):
 
 
 def test_call_llm_does_not_invoke_codex_after_deepseek_success(monkeypatch):
+    """The second provider is never touched when the first one answers."""
     from scripts import generate_narrative_signal as mod
 
+    monkeypatch.setenv("PARK_INTEL_LLM_PRIMARY", "deepseek")
     monkeypatch.setattr(mod, "_call_deepseek", lambda _prompt: ("deepseek brief", "deepseek-v4-flash"))
     monkeypatch.setattr(mod, "_call_codex", lambda _prompt: (_ for _ in ()).throw(AssertionError("must not call Codex")))
 
@@ -416,3 +418,36 @@ def test_generate_historical_brief_does_not_replace_current_published_brief():
     assert historical.status == "archived"
     assert historical.created_at == historical_end
     assert historical.provider == "codex-cli"
+
+
+def test_llm_order_puts_codex_first_by_default(monkeypatch):
+    from scripts import generate_narrative_signal as mod
+
+    monkeypatch.delenv("PARK_INTEL_LLM_PRIMARY", raising=False)
+    assert mod._llm_order() == ["codex", "deepseek"]
+    monkeypatch.setenv("PARK_INTEL_LLM_PRIMARY", "deepseek")
+    assert mod._llm_order() == ["deepseek", "codex"]
+    monkeypatch.setenv("PARK_INTEL_LLM_PRIMARY", "anything-else")
+    assert mod._llm_order() == ["codex", "deepseek"]
+
+
+def test_call_llm_uses_codex_without_touching_deepseek(monkeypatch):
+    from scripts import generate_narrative_signal as mod
+
+    monkeypatch.delenv("PARK_INTEL_LLM_PRIMARY", raising=False)
+    touched = []
+    monkeypatch.setattr(mod, "_call_deepseek", lambda p: touched.append("deepseek") or (None, None))
+    monkeypatch.setattr(mod, "_call_codex", lambda p: ("brief text", "codex-cli"))
+    content, provider = mod._call_llm("x")
+    assert (content, provider) == ("brief text", "codex-cli")
+    assert touched == []
+
+
+def test_call_llm_falls_back_to_deepseek_when_codex_fails(monkeypatch):
+    from scripts import generate_narrative_signal as mod
+
+    monkeypatch.delenv("PARK_INTEL_LLM_PRIMARY", raising=False)
+    monkeypatch.setattr(mod, "_call_codex", lambda p: (None, None))
+    monkeypatch.setattr(mod, "_call_deepseek", lambda p: ("brief text", "deepseek-v4"))
+    content, provider = mod._call_llm("x")
+    assert content == "brief text" and provider == "deepseek:deepseek-v4"
