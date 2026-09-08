@@ -315,24 +315,43 @@ def _call_deepseek(prompt: str) -> tuple[str | None, str | None]:
         return None, None
 
 
+def _llm_order() -> list[str]:
+    """Which provider to try first.
+
+    Codex CLI leads by default: the DeepSeek account has no balance, so trying
+    it first only bought an HTTP 402 and left the Codex path untested until
+    something already went wrong. Set PARK_INTEL_LLM_PRIMARY=deepseek to
+    restore the old order.
+    """
+    primary = os.getenv("PARK_INTEL_LLM_PRIMARY", "codex").strip().lower()
+    return ["deepseek", "codex"] if primary == "deepseek" else ["codex", "deepseek"]
+
+
 def _call_llm(prompt: str) -> tuple[str | None, str | None]:
-    """Generate with DeepSeek first, then one audited Codex CLI fallback."""
+    """Generate with the primary provider, then one audited fallback."""
 
     global _last_codex_failure
     _last_codex_failure = "not_attempted"
-    content, model = _call_deepseek(prompt)
-    if content:
-        logger.info("Brief generated with DeepSeek model %s", model)
-        return content, f"deepseek:{model}"
-    deepseek_failure = _last_deepseek_failure
-    content, provider = _call_codex(prompt)
-    if content:
-        logger.info("Brief generated with Codex CLI fallback after DeepSeek failure (%s)", deepseek_failure)
-        return content, provider
+    failures: dict[str, str] = {}
+    order = _llm_order()
+    for position, name in enumerate(order):
+        if name == "deepseek":
+            content, model = _call_deepseek(prompt)
+            provider = f"deepseek:{model}" if content else None
+            failure = _last_deepseek_failure
+        else:
+            content, provider = _call_codex(prompt)
+            failure = _last_codex_failure
+        if content:
+            if position == 0:
+                logger.info("Brief generated with %s", provider)
+            else:
+                logger.info("Brief generated with %s after %s failed (%s)", provider, order[0], failures.get(order[0]))
+            return content, provider
+        failures[name] = failure
     logger.error(
-        "Both DeepSeek and Codex CLI failed; delivery must be skipped (deepseek=%s, codex=%s)",
-        deepseek_failure,
-        _last_codex_failure,
+        "Both providers failed; delivery must be skipped (%s)",
+        ", ".join(f"{k}={v}" for k, v in failures.items()),
     )
     return None, None
 
