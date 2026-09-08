@@ -105,3 +105,28 @@ def test_validate_published_brief_accepts_exact_market_numbers_from_evidence():
     )
 
     assert result.passed
+
+
+def test_validate_published_brief_accepts_reformatted_source_numbers():
+    from scripts.brief_quality import validate_published_brief
+
+    content = (
+        "## 今日交易地图\n- BTC：偏多\n\n## 过去24小时发生了什么\n1. **ETF 资金流** | 高 确信度 | 数日\n"
+        "   → BTC：ETF 上周约净流入 $987 million，8 月约流入 $3.52 billion。\n   → 交易含义: 观察。\n\n## Source Health\n- ok\n"
+    ) + "\n" * 5 + ("填充。" * 120)
+    evidence = "bitcoin ETFs just pulled in like $987M in ONE week\nSpot bitcoin ETFs drew in 3.52 billion in net inflows in August"
+    result = validate_published_brief(content, evidence_text=evidence)
+    assert not any("ungrounded" in issue for issue in result.issues)
+
+
+def test_validate_published_brief_still_rejects_invented_numbers():
+    from scripts.brief_quality import validate_published_brief
+
+    content = (
+        "## 今日交易地图\n- 黄金：偏多\n\n## 过去24小时发生了什么\n1. **黄金** | 高 确信度 | 数日\n"
+        "   → 黄金：金价站上 $5,000，涨幅 7%。\n   → 交易含义: 观察。\n\n## Source Health\n- ok\n"
+    ) + "\n" * 5 + ("填充。" * 120)
+    evidence = "gold traded near $4,480; silver rose 1.7%"
+    result = validate_published_brief(content, evidence_text=evidence)
+    issues = " ".join(result.issues)
+    assert "ungrounded market numbers" in issues and "$5000" in issues and "7%" in issues
