@@ -79,3 +79,46 @@ def test_codex_client_maps_timeout_and_os_error(monkeypatch):
     monkeypatch.setattr(mod.subprocess, "run", lambda *args, **kwargs: (_ for _ in ()).throw(OSError("missing")))
     with pytest.raises(CodexCLIError, match="executable_unavailable"):
         CodexCLIClient().complete("prompt")
+
+
+def test_codex_client_logs_usage_from_json_event_stream(tmp_path, monkeypatch):
+    from llm import codex as mod
+    import json
+
+    log_path = tmp_path / "finance-daily.jsonl"
+    monkeypatch.setattr(mod, "USAGE_LOG", log_path)
+
+    def fake_run(command, **kwargs):
+        output_path = Path(command[command.index("--output-last-message") + 1])
+        output_path.write_text('{"results": []}', encoding="utf-8")
+        stream = "\n".join([
+            json.dumps({"type": "turn.started"}),
+            json.dumps({"type": "turn.completed", "usage": {"input_tokens": 40000, "cached_input_tokens": 38000, "output_tokens": 50}}),
+        ])
+        return SimpleNamespace(returncode=0, stdout=stream)
+
+    monkeypatch.setattr(mod, "_resolve_executable", lambda: "/opt/homebrew/bin/codex")
+    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+
+    CodexCLIClient().complete("score this batch")
+
+    row = json.loads(log_path.read_text(encoding="utf-8").splitlines()[0])
+    assert row["provider"] == "codex" and row["input_tokens"] == 40000 and row["cached_input_tokens"] == 38000 and row["output_tokens"] == 50
+
+
+def test_codex_client_missing_usage_event_does_not_raise_or_log(tmp_path, monkeypatch):
+    from llm import codex as mod
+
+    log_path = tmp_path / "finance-daily.jsonl"
+    monkeypatch.setattr(mod, "USAGE_LOG", log_path)
+
+    def fake_run(command, **kwargs):
+        output_path = Path(command[command.index("--output-last-message") + 1])
+        output_path.write_text('{"results": []}', encoding="utf-8")
+        return SimpleNamespace(returncode=0, stdout="not json")
+
+    monkeypatch.setattr(mod, "_resolve_executable", lambda: "/opt/homebrew/bin/codex")
+    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+
+    CodexCLIClient().complete("score this batch")
+    assert not log_path.exists()
