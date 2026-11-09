@@ -18,10 +18,16 @@ _initialized_engines: WeakSet = WeakSet()
 _init_lock = RLock()
 
 
+# SQLite keeps the WAL file at its high-water size after a checkpoint resets it;
+# without a limit one busy period left a 600 MB file behind for good (#131).
+WAL_SIZE_LIMIT_BYTES = 64 * 1024 * 1024
+
+
 def _set_sqlite_pragma(dbapi_connection, connection_record):
-    """Enable WAL journal mode for better concurrent write performance."""
+    """Enable WAL journal mode and shrink the WAL file back after each reset."""
     cursor = dbapi_connection.cursor()
     cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute(f"PRAGMA journal_size_limit={WAL_SIZE_LIMIT_BYTES}")
     cursor.close()
 
 
