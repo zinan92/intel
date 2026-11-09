@@ -1,5 +1,21 @@
 # Runtime Registry
 
+## 2026-11-09 · Source health reads a covering index (#129)
+
+- `/api/ui/realtime` took 5–10 s and `/api/health` 14 s (the trading desk's
+  news panel waits on the first). Both count every non-backfill article per
+  source over all time for source health; with only `idx_source` that read
+  ~264k rows from the 1.2 GB table: 2.74 s on a backup copy with a warm cache,
+  run once by realtime and twice by health. Every other realtime statement
+  takes milliseconds.
+- `run_migrations` adds `idx_articles_source_backfill_collected (source,
+  is_backfill, collected_at)`. The aggregate becomes covering-index only:
+  2.74 s → 0.022 s on the copy, same result, index build 0.28 s. The realtime
+  handler on the copy: 0.6 s warm / 6.9 s cold → 0.25–0.33 s.
+- Gotcha: a connection that ran only `create_all` + `run_migrations` kept
+  planning with `idx_source`. The service's full `init_db` path does not; a
+  test guards that a request's connection after `init_db` uses the new index.
+
 ## 2026-09-06 · Storage contention and provider failure repair
 
 - Narrative generation releases its SQLite transaction before model requests

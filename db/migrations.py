@@ -353,4 +353,10 @@ def run_migrations(engine: Engine) -> None:
             "CREATE INDEX IF NOT EXISTS idx_articles_realtime_exposure_collected "
             "ON articles (collection_lane, is_backfill, exposure_status, collected_at)"
         ))
+        # Source health (/api/ui/realtime, /api/health) counts every non-backfill article per source and takes
+        # the latest collected_at. With only idx_source it read each row from the table: 2.7 s (#129).
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_articles_source_backfill_collected "
+            "ON articles (source, is_backfill, collected_at)"
+        ))
         conn.commit()
