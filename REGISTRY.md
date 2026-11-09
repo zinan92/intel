@@ -1,5 +1,17 @@
 # Runtime Registry
 
+## 2026-11-09 · The WAL file shrinks back after a checkpoint (#131)
+
+- Production `park_intel.db-wal` was 608 MB on a disk with 11 GB free; the log
+  had two earlier "No space left on device" errors. Checkpoints do run (the
+  main file is written regularly). SQLite simply keeps the WAL at its
+  high-water size after a reset, and nothing set a limit.
+- Every connection now sets `journal_size_limit` to 64 MB beside
+  `journal_mode=WAL`. On the next WAL reset SQLite truncates the file.
+- Gotcha: the file only shrinks when a checkpoint completes with no reader
+  on the old WAL frames, so the drop can lag a busy period; it is not
+  immediate on restart.
+
 ## 2026-11-09 · Source health reads a covering index (#129)
 
 - `/api/ui/realtime` took 5–10 s and `/api/health` 14 s (the trading desk's
